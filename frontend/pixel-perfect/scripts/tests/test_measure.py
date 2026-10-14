@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import measure
-from pp_common import PPError, parse_region, superseded_by, with_css
+from pp_common import PPError, parse_region, superseded_by, with_points
 
 WHITE = (255, 255, 255)
 BLUE = (30, 90, 200)
@@ -47,8 +47,8 @@ class InfoTest(unittest.TestCase):
     def test_ambiguous_width(self):
         self.assertTrue(measure.probe_info(canvas(1536, 900), False)["ambiguous"])
 
-    def test_stated_viewport_wins(self):
-        result = measure.probe_info(canvas(1536, 900), False, viewport_width=768)
+    def test_stated_screen_width_wins(self):
+        result = measure.probe_info(canvas(1536, 900), False, screen_width=768)
         self.assertEqual(result["scale_guess"], 2)
         self.assertFalse(result["ambiguous"])
 
@@ -312,7 +312,7 @@ class TextTest(unittest.TestCase):
 class SourceQualityTest(unittest.TestCase):
     @staticmethod
     def page():
-        """Boxes and rules on a plain page, as a browser draws them."""
+        """Boxes and rules on a plain page, as a renderer draws them."""
         arr = canvas(800, 600)
         for index in range(8):
             box(arr, 40 + index * 90, 40, 60, 200, BLUE)
@@ -560,14 +560,14 @@ class CropsZoomOutlineTest(unittest.TestCase):
         result = measure.probe_outline(np.asarray(image), (0, 0, 300, 200), color="#1e5ac8", scale=2)
         self.assertTrue(result["found"])
         self.assertEqual(result["split_rows"], 0)
-        self.assertLessEqual(result["points"], 8)
+        self.assertLessEqual(result["vertices"], 8)
         numbers = [float(n) for n in result["path"][1:-1].replace("L", "").split()]
         xs, ys = numbers[0::2], numbers[1::2]
         self.assertAlmostEqual(min(xs), 50, delta=1.5)
         self.assertAlmostEqual(max(xs), 251, delta=1.5)
         self.assertAlmostEqual(min(ys), 20.5, delta=1)
         self.assertAlmostEqual(max(ys), 180.5, delta=1)
-        self.assertEqual(result["css"]["viewbox"], "0 0 150 100")
+        self.assertEqual(result["points"]["viewbox"], "0 0 150 100")
 
     def test_outline_reports_a_hollow_shape(self):
         arr = canvas(200, 100)
@@ -587,9 +587,9 @@ class CropsZoomOutlineTest(unittest.TestCase):
         want = measure.probe_outline(clean, (0, 0, 300, 300), color="#1e5ac8")
         dented = measure.probe_outline(marked, (0, 0, 300, 300), color="#1e5ac8")
         bridged = measure.probe_outline(marked, (0, 0, 300, 300), color="#1e5ac8", bridge=41)
-        self.assertGreater(dented["points"], want["points"])
+        self.assertGreater(dented["vertices"], want["vertices"])
         self.assertEqual(bridged["bridged_rows"], 34)
-        self.assertLessEqual(bridged["points"], want["points"] + 2)
+        self.assertLessEqual(bridged["vertices"], want["vertices"] + 2)
         # Bridging a clean shape changes nothing.
         self.assertEqual(measure.probe_outline(clean, (0, 0, 300, 300), color="#1e5ac8", bridge=41)["path"], want["path"])
 
@@ -597,27 +597,27 @@ class CropsZoomOutlineTest(unittest.TestCase):
         self.assertFalse(measure.probe_outline(canvas(), (0, 0, 400, 300), color="#1e5ac8")["found"])
 
 
-class CssMirrorTest(unittest.TestCase):
+class PointsMirrorTest(unittest.TestCase):
     def test_lengths_are_divided_by_scale(self):
         arr = box(canvas(), 40, 30, 200, 100, BLUE)
-        result = with_css(measure.probe_bbox(arr, (20, 10, 300, 200)), 2)
-        self.assertEqual(result["css"]["bbox"], {"x": 20, "y": 15, "w": 100, "h": 50})
-        self.assertNotIn("background", result["css"])
+        result = with_points(measure.probe_bbox(arr, (20, 10, 300, 200)), 2)
+        self.assertEqual(result["points"]["bbox"], {"x": 20, "y": 15, "w": 100, "h": 50})
+        self.assertNotIn("background", result["points"])
 
-    def test_css_only_output_converts_lengths_once(self):
-        from pp_common import in_css
+    def test_points_only_output_converts_lengths_once(self):
+        from pp_common import in_points
 
         arr = canvas()
         box(arr, 40, 20, 100, 60, BLUE)
-        result = in_css(measure.probe_items(arr, (0, 0, 400, 300)), 2)
-        self.assertEqual((result["units"], result["region_px"]), ("css px", {"x": 0, "y": 0, "w": 400, "h": 300}))
+        result = in_points(measure.probe_items(arr, (0, 0, 400, 300)), 2)
+        self.assertEqual((result["units"], result["region_px"]), ("points", {"x": 0, "y": 0, "w": 400, "h": 300}))
         self.assertEqual(result["items"], [{"x": 20, "y": 10, "w": 50, "h": 30, "hex": "#1e5ac8"}])
-        self.assertNotIn("css", result)
-        self.assertNotIn("units", in_css(measure.probe_items(arr, (0, 0, 400, 300)), 1))
+        self.assertNotIn("points", result)
+        self.assertNotIn("units", in_points(measure.probe_items(arr, (0, 0, 400, 300)), 1))
 
     def test_scale_one_adds_nothing(self):
         arr = box(canvas(), 40, 30, 200, 100, BLUE)
-        self.assertNotIn("css", with_css(measure.probe_bbox(arr, (20, 10, 300, 200)), 1))
+        self.assertNotIn("points", with_points(measure.probe_bbox(arr, (20, 10, 300, 200)), 1))
 
 
 if __name__ == "__main__":

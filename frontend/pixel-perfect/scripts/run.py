@@ -6,22 +6,19 @@ environment in the user cache, installs the pinned requirements, then runs the
 requested tool inside it.
 
     run.py measure <probe> ...     measurement probes
-    run.py capture --url ...       deterministic browser screenshot
     run.py diff <design> <render>  score a render against the design
-    run.py check --url ...         capture and score components, sections and pages in one round
+    run.py check --shot ...        score components, sections and pages from one screenshot
     run.py compare <ref> <render>  the same items in both images, with position and size deltas
-    run.py fit --url ...           tune a harness page's CSS variables to a reference
-    run.py inspect --url ...       where the browser put each element, and whether two mounts agree
+    run.py fit --render ...        tune a harness's values to a reference
     run.py scores                  latest and best score of every item, and the stop rule
-    run.py serve <directory>       static file server for projects without a dev server
     run.py exec <file.py> [args]   run one-off analysis code in the environment
     run.py test                    run the bundled script tests
-    run.py setup [--browser]       create the environment (and install Chromium)
+    run.py setup                   create the environment
 
 Every tool accepts --help, and --dry to check its arguments and report what it
 would do without writing anything. With --dry, run.py itself never creates the
-environment or installs a browser: when the environment is missing it reports
-the steps it would take and stops.
+environment: when the environment is missing it reports the steps it would
+take and stops.
 """
 import hashlib
 import os
@@ -37,13 +34,9 @@ TOOLS = {
     "diff": "diff.py",
     "compare": "compare.py",
     "scores": "scores.py",
-    "capture": "capture.py",
     "check": "check.py",
     "fit": "fit.py",
-    "inspect": "inspect_page.py",
 }
-BROWSER_TOOLS = ("capture", "check", "fit", "inspect")
-BROWSER_MISSING_EXIT = 3
 
 
 def log(message):
@@ -131,35 +124,7 @@ def child_env():
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SCRIPTS) + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    # "0" tells Playwright to keep browsers inside the package directory.
-    # Browsers must stay in the per-user cache shared by every project.
-    if env.get("PLAYWRIGHT_BROWSERS_PATH") == "0":
-        del env["PLAYWRIGHT_BROWSERS_PATH"]
     return env
-
-
-def install_browser(venv):
-    log("installing Chromium into the shared Playwright cache (once per machine)")
-    code = subprocess.call(
-        [str(venv_python(venv)), "-m", "playwright", "install", "chromium"],
-        env=child_env(),
-        stdout=sys.stderr,
-    )
-    if code != 0:
-        fail("Chromium install failed")
-    (venv / ".chromium-ready").write_text("ok\n")
-
-
-def run_browser_tool(venv, tool, args):
-    if not (venv / ".chromium-ready").exists():
-        install_browser(venv)
-    command = [str(venv_python(venv)), str(SCRIPTS / TOOLS[tool])] + args
-    code = subprocess.call(command, env=child_env())
-    if code == BROWSER_MISSING_EXIT:
-        # The shared browser cache was cleared after the marker was written.
-        install_browser(venv)
-        code = subprocess.call(command, env=child_env())
-    return code
 
 
 def dry_report(tool, args):
@@ -173,9 +138,6 @@ def dry_report(tool, args):
     steps = []
     if not ready:
         steps.append("create the environment and install " + str(REQUIREMENTS))
-    if tool in BROWSER_TOOLS or (tool == "setup" and "--browser" in args):
-        if not (venv / ".chromium-ready").exists():
-            steps.append("install Chromium into the shared Playwright cache")
     if tool == "test":
         steps.append("run the unit tests in " + str(SCRIPTS / "tests"))
     elif tool == "exec":
@@ -195,29 +157,17 @@ def main(argv):
         print(__doc__.strip())
         return 0
     tool, args = argv[0], argv[1:]
-    known = list(TOOLS) + ["serve", "exec", "test", "setup"]
+    known = list(TOOLS) + ["exec", "test", "setup"]
     if tool not in known:
         fail("unknown tool '{}'. Expected one of: {}".format(tool, ", ".join(known)))
-    if tool == "serve":
-        # Standard library only, so it needs no environment.
-        sys.dont_write_bytecode = True
-        import serve
-
-        return serve.main(args)
     dry = "--dry" in args or "--dry-run" in args
     if dry and (tool in ("setup", "test", "exec") or not (venv_dir() / ".ready").exists()):
         return dry_report(tool, args)
     venv = ensure_venv()
     python = str(venv_python(venv))
-    if tool in BROWSER_TOOLS and dry:
-        return subprocess.call([python, str(SCRIPTS / TOOLS[tool])] + args, env=child_env())
     if tool == "setup":
-        if "--browser" in args:
-            install_browser(venv)
         print("environment: " + str(venv))
         return 0
-    if tool in BROWSER_TOOLS:
-        return run_browser_tool(venv, tool, args)
     if tool == "test":
         command = [python, "-m", "unittest", "discover", "-s", str(SCRIPTS / "tests")] + args
         return subprocess.call(command, env=child_env(), cwd=str(SCRIPTS))

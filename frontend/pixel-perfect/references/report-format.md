@@ -5,9 +5,10 @@ Write `report.md` in the run directory with these sections, in this order. Take 
 ```markdown
 # Pixel-perfect report
 
-Stack: <framework and styling>
+Platform and stack: <platform, framework and styling>
+Capture: <how the screenshots were taken, and at which density>
 Thresholds: content <n>%, tile floor <n>%, tolerance <n> (<default | set by user>)
-Design sources: <each image with its viewport, scale and source quality; say which are soft and what the user decided about them, and which were replaced by a `.subs` copy>
+Design sources: <each image with its size in points, scale and source quality; say which are soft and what the user decided about them, and which were replaced by a `.subs` copy>
 
 ## Result
 
@@ -47,9 +48,9 @@ State each one and its visible effect. Write "None" if there are none.>
 
 ## Not verified
 
-<Viewport widths other than the designs' (name the wider and the narrower width that were looked
-at, unscored, and what was fixed after looking), states with no design image, content other than
-the design's text, browsers other than Chromium, and any request passed to `--ignore-request`.>
+<Sizes other than the designs' (name the larger and the smaller size that were looked at, unscored,
+and what was fixed after looking), states with no design image, content other than the design's
+text, and every device, operating system, browser or renderer other than the one captured.>
 
 ## Self-check
 

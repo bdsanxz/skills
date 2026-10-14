@@ -13,7 +13,7 @@ from PIL import Image
 import toon
 
 # Keys whose values are lengths or coordinates in image pixels. They are the
-# ones converted when a result is mirrored into CSS pixels.
+# ones converted when a result is mirrored into points.
 LENGTH_KEYS = frozenset(
     """x y w h width height pos at start end size left top right bottom radius
     gaps sizes pitch baseline x_height ascent descent extent offset_x offset_y
@@ -119,7 +119,7 @@ def superseded_by(path):
 
 RUNS_ROOT = os.path.join("_swe", "pixel-perfect")
 RUN_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
-RUN_PARTS = ("components", "sections", "pages", "sheets", "adhoc")
+RUN_PARTS = ("components", "sections", "pages", "sheets", "shots", "adhoc")
 
 
 def is_run(path):
@@ -228,18 +228,18 @@ def _mirror(value, scale, is_length):
     return None
 
 
-def with_css(data, scale):
-    """Add a `css` block holding every length divided by the design scale."""
+def with_points(data, scale):
+    """Add a `points` block holding every length divided by the design scale."""
     if scale and scale != 1:
         mirrored = _mirror(data, float(scale), False)
         data["scale"] = num(scale)
         if mirrored:
-            data["css"] = mirrored
+            data["points"] = mirrored
     return data
 
 
-def in_css(data, scale):
-    """The same result with every length in CSS pixels, and nothing twice.
+def in_points(data, scale):
+    """The same result with every length in points, and nothing twice.
 
     The region a probe was given stays in image pixels, as `region_px`,
     because that is the unit every --region is typed in.
@@ -259,7 +259,7 @@ def in_css(data, scale):
             return num(value / float(scale))
         return value
 
-    converted = {"units": "css px", "scale": num(scale)}
+    converted = {"units": "points", "scale": num(scale)}
     converted.update(convert(data, False))
     return converted
 

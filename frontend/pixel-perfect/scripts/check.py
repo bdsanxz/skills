@@ -1,33 +1,30 @@
-"""One capture-and-diff round for any number of components, sections and pages.
+"""One scoring round for any number of components, sections and pages.
 
-The page is loaded once. Each --item (a component) and each --section is cut
-out of that one shot by its selector and scored against its saved reference
-crop; each --page scores the whole page against a design image. The round gets
-one iteration number, the first that none of its items has used, and nothing
-is overwritten:
+The round reads one screenshot of the running UI, taken at the design's pixel
+density by whatever the platform offers. Each --item (a component) and each
+--section is cut out of it by its box, in screenshot pixels, and scored
+against its saved reference crop; each --page scores the whole screenshot
+against a design image. The round gets one iteration number, the first that
+none of its items has used, and nothing is overwritten:
 
     components/<name>/iter-NN/<variant>/   reference: components/<name>/ref/<variant>.png
     sections/<name>/iter-NN/<variant>/     reference: sections/<name>/ref/<variant>.png
     pages/<name>/iter-NN/<image>/
 
-A long list of items can be kept in a file and passed as @file.
+A long list of items can be kept in a file and passed as @file. A round that
+needs more than one screenshot (a state, a second window) is one call per
+screenshot, each with the same --iter.
 
-When the capture is not valid evidence (a request or font failed, or the
-browser did not honor the viewport) nothing is scored and nothing is written.
-
-Exit status: 0 every item passed, 1 some item failed, 2 error, 3 browser not
-installed, 4 capture not valid.
+Exit status: 0 every item passed, 1 some item failed, 2 error.
 """
 import argparse
 import os
 import re
-import sys
 
 import compare
 import diff
 import toon
-from capture import BROWSER_MISSING_EXIT, INVALID_EXIT, Browser, BrowserMissing, add_page_arguments, crop_box, fractional, page_arguments
-from pp_common import Parser, PPError, add_run_arguments, emit, load_rgb, num, parse_hex, run_cli, run_dir, superseded_by, with_css
+from pp_common import Parser, PPError, add_run_arguments, emit, file_sha1, load_rgb, num, parse_hex, parse_region, run_cli, run_dir, superseded_by, with_points
 
 import numpy as np
 from PIL import Image
@@ -57,8 +54,8 @@ def next_iteration(base):
     return highest + 1
 
 
-def plan(args):
-    """Resolve every target to its reference and its fresh output directory."""
+def plan(args, shape):
+    """Resolve every target to its reference, its box and its fresh output directory."""
     targets = []
     for kind, flag, texts in (("component", "--item", args.item), ("section", "--section", args.section), ("page", "--page", args.page)):
         for text in texts:
@@ -71,12 +68,16 @@ def plan(args):
             copy = superseded_by(reference) if kind == "page" else None
             if copy:
                 raise PPError("{} has a substituted copy; score the page against {}".format(reference, copy))
+            try:
+                box = None if kind == "page" else parse_region(value, shape)
+            except PPError as error:
+                raise PPError("{} {}: {} (the box is x,y,w,h in screenshot pixels)".format(flag, text, error))
             targets.append(
                 {
                     "kind": kind,
                     "item": name,
                     "variant": variant,
-                    "selector": None if kind == "page" else value,
+                    "box": box,
                     "reference": reference,
                     "base": base,
                 }
@@ -98,26 +99,23 @@ def plan(args):
     return targets
 
 
-def score(target, image, report, box, args, background):
-    """Save one target's render, capture report and diff; return its table row."""
+def score(target, image, shot, args, background):
+    """Save one target's render, capture record and diff; return its table row."""
     os.makedirs(target["dir"])
     image.save(os.path.join(target["dir"], "render.png"))
-    captured = {"url": args.url, "viewport": args.viewport, "scale": num(args.scale), "width": image.width, "height": image.height}
-    if box:
-        captured["selector"] = target["selector"]
-        captured["css_box"] = {key: num(box[key], 3) for key in ("x", "y", "width", "height")}
-        captured["fractional_box"] = fractional(box, args.scale)
-    captured.update(report)
+    captured = dict(shot, width=image.width, height=image.height)
+    if target["box"]:
+        captured["box"] = dict(zip(("x", "y", "w", "h"), target["box"]))
     with open(os.path.join(target["dir"], "capture.toon"), "w") as handle:
-        handle.write(toon.encode(captured) + "\n")
+        handle.write(toon.encode(with_points(captured, args.scale)) + "\n")
     design, _ = load_rgb(target["reference"])
     result = diff.run_diff(
         design, np.asarray(image), target["dir"], args.tolerance, args.threshold, args.tile_floor, args.tile,
         args.scale, background, args.max_shift, args.images,
     )
     result["reference"] = diff.reference_record(target["reference"])
-    diff.save_result(with_css(result, args.scale), target["dir"])
-    return row_of(target, result, "box is off the device pixel grid" if box and captured["fractional_box"] else diff.hint(result))
+    diff.save_result(with_points(result, args.scale), target["dir"])
+    return row_of(target, result, diff.hint(result))
 
 
 def row_of(target, result=None, note=""):
@@ -151,17 +149,26 @@ def write_sheet(targets, renders, path):
     return result
 
 
+def sheet_path(work_dir, iteration):
+    """sheets/iter-NN.png, or iter-NN-2.png and so on when the round has more than one screenshot."""
+    path, count = os.path.join(work_dir, "sheets", iteration + ".png"), 1
+    while os.path.exists(path):
+        count += 1
+        path = os.path.join(work_dir, "sheets", "{}-{}.png".format(iteration, count))
+    return path
+
+
 def main():
     parser = Parser(prog="check", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    add_page_arguments(parser)
-    parser.add_argument("--item", action="append", default=[], metavar="NAME[/VARIANT]=SELECTOR",
-                        help="a component on the page; scored against components/NAME/ref/VARIANT.png (repeatable)")
-    parser.add_argument("--section", action="append", default=[], metavar="NAME[/VARIANT]=SELECTOR",
-                        help="a section on the page; scored against sections/NAME/ref/VARIANT.png (repeatable)")
+    parser.add_argument("--shot", required=True, metavar="SCREENSHOT.png",
+                        help="a screenshot of the running UI at the design's pixel density, never resized")
+    parser.add_argument("--scale", type=float, default=1.0, help="the design's pixel density: image pixels per point")
+    parser.add_argument("--item", action="append", default=[], metavar="NAME[/VARIANT]=X,Y,W,H",
+                        help="a component's box in the screenshot; scored against components/NAME/ref/VARIANT.png (repeatable)")
+    parser.add_argument("--section", action="append", default=[], metavar="NAME[/VARIANT]=X,Y,W,H",
+                        help="a section's box in the screenshot; scored against sections/NAME/ref/VARIANT.png (repeatable)")
     parser.add_argument("--page", action="append", default=[], metavar="NAME[/IMAGE]=DESIGN.png",
-                        help="the whole page, scored against a design image (repeatable)")
-    parser.add_argument("--viewport-only", action="store_true",
-                        help="score each --page on the viewport alone, for a design that shows only the first screen (default: the whole scrollable page)")
+                        help="the whole screenshot, scored against a design image (repeatable)")
     add_run_arguments(parser)
     parser.add_argument("--iter", type=int, help="iteration number to write (default: the first that none of the items has used)")
     parser.add_argument("--sheet", action="store_true",
@@ -169,29 +176,34 @@ def main():
     parser.add_argument("--tolerance", type=int, default=diff.DEFAULT_TOLERANCE)
     parser.add_argument("--threshold", type=float, default=diff.DEFAULT_THRESHOLD)
     parser.add_argument("--tile-floor", type=float, default=diff.DEFAULT_TILE_FLOOR)
-    parser.add_argument("--tile", type=int, default=diff.DEFAULT_TILE, help="tile size in CSS pixels")
+    parser.add_argument("--tile", type=int, default=diff.DEFAULT_TILE, help="tile size in points")
     parser.add_argument("--bg", help="background color as hex (default: each reference's most common color)")
-    parser.add_argument("--max-shift", type=int, default=32, help="largest shift to look for, in CSS pixels")
+    parser.add_argument("--max-shift", type=int, default=32, help="largest shift to look for, in points")
     parser.add_argument("--images", choices=diff.IMAGE_MODES, default="clusters",
                         help="evidence images per item (default: only the cluster close-ups; use 'all' for the final round)")
+    parser.add_argument("--json", action="store_true", help="print JSON instead of TOON")
     parser.add_argument("--dry", "--dry-run", dest="dry", action="store_true",
-                        help="check the arguments and references and report what would run, without starting the browser or writing")
+                        help="check the arguments, boxes and references and report what would run, without writing")
     args = parser.parse_args()
     args.work_dir = run_dir(args)
 
-    width, height, actions = page_arguments(args)
+    if args.scale <= 0:
+        raise PPError("--scale must be positive")
     if not 0 <= args.tolerance <= 255:
         raise PPError("--tolerance must be between 0 and 255")
     if args.iter is not None and args.iter < 1:
         raise PPError("--iter must be 1 or more")
     background = parse_hex(args.bg) if args.bg else None
-    targets = plan(args)
+    pixels, _ = load_rgb(args.shot)
+    full = Image.fromarray(pixels)
+    targets = plan(args, pixels.shape)
+    shot = {"shot": args.shot, "shot_sha1": file_sha1(args.shot), "shot_width": full.width, "shot_height": full.height}
     if args.dry:
         emit(
             {
                 "dry_run": True,
-                "url": args.url,
-                "viewport": {"width": width, "height": height},
+                "shot": args.shot,
+                "shot_size": {"width": full.width, "height": full.height},
                 "scale": num(args.scale),
                 "iteration": targets[0]["iter"],
                 "targets": [
@@ -203,50 +215,29 @@ def main():
         )
         return 0
 
-    rows = []
-    try:
-        with Browser(width, height, args.scale, args.color_scheme) as browser:
-            report = browser.load(
-                args.url, actions, args.wait_until, args.settle_ms, args.timeout, args.ignore_request, args.retries
-            )
-            if not report["valid"]:
-                emit({"url": args.url, "valid": False, "problems": report["problems"],
-                      "failed_requests": report["failed_requests"], "fonts_failed": report["fonts_failed"],
-                      "scored": 0, "note": "nothing was scored or written; fix the page or the server and run again"}, args.json)
-                return INVALID_EXIT
-            full = browser.shot(full_page=True)
-            view = browser.shot(full_page=False) if args.viewport_only else full
-            boxes = {t["dir"]: browser.box(t["selector"], args.timeout) for t in targets if t["selector"]}
-    except BrowserMissing:
-        print("error: Chromium is not installed", file=sys.stderr)
-        return BROWSER_MISSING_EXIT
-
-    renders = {}
+    rows, renders = [], {}
     for target in targets:
-        box = boxes.get(target["dir"])
-        if target["selector"] and box is None:
-            rows.append(row_of(target, note="no visible element matches " + target["selector"]))
-            continue
-        image = crop_box(full, box, args.scale) if box else view
+        if target["box"]:
+            x, y, w, h = target["box"]
+            image = full.crop((x, y, x + w, y + h))
+        else:
+            image = full
         renders[target["dir"]] = image
-        rows.append(score(target, image, report, box, args, background))
+        rows.append(score(target, image, shot, args, background))
 
     passed = sum(1 for row in rows if row["pass"])
     iteration = "iter-{:02d}".format(targets[0]["iter"])
     output = {
-        "url": args.url,
-        "valid": True,
+        "shot": args.shot,
+        "shot_size": {"width": full.width, "height": full.height},
         "iteration": targets[0]["iter"],
         "files": os.path.join(args.work_dir, "<kind>s", "<item>", iteration, "<variant>"),
         "passed": passed,
         "failed": len(rows) - passed,
         "items": rows,
     }
-    if report["images_not_1to1"]:
-        output["images_not_1to1"] = len(report["images_not_1to1"])
-        output["resampled"] = report["images_not_1to1"][:12]
     if args.sheet:
-        output["sheet"] = write_sheet(targets, renders, os.path.join(args.work_dir, "sheets", iteration + ".png"))
+        output["sheet"] = write_sheet(targets, renders, sheet_path(args.work_dir, iteration))
     emit(output, args.json)
     return 0 if passed == len(rows) else 1
 

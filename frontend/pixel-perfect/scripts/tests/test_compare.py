@@ -75,10 +75,10 @@ class CompareTest(unittest.TestCase):
         with self.assertRaises(PPError):
             compare.run_compare(band(ITEMS), band(ITEMS, width=300), (400, 0, 100, 100))
 
-    def test_compact_result_is_in_css_pixels(self):
+    def test_compact_result_is_in_points_pixels(self):
         moved = [(20, 30, 60, 40, BLUE), (150, 40, 4, 20, DARK), (226, 28, 60, 44, (200, 30, 30)), (400, 35, 70, 30, BLUE)]
         short = compare.compact(compare.run_compare(band(ITEMS), band(moved), (0, 0, 600, 100)), 2)
-        self.assertEqual((short["region_px"], short["units"], short["aligned"]), ("0,0,600,100", "css px", False))
+        self.assertEqual((short["region_px"], short["units"], short["aligned"]), ("0,0,600,100", "points", False))
         self.assertEqual(short["pairs"][2], {"x": 110, "y": 15, "w": 30, "h": 20, "dx": 3, "dy": -1, "dw": 0, "dh": 2})
         self.assertEqual(short["worst"], {"dx": 3, "dy": 1, "dw": 5, "dh": 2})
         self.assertFalse(short["colors_match"])

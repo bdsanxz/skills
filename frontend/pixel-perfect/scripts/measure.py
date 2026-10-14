@@ -1,7 +1,7 @@
 """Measurement probes for a UI design image (or a render of it).
 
 Every coordinate and length is in image pixels. Pass --scale to also get the
-lengths in CSS pixels. Regions are 'x,y,w,h' with the origin at the top left.
+lengths in points. Regions are 'x,y,w,h' with the origin at the top left.
 """
 import argparse
 import math
@@ -18,7 +18,7 @@ from pp_common import (
     emit,
     full_region,
     is_subs,
-    in_css,
+    in_points,
     load_rgb,
     maxdiff,
     num,
@@ -30,7 +30,7 @@ from pp_common import (
     subs_path,
     superseded_by,
     to_hex,
-    with_css,
+    with_points,
 )
 
 COMMON_WIDTHS = frozenset(
@@ -64,7 +64,7 @@ def flat_flanked_edges(line, flank=4, contrast=96):
     """Widths of the strong edges on a line that sit between two flat runs.
 
     These are box, rule and glyph edges on a plain backdrop, the edges a
-    browser draws within one pixel. Edges inside photos or gradients have no
+    1:1 render draws within one pixel. Edges inside photos or gradients have no
     flat run on either side and are left out.
     """
     groups = line_edges(line, 8)
@@ -83,7 +83,7 @@ def flat_flanked_edges(line, flank=4, contrast=96):
 
 
 def source_quality(arr, lines=160, minimum=30):
-    """Whether the image's edges are as sharp as a browser would draw them.
+    """Whether the image's edges are as sharp as a 1:1 render draws them.
 
     A 1:1 lossless export blends an edge over at most one pixel. An image
     that was rescaled or saved lossy blends it over two or more, and then
@@ -111,7 +111,7 @@ def source_quality(arr, lines=160, minimum=30):
         result["quality"] = "soft"
         result["note"] = (
             "edges are blended over two or more pixels: the image looks rescaled or lossy, "
-            "so text and thin shapes will not match a browser render pixel for pixel"
+            "so text and thin shapes will not match a render pixel for pixel"
         )
     else:
         result["quality"] = "uncertain"
@@ -119,13 +119,13 @@ def source_quality(arr, lines=160, minimum=30):
     return result
 
 
-def probe_info(arr, has_alpha, viewport_width=None):
+def probe_info(arr, has_alpha, screen_width=None):
     h, w = arr.shape[:2]
     result = {"width": w, "height": h, "has_alpha": has_alpha}
-    if viewport_width:
-        result["scale_guess"] = num(w / viewport_width)
+    if screen_width:
+        result["scale_guess"] = num(w / screen_width)
         result["ambiguous"] = False
-        result["reason"] = "image width divided by the stated viewport width"
+        result["reason"] = "image width divided by the stated screen width"
         result["source"] = source_quality(arr)
         return result
     candidates = []
@@ -134,37 +134,37 @@ def probe_info(arr, has_alpha, viewport_width=None):
             candidates.append(
                 {
                     "scale": scale,
-                    "css_width": w // scale,
-                    "css_height": num(h / scale),
-                    "common_viewport": (w // scale) in COMMON_WIDTHS,
+                    "points_width": w // scale,
+                    "points_height": num(h / scale),
+                    "common_screen": (w // scale) in COMMON_WIDTHS,
                 }
             )
-    matching = [c["scale"] for c in candidates if c["common_viewport"]]
+    matching = [c["scale"] for c in candidates if c["common_screen"]]
     if not matching:
         # Whole-number scales explain nothing; try the fractional ones screens use.
         for scale in FRACTIONAL_SCALES:
-            css_width = w / scale
-            if abs(css_width - round(css_width)) < 0.01 and int(round(css_width)) in COMMON_WIDTHS:
+            points_width = w / scale
+            if abs(points_width - round(points_width)) < 0.01 and int(round(points_width)) in COMMON_WIDTHS:
                 candidates.append(
-                    {"scale": scale, "css_width": int(round(css_width)), "css_height": num(h / scale), "common_viewport": True}
+                    {"scale": scale, "points_width": int(round(points_width)), "points_height": num(h / scale), "common_screen": True}
                 )
-        fractional = [c["scale"] for c in candidates if c["common_viewport"]]
+        fractional = [c["scale"] for c in candidates if c["common_screen"]]
     else:
         fractional = []
     if len(matching) == 1:
         guess, ambiguous = matching[0], False
-        reason = "only this scale gives a common viewport width"
+        reason = "only this scale gives a common screen width"
     elif matching:
         guess, ambiguous = matching[0], True
-        reason = "several scales give a common viewport width"
+        reason = "several scales give a common screen width"
     elif fractional:
         guess, ambiguous = fractional[0], True
-        reason = "only a fractional scale gives a common viewport width; confirm it with the user"
+        reason = "only a fractional scale gives a common screen width; confirm it with the user"
     else:
         guess, ambiguous = 1, True
         reason = (
-            "no scale gives a common viewport width; the image may be a rescaled screenshot "
-            "or not a full-viewport screen"
+            "no scale gives a common screen width; the image may be a rescaled screenshot "
+            "or not a full screen"
         )
     result.update({"scale_guess": guess, "ambiguous": ambiguous, "reason": reason, "candidates": candidates})
     result["source"] = source_quality(arr)
@@ -733,7 +733,7 @@ def probe_outline(arr, region, color=None, bg=None, tolerance=8, min_run=8, epsi
     result.update(
         {
             "rows": len(left),
-            "points": len(points),
+            "vertices": len(points),
             "split_rows": int(split_rows),
             "viewbox": "0 0 {} {}".format(w, h),
             "path": path(1.0),
@@ -741,7 +741,7 @@ def probe_outline(arr, region, color=None, bg=None, tolerance=8, min_run=8, epsi
     )
     if scale and scale != 1:
         result["scale"] = num(scale)
-        result["css"] = {"viewbox": "0 0 {:g} {:g}".format(w / scale, h / scale), "path": path(float(scale))}
+        result["points"] = {"viewbox": "0 0 {:g} {:g}".format(w / scale, h / scale), "path": path(float(scale))}
     if split_rows:
         result["note"] = "{} rows hold more than one solid run: the shape is hollow or notched there and the path bridges it".format(split_rows)
     return result
@@ -1110,15 +1110,15 @@ def build_parser():
         if bg:
             p.add_argument("--bg", help="background color as hex (default: detected)")
             p.add_argument("--tolerance", type=int, default=8, help="channel difference that counts as not background")
-        p.add_argument("--scale", type=float, default=1.0, help="design pixel density; adds lengths in CSS pixels")
-        p.add_argument("--css", action="store_true", help="with --scale: print lengths in CSS pixels only, not both units")
+        p.add_argument("--scale", type=float, default=1.0, help="design pixel density; adds lengths in points")
+        p.add_argument("--points", action="store_true", help="with --scale: print lengths in points only, not both units")
         p.add_argument("--json", action="store_true", help="print JSON instead of TOON")
         p.add_argument("--dry", "--dry-run", dest="dry", action="store_true",
                        help="check the arguments and report what would run, without measuring or writing")
         return p
 
     p = add("info", "image size, pixel-density guess, and whether the image is sharp enough to match", region=False)
-    p.add_argument("--viewport-width", type=int, help="known CSS viewport width of the design")
+    p.add_argument("--screen-width", type=int, help="known width of the designed screen or window, in points")
 
     p = add("color", "color at a point, or the colors of a region")
     p.add_argument("--at", help="x,y of a single pixel")
@@ -1209,8 +1209,8 @@ def put(result, args):
 
 
 def show(result, args):
-    """Print a result with its lengths also in CSS pixels, or only in them."""
-    put(in_css(result, args.scale) if args.css else with_css(result, args.scale), args)
+    """Print a result with its lengths also in points, or only in them."""
+    put(in_points(result, args.scale) if args.points else with_points(result, args.scale), args)
 
 
 def crop_items(args, arr):
@@ -1293,7 +1293,7 @@ def main():
         put(dry_plan(args, arr), args)
         return 0
     if probe == "info":
-        result = probe_info(arr, has_alpha, args.viewport_width)
+        result = probe_info(arr, has_alpha, args.screen_width)
         put(result, args)
         return 0
     if probe == "edges":

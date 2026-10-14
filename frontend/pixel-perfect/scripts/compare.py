@@ -9,7 +9,7 @@ Name the two images, or name items of the run with --item and the reference
 and the latest render of each are found in the working directory. Several
 items and several regions can be compared in one call.
 
-With --scale the numbers are CSS pixels, the unit a fix is written in; regions
+With --scale the numbers are points, the unit a fix is written in; regions
 are always given in image pixels. --full prints both units and every detail.
 
 This is a measurement, not a score: it says which value to change, and by how
@@ -25,7 +25,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import measure
-from pp_common import Parser, PPError, add_run_arguments, clamp_region, emit, full_region, load_rgb, maxdiff, num, parse_hex, parse_ints, run_cli, run_dir, to_hex, with_css
+from pp_common import Parser, PPError, add_run_arguments, clamp_region, emit, full_region, load_rgb, maxdiff, num, parse_hex, parse_ints, run_cli, run_dir, to_hex, with_points
 
 READABLE_SIDE = 1800
 
@@ -152,7 +152,7 @@ def run_compare(reference, render, region, axis="x", bg=None, tolerance=8, min_g
 
 
 def compact(result, scale):
-    """The result cut down to what a fix needs, in CSS pixels when a scale is given."""
+    """The result cut down to what a fix needs, in points when a scale is given."""
     divisor = float(scale) if scale and scale != 1 else 1.0
 
     def lengths(row, keys):
@@ -160,7 +160,7 @@ def compact(result, scale):
 
     out = {
         "region_px": "{x},{y},{w},{h}".format(**result["region"]),
-        "units": "css px" if divisor != 1 else "px",
+        "units": "points" if divisor != 1 else "px",
         "aligned": result["aligned"],
         "worst": lengths(result["worst"], ("dx", "dy", "dw", "dh")),
         "pairs": [lengths(row, ("x", "y", "w", "h", "dx", "dy", "dw", "dh")) for row in result["pairs"]],
@@ -291,8 +291,8 @@ def main():
     parser.add_argument("--max-offset", type=int, default=8, help="largest whole-region offset to look for, in image pixels")
     parser.add_argument("--pair", metavar="OUT.png", help="also save every compared region of both images on one sheet, for reading")
     parser.add_argument("--zoom", type=int, help="enlargement of the --pair image when one region is compared (default: as large as stays readable)")
-    parser.add_argument("--scale", type=float, default=1.0, help="design pixel density; the numbers are then CSS pixels")
-    parser.add_argument("--full", action="store_true", help="print every detail, in image pixels and in CSS pixels")
+    parser.add_argument("--scale", type=float, default=1.0, help="design pixel density; the numbers are then points")
+    parser.add_argument("--full", action="store_true", help="print every detail, in image pixels and in points")
     parser.add_argument("--json", action="store_true", help="print JSON instead of TOON")
     parser.add_argument("--dry", "--dry-run", dest="dry", action="store_true",
                         help="check the arguments and report what would run, without measuring or writing")
@@ -333,7 +333,7 @@ def main():
                              args.slack, args.max_offset, skip)
         if clamped:
             result["note"] = "the region was cut to fit the reference; " + result.get("note", "check its numbers")
-        shown = with_css(result, args.scale) if args.full else compact(result, args.scale)
+        shown = with_points(result, args.scale) if args.full else compact(result, args.scale)
         if label:
             shown = dict({"item": label}, **shown)
         results.append(shown)

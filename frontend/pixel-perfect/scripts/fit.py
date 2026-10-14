@@ -1,10 +1,17 @@
-"""Tune CSS custom properties of a harness page until an element matches a reference.
+"""Tune values of a harness until an element matches a reference.
 
 For values no probe can read off the design directly: a shadow's blur, spread
 and alpha, an icon's stroke width, the exact geometry of a small glyph. Build a
-harness page whose element takes those values from CSS custom properties, start
-each one at the best reading a probe gives, then let this refine them: each --var is stepped up and down, one at a time, and a
-step is kept when the element's pixels come closer to the reference's.
+harness that shows the element and takes those values from outside, start each
+one at the best reading a probe gives, then let this refine them: each --var is
+stepped up and down, one at a time, and a step is kept when the element's
+pixels come closer to the reference's.
+
+--render is a shell command that draws the harness with one set of values and
+saves a screenshot of it to the --shot file. Every `{name}` in the command is
+replaced by that variable's value, and the same value is in the environment as
+PP_FIT_<NAME>. The command runs once per trial, so make it quick: have the
+harness read the values when it starts, without building again.
 
 It can also show a ceiling. When the best fit of a text line in the right font
 still leaves most of its pixels mismatched, no value will make that text match
@@ -13,33 +20,61 @@ this reference, and the stop rule applies.
 This is measuring by trial, not scoring. Copy the fitted values into the
 component, then score it with `check` or `diff`.
 
-Exit status: 0 done, 2 error, 3 browser not installed, 4 page not valid.
+Exit status: 0 done, 2 error.
 """
 import argparse
-import sys
+import os
+import re
+import subprocess
 
 import numpy as np
 
 import diff
-from capture import BROWSER_MISSING_EXIT, BOX_JS, INVALID_EXIT, Browser, BrowserMissing, add_page_arguments, crop_box, page_arguments
 from pp_common import Parser, PPError, emit, full_region, load_rgb, num, parse_region, run_cli
 
-SET_JS = "(values) => { for (const [name, value] of Object.entries(values)) document.documentElement.style.setProperty(name, value); }"
+VAR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def parse_var(text):
-    """Split NAME=START:STEP[:UNIT] into a variable to search."""
+    """Split NAME=START:STEP into a variable to search."""
     name, sep, rest = text.partition("=")
     parts = rest.split(":")
     try:
-        if not sep or not name or len(parts) not in (2, 3):
+        if not sep or not VAR_NAME.match(name) or len(parts) != 2:
             raise ValueError
         start, step = float(parts[0]), float(parts[1])
     except ValueError:
-        raise PPError("--var must look like NAME=START:STEP or NAME=START:STEP:UNIT; got '{}'".format(text))
+        raise PPError("--var must look like NAME=START:STEP, with a name of letters, digits and _; got '{}'".format(text))
     if step <= 0:
         raise PPError("the step of --var {} must be positive".format(name))
-    return {"name": name if name.startswith("--") else "--" + name, "start": start, "step": step, "unit": parts[2] if len(parts) == 3 else ""}
+    return {"name": name, "start": start, "step": step}
+
+
+def render_command(template, values):
+    """The --render command with each {name} replaced by its value."""
+    command = template
+    for name, value in values.items():
+        command = command.replace("{" + name + "}", "{:g}".format(value))
+    return command
+
+
+def take_shot(template, values, shot, timeout):
+    """Run the render command for one set of values and load the screenshot it saves."""
+    if os.path.exists(shot):
+        # A shot left by an earlier trial must never be read as this one's.
+        os.remove(shot)
+    env = dict(os.environ)
+    env.update({"PP_FIT_" + name.upper(): "{:g}".format(value) for name, value in values.items()})
+    command = render_command(template, values)
+    try:
+        done = subprocess.run(command, shell=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise PPError("the render command did not finish in {:g} s: {}".format(timeout, command))
+    if done.returncode != 0:
+        raise PPError("the render command exited with status {}: {}\n{}".format(done.returncode, command, done.stdout[-800:].strip()))
+    if not os.path.isfile(shot):
+        raise PPError("the render command did not save a screenshot at {}: {}".format(shot, command))
+    return load_rgb(shot)[0]
 
 
 def allowed(variable, value, span):
@@ -82,76 +117,66 @@ def descend(cost, variables, sweeps, max_evals, span=16):
 
 def main():
     parser = Parser(prog="fit", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    add_page_arguments(parser)
-    parser.add_argument("--selector", required=True, help="the element to compare; its box must equal the reference region")
+    parser.add_argument("--render", required=True, metavar="COMMAND",
+                        help="shell command that draws the harness with the values and saves a screenshot to --shot; {name} is replaced by each value")
+    parser.add_argument("--shot", required=True, metavar="SCREENSHOT.png", help="the file the render command saves")
+    parser.add_argument("--box", help="x,y,w,h of the element's wrapper in the screenshot (default: all of it); its size must equal the reference region")
     parser.add_argument("--reference", required=True, help="reference crop of the design")
     parser.add_argument("--region", help="x,y,w,h inside the reference (default: all of it)")
-    parser.add_argument("--var", action="append", required=True, metavar="NAME=START:STEP[:UNIT]",
-                        help="a CSS custom property to search, e.g. shadow-blur=6:1:px; START is the probe's reading (repeatable)")
+    parser.add_argument("--var", action="append", required=True, metavar="NAME=START:STEP",
+                        help="a value to search, e.g. blur=6:1; START is the probe's reading (repeatable)")
     parser.add_argument("--tolerance", type=int, default=diff.DEFAULT_TOLERANCE, help="largest channel difference that still matches")
     parser.add_argument("--sweeps", type=int, default=6, help="passes over all variables")
     parser.add_argument("--span", type=int, default=16, help="how many steps a variable may move from its start")
-    parser.add_argument("--max-evals", type=int, default=400, help="most renders to try")
+    parser.add_argument("--max-evals", type=int, default=150, help="most renders to try")
+    parser.add_argument("--timeout", type=float, default=120, help="seconds one render may take")
+    parser.add_argument("--json", action="store_true", help="print JSON instead of TOON")
     parser.add_argument("--dry", "--dry-run", dest="dry", action="store_true",
-                        help="check the arguments and report what would run, without starting the browser")
+                        help="check the arguments and report the first command that would run, without running it")
     args = parser.parse_args()
 
-    width, height, actions = page_arguments(args)
     variables = [parse_var(text) for text in args.var]
+    if len(set(v["name"] for v in variables)) != len(variables):
+        raise PPError("each --var needs its own name")
     image, _ = load_rgb(args.reference)
     x, y, w, h = parse_region(args.region, image.shape) if args.region else full_region(image.shape)
     reference = image[y : y + h, x : x + w]
+    first = {v["name"]: v["start"] for v in variables}
     if args.dry:
-        emit({"dry_run": True, "url": args.url, "selector": args.selector, "reference": args.reference,
-              "vars": variables, "writes": []}, args.json)
+        emit({"dry_run": True, "first_command": render_command(args.render, first), "shot": args.shot,
+              "reference": args.reference, "vars": variables, "writes": [args.shot]}, args.json)
         return 0
 
-    try:
-        with Browser(width, height, args.scale, args.color_scheme) as browser:
-            report = browser.load(args.url, actions, args.wait_until, args.settle_ms, args.timeout, args.ignore_request, args.retries)
-            if not report["valid"]:
-                emit({"url": args.url, "valid": False, "problems": report["problems"],
-                      "failed_requests": report["failed_requests"], "fonts_failed": report["fonts_failed"]}, args.json)
-                return INVALID_EXIT
-            if browser.box(args.selector, args.timeout) is None:
-                raise PPError("no visible element matches {}".format(args.selector))
-            target = browser.page.locator(args.selector).first
+    seen = {}
 
-            def render(values):
-                browser.page.evaluate(SET_JS, {v["name"]: "{:g}{}".format(values[v["name"]], v["unit"]) for v in variables})
-                shot = np.asarray(crop_box(browser.shot(full_page=True), target.evaluate(BOX_JS), args.scale))
-                return diff.compare(reference, shot, args.tolerance)
+    def render(values):
+        key = tuple(values[v["name"]] for v in variables)
+        if key not in seen:
+            shot = take_shot(args.render, values, args.shot, args.timeout)
+            bx, by, bw, bh = parse_region(args.box, shot.shape) if args.box else full_region(shot.shape)
+            if (bw, bh) != (w, h):
+                raise PPError("the screenshot's box is {}x{} and the reference region {}x{}; they must be equal".format(bw, bh, w, h))
+            result = diff.compare(reference, shot[by : by + bh, bx : bx + bw], args.tolerance)
+            # The summed difference falls smoothly as a soft edge or a shadow
+            # nears the reference; a count of mismatched pixels is flat until
+            # they overlap, and would rather erase the element.
+            seen[key] = (float(result["delta"].astype(np.float64).sum()), int(result["mismatch"].sum()))
+        return seen[key]
 
-            def cost(values):
-                # The summed difference falls smoothly as a soft edge or a
-                # shadow nears the reference; a count of mismatched pixels is
-                # flat until they overlap, and would rather erase the element.
-                return float(render(values)["delta"].astype(np.float64).sum())
-
-            def mismatched(values):
-                return int(render(values)["mismatch"].sum())
-
-            first = {v["name"]: v["start"] for v in variables}
-            values, _, used = descend(cost, variables, args.sweeps, args.max_evals, args.span)
-            start, best = mismatched(first), mismatched(values)
-    except BrowserMissing:
-        print("error: Chromium is not installed", file=sys.stderr)
-        return BROWSER_MISSING_EXIT
+    values, _, used = descend(lambda trial: render(trial)[0], variables, args.sweeps, args.max_evals, args.span)
+    start, best = render(first)[1], render(values)[1]
 
     emit(
         {
-            "url": args.url,
-            "selector": args.selector,
-            "valid": True,
             "region_pixels": w * h,
             "mismatched_pixels": {"start": start, "best": best},
             "evaluations": used,
+            "renders": len(seen),
             "vars": [
                 {
                     "name": v["name"],
                     "start": num(v["start"], 4),
                     "value": num(values[v["name"]], 4),
-                    "unit": v["unit"],
                     # Stopped by the search limit, not by a worse result: the start was too far off.
                     "at_limit": not allowed(v, values[v["name"]] + v["step"], args.span)
                     or not allowed(v, values[v["name"]] - v["step"], args.span),

@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 import toon
-from pp_common import PPError, dominant_color, emit, file_sha1, load_rgb, maxdiff, num, parse_hex, run_cli, to_hex, with_css
+from pp_common import PPError, dominant_color, emit, file_sha1, load_rgb, maxdiff, num, parse_hex, run_cli, to_hex, with_points
 
 DEFAULT_TOLERANCE = 8
 DEFAULT_THRESHOLD = 99.0
@@ -578,10 +578,10 @@ def main():
     parser.add_argument("--tolerance", type=int, default=DEFAULT_TOLERANCE, help="largest channel difference that still matches")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, help="content score needed to pass, in percent")
     parser.add_argument("--tile-floor", type=float, default=DEFAULT_TILE_FLOOR, help="score every tile needs, in percent")
-    parser.add_argument("--tile", type=int, default=DEFAULT_TILE, help="tile size in CSS pixels")
+    parser.add_argument("--tile", type=int, default=DEFAULT_TILE, help="tile size in points")
     parser.add_argument("--scale", type=float, default=1.0, help="design pixel density")
     parser.add_argument("--bg", help="background color as hex (default: the design's most common color)")
-    parser.add_argument("--max-shift", type=int, default=32, help="largest shift to look for, in CSS pixels")
+    parser.add_argument("--max-shift", type=int, default=32, help="largest shift to look for, in points")
     parser.add_argument("--images", choices=IMAGE_MODES, default="all",
                         help="evidence images to write: the composite, heatmap, overview and cluster close-ups; "
                              "only the overview and close-ups (enough while fixing); or none")
@@ -620,8 +620,8 @@ def main():
         args.scale, background, args.max_shift, args.images,
     )
     result["reference"] = reference_record(args.design)
-    result = with_css(result, args.scale)
-    emit(with_css(brief(result), args.scale) if args.brief else result, args.json)
+    result = with_points(result, args.scale)
+    emit(with_points(brief(result), args.scale) if args.brief else result, args.json)
     save_result(result, args.out_dir)
     return 0 if result["pass"] else 1
 

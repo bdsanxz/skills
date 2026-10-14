@@ -5,7 +5,7 @@ A score counts only when the code that produced it follows every rule here. A pa
 ## What is code and what is an asset
 
 - **Always code:** text, shapes, borders, dividers, gradients, shadows, backgrounds made of flat color or gradient, and simple geometric glyphs (chevron, plus, close, check, dots, hamburger). These are never cropped from the design, in whole or in part.
-- **Irregular filled shapes** (a slanted panel, a curved backdrop) are code too: trace the outline with `pp measure outline` and draw it as an SVG path with the measured fill or gradient.
+- **Irregular filled shapes** (a slanted panel, a curved backdrop) are code too: trace the outline with `pp measure outline` and draw it as a vector path with the measured fill or gradient.
 - **Raster content** (photos, background images, textures): crop it from the design with `pp measure crops` and use the file as an asset.
 - **Icons, logos, illustrations**, in this order of preference:
   1. a file the user supplied;
@@ -30,25 +30,25 @@ A score counts only when the code that produced it follows every rule here. A pa
 
 ## Code quality
 
-- Lay out with normal flow, flexbox or grid. Use absolute positioning only where the design truly overlaps elements (badges, overlays, decorations).
-- Anchor every absolutely positioned element to the content it belongs to, not to a full-width ancestor. A carousel arrow placed against the page edge sits correctly at the design width and drifts away from its carousel at any other.
-- No fixed pixel widths or heights on containers whose size comes from their content. Sizes come from padding, gaps and content.
-- No magic offsets: no transform, negative margin or relative nudge whose only purpose is to move pixels into place.
+- Lay out with the platform's own layout system (flow, flex, grid, stacks, constraints). Position absolutely only where the design truly overlaps elements (badges, overlays, decorations).
+- Anchor every absolutely positioned element to the content it belongs to, not to the full width of the page or window. A carousel arrow placed against the page edge sits correctly at the design width and drifts away from its carousel at any other.
+- No fixed widths or heights on containers whose size comes from their content. Sizes come from padding, gaps and content.
+- No magic offsets: no translation, negative margin or nudge whose only purpose is to move pixels into place.
 - Text wraps where its container makes it wrap. No line break inserted to copy the design's wrapping.
-- Components take their content as props or children. A component that only works with the exact strings in the design is not finished.
-- Every raster image has an explicit CSS width and height: its pixel size divided by the design scale. Not an HTML attribute, and not a `srcset` density hint alone.
-- A component carries what it needs. It does not rely on a style it inherits from one particular parent (`list-style`, font, line height, color).
-- A component looks the same wherever it is put. Its appearance comes from its own classes and props, and its variants are its own modifiers; no rule reaches into it from the section around it. A component styled through its section cannot be rendered, scored or reused alone.
-- Name classes by the project's convention. When the project has none (plain HTML and CSS written from scratch), use BEM: `block`, `block__element`, `block--modifier`. Style by class only, with no tag, attribute or sibling selectors and no descendant selector that crosses from one block into another. A block placed inside another also takes the parent's element class for its position there (`arrow hero__arrow`).
-- Variants and states are real: hover is `:hover`, focus is `:focus-visible`, a disabled button is disabled. No test-only props, classes or attributes on components.
-- Use semantic elements: a button is a `button`, navigation is a `nav`, headings are headings.
+- Components take their content as parameters or children. A component that only works with the exact strings in the design is not finished.
+- Every raster image has an explicit size in the layout: its pixel size divided by the design scale, in points. Not a size attribute that drops fractions, and not a density hint alone.
+- A component carries what it needs. It does not rely on a style it takes from one particular parent (a font, a line height, a color, a list or row style).
+- A component looks the same wherever it is put. Its appearance comes from its own styles and parameters, and its variants are its own; no rule reaches into it from the section around it. A component styled through its section cannot be rendered, scored or reused alone.
+- Name things by the project's convention. In web code with no convention (plain HTML and CSS written from scratch), use BEM: `block`, `block__element`, `block--modifier`. Style by class only, with no tag, attribute or sibling selectors and no descendant selector that crosses from one block into another. A block placed inside another also takes the parent's element class for its position there (`arrow hero__arrow`).
+- Variants and states are real: hover, focus, pressed and disabled are the platform's own states of the control. No test-only parameters, classes or attributes on components.
+- Use the platform's own controls and semantics: a button is a button, navigation is navigation, a heading is a heading, each with the role accessibility tools expect.
 - When a measured value equals an existing project token (color, spacing, radius, font size), use the token. When it does not, do not bend the value to the nearest token; use the measured value in the project's idiom.
-- The layout must be fluid between and beyond the design widths, even though only the design widths are verified. With several breakpoint images, derive the breakpoints from them.
+- The layout must be fluid between and beyond the design sizes, even though only the design sizes are verified. With several breakpoint or window-size images, derive the breakpoints from them.
 
 ## Scoring honesty
 
 - Only `pp check` and `pp diff` output is a score. `pp compare`, `pp fit` and one-off scripts measure; a number from them is never reported as a match.
-- A capture that reported `valid: false` is not evidence, and neither is any score made from one.
+- A screenshot that breaks the capture contract is not evidence, and neither is any score made from one. A screenshot is never resized, retouched or cropped to anything but the app's own area or an item's box.
 - Thresholds change only on the user's instruction. `thresholds.overridden` in every `diff.toon` must match what the user asked for.
 - Never mask, blank out, crop away or shrink a region to exclude it from a diff. A blanked crop is not an exception: it changes an asset, never a reference, and its area is scored in full.
 - The reference is always a crop of the design: the original image, or its `.subs` copy when Phase 1 made one. The `.subs` copy differs from the original only inside the slots of cut-off images, each filled from another image of the same design and listed in the inventory. No other edit of a design is ever a reference, and neither is a previous render. Its rectangle is measured on the design. It is never read from where a render puts the element, and never re-cropped to follow the code: a reference that moves with the render can no longer show that the render is in the wrong place or the wrong size.
@@ -60,11 +60,11 @@ A score counts only when the code that produced it follows every rule here. A pa
 Answer each from the actual files, not from memory:
 
 1. Does every image file added to the project appear in the inventory's asset list, is every listed crop free of code-built UI, with each blank listed and wholly covered by the UI built in code, and is every one a complete image, with each substitution listed?
-2. Does any image asset contain text, a border, a shadow, a gradient or a button that should have been code? Is `images_not_1to1` empty in the final rounds, or only naming images the user supplied?
-3. Is there any absolute positioning, fixed size, transform, negative margin, letter spacing or forced line break that exists only to match pixels?
-4. Does every component still render correctly with different text or content? Does every section hold together in its wider scale-1 shot, and every page in its wider and its narrower one?
+2. Does any image asset contain text, a border, a shadow, a gradient or a button that should have been code? Is every image cropped from the design drawn one image pixel per screen pixel in the final rounds?
+3. Is there any absolute positioning, fixed size, translation, negative margin, letter spacing or forced line break that exists only to match pixels?
+4. Does every component still render correctly with different text or content? Does every section hold together in its shot at another size, and every page in its larger and its smaller one?
 5. Are all states reached through real interaction, with no test-only API left in components?
-6. Was every component scored alone, and does every component's look come from its own classes? Once the final round has run: is every temporary harness removed, with no harness-only code left behind?
-7. Does the latest row of every component variant, every section and every page in `pp scores` come from the current code and a valid capture, with `pass: true` or a status of `stopped` or `accepted deviation` that the user has seen?
+6. Was every component scored alone, and does every component's look come from its own styles? Once the final round has run: is every temporary harness removed, with no harness-only code left behind?
+7. Does the latest row of every component variant, every section and every page in `pp scores` come from the current code and a screenshot that meets the capture contract, with `pass: true` or a status of `stopped` or `accepted deviation` that the user has seen?
 8. Is `thresholds.overridden` empty in every `diff.toon`, or exactly what the user asked for? Is `reference_changed` empty in `pp scores`, or explained by a reference that was measured wrongly the first time, or by a substitution made after work had begun?
 9. Are all image and text substitutions, blanked crops, font substitutions, placeholders and unverified behaviors written down for the report?

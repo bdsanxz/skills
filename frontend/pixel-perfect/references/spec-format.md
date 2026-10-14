@@ -2,7 +2,7 @@
 
 Both files are TOON: `key: value`, two-space indentation for nesting, `name[N]: a,b,c` for lists of plain values, and `name[N]{f1,f2}:` followed by one comma-separated row per item for lists of uniform records. Quote a string only when it contains a comma, a colon, quotes or brackets, or would read as a number or boolean.
 
-All coordinates are image pixels of the named design image. Lengths meant for code are CSS pixels and say so in their key (`_css`).
+All coordinates are image pixels of the named design image. Lengths meant for code are points and say so in their key (`_pt`).
 
 ## Run directory layout
 
@@ -20,10 +20,11 @@ _swe/pixel-perfect/<name>/
   sections/<section>/
     spec.toon            what was measured between its components
     ref/<variant>.png    `default`, or a design image's id when the section appears in more than one
-    iter-01/<variant>/   the same files, for the section captured in place
+    iter-01/<variant>/   the same files, for the section cut out of its page's screenshot
   pages/<page>/
     iter-01/<image>/     the same files, for the page against one design image
   sheets/iter-NN.png     reference beside render for a round's small items (`check --sheet`)
+  shots/                 the screenshots the rounds were scored from
   adhoc/                 one-off measuring scripts
 ```
 
@@ -32,15 +33,16 @@ _swe/pixel-perfect/<name>/
 ## inventory.toon
 
 ```
-target: web
+platform: web
 stack: React + Tailwind
+capture: headless Chromium via the project's Playwright, device scale factor = design scale, full-page shot
 thresholds:
   content: 99
   tile_floor: 95
   tolerance: 8
   source: default
 soft_sources: user has no lossless export; record ceiling stops as deviations without asking again
-images[3]{id,path,kind,page,viewport_css,scale,width,height,source_quality}:
+images[3]{id,path,kind,page,width_pt,scale,width,height,source_quality}:
   home-desktop,designs/home-1440.png,page,home,1440,1,1440,3200,sharp
   home-mobile,designs/home-375@2x.png,breakpoint,home,375,2,750,5400,sharp
   home-menu-open,designs/home-menu.png,state,home,1440,1,1440,3200,soft
@@ -61,21 +63,22 @@ components[4]{name,depends_on,has_text,variants,rendered,status,best_score,itera
   button,,yes,"primary,primary-hover,ghost",harness,passed,99.6,3
   nav-link,,yes,"default,active",harness,in progress,97.2,4
   card,button,yes,"default,with-badge",harness,pending,,0
-sections[3]{name,page,components,selector,x,y,w,h,status,best_score,iterations}:
-  header,home,"button,nav-link",.site-header,0,0,1440,96,pending,,0
-  hero,home,button,.hero,0,96,1440,640,pending,,0
-  cards,home,card,.cards,0,736,1440,820,pending,,0
+sections[3]{name,page,components,x,y,w,h,status,best_score,iterations}:
+  header,home,"button,nav-link",0,0,1440,96,pending,,0
+  hero,home,button,0,96,1440,640,pending,,0
+  cards,home,card,0,736,1440,820,pending,,0
 pages[1]{name,images,sections,status,best_score,iterations}:
   home,"home-desktop,home-mobile,home-menu-open","header,hero,cards",pending,,0
 ```
 
-- `kind` of an image is `page`, `breakpoint` or `state`.
+- `platform` is what the UI runs on (`web`, `egui desktop app`, `iOS app`), and `capture` the steps that produce a screenshot meeting the capture contract, written so that a resumed run can repeat them.
+- `kind` of an image is `page`, `breakpoint` (another width or window size of a page) or `state`. `width_pt` is the width of its screen or window in points.
 - `path` of an image is the file every probe and check uses: the `.subs` copy when Phase 1 made one, otherwise the original. `substitutions` lists every swap in it, images and text alike, as `pp measure substitute` prints them; leave the table out when there are none.
 - `blanks` lists the code-built UI removed from blanked crops, as `pp measure crops --blank` prints them; leave the table out when there are none.
 - `source_quality` of an image is `source.quality` from `pp measure info`. A `soft` image is one the user has been told about.
 - `soft_sources` records what the user decided about images whose source quality is `soft`. Leave it out when every source is sharp.
 - A component is one of the smallest reusable entities; a section is a full-width band of a page that arranges components. `x,y,w,h` of a section is its reference rectangle in its page's design image.
-- `rendered` says where a component is captured: `preview tool` or `harness`. The list of `--item` arguments for its round is kept in a file beside the harness, so a resumed run can repeat the round.
+- `rendered` says where a component is captured: `preview tool` or `harness`. The list of `--item` arguments for its round, with each wrapper's box, is kept in a file beside the harness, so a resumed run can repeat the round.
 - `best_score` and `iterations` are copied from `pp scores`.
 - `source` under `thresholds` is `default` or `user`.
 - `status` of a component, section or page is `pending`, `in progress`, `passed`, `stopped` (loop ended without a pass, awaiting the user) or `accepted deviation` (the user accepted a score below threshold).
@@ -92,10 +95,10 @@ variants[3]{name,image,x,y,w,h,margin,ref,backdrop,trigger}:
   primary-hover,home-menu-open,1240,28,152,40,0,ref/primary-hover.png,#ffffff,hover
   ghost,home-desktop,1080,28,136,40,0,ref/ghost.png,#ffffff,
 box:
-  width_css: content
-  height_css: 40
-  padding_css: 0 20
-  radius_css: 8
+  width_pt: content
+  height_pt: 40
+  padding_pt: 0 20
+  radius_pt: 8
   border: none
   background: #1e5ac8
   shadow: none
@@ -103,8 +106,8 @@ text:
   content: Get started
   family: Inter
   weight: 600
-  size_css: 14
-  line_height_css: 20
+  size_pt: 14
+  line_height_pt: 20
   color: #ffffff
 measurements[6]{value,result,probe,confidence}:
   box,"1240,28,152,40",edges --row 48 and --col 1316,measured
@@ -116,8 +119,8 @@ measurements[6]{value,result,probe,confidence}:
 notes: Label width varies with content, so the width comes from padding, not a fixed value.
 ```
 
-- `x,y,w,h` is the component's own box in the image. `margin` is how many pixels the reference crop extends beyond that box on every side, so that shadows are inside the crop; the harness wrapper uses the same value, converted to CSS pixels, as padding.
+- `x,y,w,h` is the component's own box in the image. `margin` is how many pixels the reference crop extends beyond that box on every side, so that shadows are inside the crop; the harness wrapper uses the same value, converted to points, as padding.
 - `backdrop` is the color behind the component in the design; the harness wrapper uses it as its background.
-- `trigger` is how the state is reached at capture time: empty, `hover`, `focus`, or a short description such as `click .menu-button`.
+- `trigger` is how the state is reached at capture time: empty, `hover`, `focus`, or a short description such as `click the menu button`.
 - A section's `spec.toon` holds the same `measurements` table for its paddings, gaps and backgrounds, and its rectangle in every further design image it appears in.
 - `confidence` is `measured` or `estimated`. Every `estimated` value is the first suspect when a diff fails nearby. A value refined by `pp fit` is `measured`, with `fit` named as its probe.
