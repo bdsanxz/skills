@@ -7,8 +7,9 @@ Write `report.md` in the run directory with these sections, in this order. Take 
 
 Result: <complete | not complete>. <n> of <n> criteria are met on the merged result.
 Where: branch `brigade/<run>/integration` at <commit>, started from <base> at <commit>.
-<Delivered into <branch> | not delivered yet: waiting for the user's choice>.
+Delivered into <branch> at <commit> by fast-forward <, or: what is not delivered yet, and why>. <Pushed | not pushed>.
 Gates on the merged result: <each gate with its result: tests <n> passed, <n> failed, <n> skipped; linter; and so on>.
+Left on disk: <the size of the run directory, from `du -sh`>, <the trees still in it and why>.
 
 ## Criteria
 

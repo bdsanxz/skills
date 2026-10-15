@@ -26,6 +26,8 @@ brigade() { python3 "<this skill's directory>/scripts/brigade.py" "$@"; }
 
 Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs Python 3 and git 2.38 or newer. `brigade --help` lists its commands. Every command exits 0 when nothing is wrong, 1 when it found problems, and 2 on wrong usage. `brigade status` exits 3 when nothing is wrong but orders are not merged yet.
 
+Every command ends with a disk line on standard error: what the current working directory takes on disk, and what its disk has free. A folder too large to count within a few seconds is given as "at least" what was counted. Do not hide standard error. Read the line after every command, and compare it with the one before. When the folder grew by more than the step should have added, or the free space no longer holds what the next step needs, find what grew and remove the leftovers of this run (by Phase 5 and Phase 7) before you go on.
+
 ## Non-negotiable rules
 
 1. You delegate, you do not build. Subagents write the product code and the tests. Your own changes are the plan, the merges, and a correction that is smaller than the message asking for it would be. Each such correction is named in the report.
@@ -38,7 +40,8 @@ Define it at the start of every shell command that uses it, because shell state 
 8. The report files are your memory of the run. Whenever you need a detail of a subagent's work that you no longer hold word for word, read its report file again. Do not answer from a summary.
 9. The request is the measure. The criteria are kept word for word, nothing is built that no criterion asks for, and a change to what was asked is the user's decision.
 10. A graph the user gave is used as given. You do not replace it with your own.
-11. The user's branch and checkout are not touched, and nothing is pushed, until the user says so. Commits are made only on the run's own branches. Nothing is ever forced: no forced removal, no deleted unmerged branch, no hard reset of someone's work.
+11. Every accepted order reaches the branch the run started from as soon as the gates pass on the integration branch, and only by `brigade deliver`: a fast-forward, never a merge commit or a rebase on the user's branch. Commits are made only on the run's own branches. Nothing is pushed until the user says so. Nothing is ever forced: no forced removal, no deleted unmerged branch, no hard reset of someone's work.
+12. The run keeps the disk clean. A tree exists only while its order is out: merging an order removes its tree, with its build output. Everything the run writes, yours and the subagents', is under the run directory or inside a tree. Nothing goes in the system's temporary folder, in the project's own scratch folders, or in a copy of the repository made beside the trees.
 
 ## After a compaction
 
@@ -52,12 +55,14 @@ When your conversation was compacted, or you resume a run you do not remember in
 
 ## Phase 0: Set up
 
+Before each phase, read that phase's part of `references/tips.md`: the mistakes earlier runs made at that point, and how to avoid them.
+
 1. Read the project's own instruction files, such as `AGENTS.md`, `CLAUDE.md` and `README.md`. Note where plans and tickets live, when work counts as done, and what needs the user's approval.
 2. Look at the repository with `git rev-parse --show-toplevel` and `git status`.
    - Not a git repository: worktrees need one. Stop and ask the user.
    - No commit yet: a tree starts from a commit. Ask the user to let you make an empty first commit.
    - Uncommitted changes: no tree will hold them. Ask the user whether to commit them first, leave them out, or stop.
-3. Give the run a name and a directory. The name is short, lowercase and hyphenated: the sprint's or the ticket's id, or what is being built. Every working file goes in `_swe/brigade/<name>/` in the current working directory: the plan, `request.md`, what each subagent was asked in `orders/`, what each subagent answered in `reports/`, the trees in `trees/`, and your final `report.md`. If that directory exists already, resume the run by the steps of "After a compaction".
+3. Give the run a name and a directory. The name is short, lowercase and hyphenated: the sprint's or the ticket's id, or what is being built. Every working file goes in `_swe/brigade/<name>/` in the current working directory: the plan, `request.md`, what each subagent was asked in `orders/`, what each subagent answered in `reports/`, the trees in `trees/`, what your own checks must keep (a gate log, a findings file) in `checks/`, and your final `report.md`. If that directory exists already, resume the run by the steps of "After a compaction".
 4. Save the request word for word in `request.md` in the run directory, with the path of every document the user attached or pointed to. This file is what the result is measured against at the end.
 5. Take the criteria word for word from where the request states them: the tickets, the issue, the spec. Do not reword, merge, split or drop any. If the request states none, write them yourself, one checkable statement each, show them to the user, and go on only after the user agrees.
 6. Create the plan:
@@ -73,6 +78,7 @@ When your conversation was compacted, or you resume a run you do not remember in
 9. Run `brigade start <plan>` with no order. It creates the integration tree and nothing else. Run the setup and every gate in that tree yourself.
    - If a gate fails there and passes in the checkout, `setup` is incomplete. Fix it now, before several subagents each find out.
    - If a gate fails in both, tell the user. It must not be taken for a result of this run later.
+10. Measure what a tree costs on disk: `du -sh` of the integration tree after its setup and gates, and `df -h` of its disk. Every order that is out has a tree that grows to about that size. Decide how many trees the free space holds with room left over, and keep at most that many orders out. When the toolchain can share build output between checkouts safely (a compiler cache, a shared download cache), put that in `setup`. Do not point several trees at one build folder: they would build over each other.
 
 ## Phase 1: Map the graph
 
@@ -123,7 +129,7 @@ Skip this phase when the plan has no foundation order.
 2. Create their trees: `brigade start <plan> <order> <order> ...`. It refuses an order that is not ready, and starts nothing while the plan has a problem.
 3. Write each order's work order: `brigade brief <plan> <order>`. It writes the file `orders/<order>.md` in the run directory and prints the prompt for the subagent, which only points to that file. The work order holds the tree, the task, the criteria word for word, the paths, the conventions, the gates, the rules, and the file the subagent must write its report to: `reports/<order>.md` in the run directory. Use the printed prompt as it is. Do not retell the order or add to it in the prompt. If something is missing from it, add it to the plan and run `brigade brief` again, so that the plan stays the record of what was asked.
 4. Invoke one `brigade-worker` for each ready order, with the printed prompt as its whole input. Launch them all in one message, in the background, so that they run at the same time. Each one writes its report to the file its work order names, and replies with one line: its result and the path of that file. Do not also ask your harness to isolate them in worktrees of its own: the trees exist, and the brief names them.
-5. Start every order that is ready. Hold one back only for a reason you can name: the machine cannot run that many builds at once, or the user set a limit.
+5. Start every order that is ready. Hold one back only for a reason you can name: the machine cannot run that many builds at once, the disk cannot hold that many trees (Phase 0, step 10), or the user set a limit.
 6. While subagents work, do not build and do not wait for all of them. Prepare the checks of the orders that are out. Check each order as it comes back, by Phase 4, and after each merge start whatever became ready.
 7. When a subagent asks a question, answer it from the request and the plan. What they do not answer is a question for the user.
 8. When a subagent shows no progress for long, look at its tree (`git -C <tree> status` and `git -C <tree> log`) before waiting any longer, then ask it or stop it.
@@ -137,12 +143,12 @@ Skip this phase when the plan has no foundation order.
    - work that was asked for and is missing;
    - a placeholder, a stub, a value written to match a test;
    - a test that asserts nothing, that fakes the very thing it should test, or that was skipped, weakened or deleted.
-4. Run the setup and every gate in the tree yourself. Compare the result with the report. A difference is a finding. So is a file your run leaves behind that `git status` shows: build output that nothing ignores.
+4. Run the setup and every gate in the tree yourself. Compare the result with the report. Your checks run in the tree, and write only into it, as its ignored build output, or into `checks/<order>/` in the run directory. Do not make a copy of the repository to check an order: the tree is the copy. A difference is a finding. So is a file your run leaves behind that `git status` shows: build output that nothing ignores.
 5. Run the order's `checks`. For each criterion the order covers, see the behavior yourself in that tree: run the program, call the endpoint, open the page.
 6. Decide.
    - **Accept.** Go to Phase 5.
    - **Rework.** Write your findings to a file. A finding says what you ran, what you saw, and which words of the order or of a criterion it fails. Then run `brigade rework <plan> <order> --findings <file>`. It opens the next round: it writes the rework order to `orders/<order>.round-<n>.md`, with a report file of its own, `reports/<order>.round-<n>.md`, and prints two prompts. Use the first to continue the same `brigade-worker` where your harness allows, so that it keeps what it knows, and the second to invoke a new `brigade-worker` otherwise. The subagent commits on the same branch. Then check again from step 1, in full, on the new report.
-   - **Replace.** After two failed rounds the order is the problem: too large, unclear, or at odds with another. Write the reason in its `dropped`, add better orders to the plan, and run `brigade check`.
+   - **Replace.** After two failed rounds the order is the problem: too large, unclear, or at odds with another. Write the reason in its `dropped`, add better orders to the plan, and run `brigade check`. Its tree and branch stay until the user agrees to discard them: `brigade clean` prints the commands. Ask once the replacement is merged.
    - **It needs a path it does not own.** Give the change to the order that owns the path, or widen `owns` and run `brigade check`. If the path is now shared with an order that is out, one of them waits.
    - **It rests on a question about the request.** Ask the user.
 
@@ -150,10 +156,12 @@ For a diff too large to read with care, a `brigade-worker` may review it for you
 
 ## Phase 5: Merge
 
-1. Merge the accepted order: `brigade merge <plan> <order> --checked "<what you ran and read yourself>"`. It inspects the order once more, merges its branch into the integration branch, and names the orders that are now ready.
+1. Merge the accepted order: `brigade merge <plan> <order> --checked "<what you ran and read yourself>"`. It inspects the order once more, merges its branch into the integration branch, removes the order's tree and branch, deletes from `checks/<order>/` every file that is not a `.txt` or `.md` record, and names the orders that are now ready. When it says the tree was not removed, find out what holds it (a process still running in it, a file left in it), free it, and run `brigade clean <plan>`. Stop every process you started for the check.
 2. A conflict is resolved in the order's tree, never in the integration tree. Send the order back with `brigade rework`, and in the findings ask its subagent to merge the integration branch into its tree, resolve the conflict, run the gates and commit. Then check the order again by Phase 4. A conflict between orders that the graph called independent means an edge or an owner was missing: correct the plan as well.
-3. Run every gate in the integration tree. Parts that pass alone can fail together. When several orders came back together, merge them one after the other and run the gates after the last; if they fail, run them at each merge commit to find the one. A failure is fixed by a new order that comes `after` the orders involved, not by your own patch.
-4. Run `brigade status` and hand out what became ready, by Phase 3. Trees that are out do not receive the merge and do not need it: they share no path with it.
+3. Run every gate in the integration tree. Parts that pass alone can fail together. When several orders came back together, merge them one after the other and run the gates after the last; if they fail, run them at each merge commit to find the one. A failure is fixed by a new order that comes `after` the orders involved, not by your own patch, and nothing is delivered until it is merged.
+4. When every gate passes, deliver at once: `brigade deliver <plan> --gates "<each gate and its result>"`. It fast-forwards the branch the run started from to the integration branch, in the checkout where that branch is checked out, and pushes nothing. It refuses when the checkout has uncommitted changes to tracked files, or when the branch holds commits the integration branch does not: someone committed to it during the run. Either is the user's decision. Give them what `deliver` said, and the choices: merge their branch into the integration branch in the integration tree, run the gates and deliver again, or stop delivering for this run.
+5. Prune the evidence of each delivered order. Keep the transcripts (`.txt`), the pictures a criterion is proven by, the scripts that made them, and the records that name them. Delete everything else the order's checks made: work folders, copies of the repository, build output, recordings and pictures that no record names, by their exact paths. When an order's evidence is kept in an EDD ledger, the ledger names what is kept: delete what `ledger check` reports that no row names, then run that skill's `ledger prune`, which deletes the work folders and confirms that the ledger still holds.
+6. Run `brigade status` and hand out what became ready, by Phase 3. Trees that are out do not receive the merge and do not need it: they share no path with it.
 
 ## Phase 6: Validate the whole
 
@@ -169,7 +177,13 @@ Start this phase when `brigade status` exits 0: every order is merged.
 
 ## Phase 7: Hand over
 
-1. Run `brigade clean <plan>`. It removes the trees and branches of merged orders, and leaves in place everything that holds unmerged work. The orders and the reports stay in the run directory.
-2. Write `report.md` in the run directory, following `references/report-format.md`, and give the user its content.
-3. The result is on the branch `brigade/<run>/integration`. Ask the user how they want it: merged into their branch, opened as a pull request, or left where it is. Do it only after they answer, unless the request already said.
-4. Once the result is in the branch the run started from, run `brigade clean <plan> --integration` to remove the integration tree and branch.
+1. Run `brigade clean <plan>`. It removes the trees and branches of merged orders that are still there, and leaves in place everything that holds unmerged work. The orders and the reports stay in the run directory.
+2. Check that the run left nothing behind:
+   - `git worktree list` names no tree of this run but the integration tree and the trees `clean` left in place;
+   - `git status` of the checkout you started in shows nothing that was not there at Phase 0;
+   - nothing of the run is outside the run directory: no copy of the repository, no build output, no file in the system's temporary folder or in the project's scratch folders;
+   - no process you or a subagent started is still running.
+   Remove what is left by its exact path, and name in the report what you could not remove.
+3. Write `report.md` in the run directory, following `references/report-format.md`, and give the user its content.
+4. Every accepted order is in the branch the run started from already, by Phase 5. If the last merge is not delivered yet, deliver it now. Ask the user whether to push the branch or open a pull request, and do it only after they answer, unless the request already said.
+5. Run `brigade clean <plan> --integration` to remove the integration tree and branch. It refuses while the branch the run started from does not hold every commit of the integration branch.

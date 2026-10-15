@@ -6,6 +6,7 @@
 import contextlib
 import io
 import json
+import shutil
 import os
 import sys
 import tempfile
@@ -317,6 +318,32 @@ class CheckTest(unittest.TestCase):
         out = self.problems(project)
         self.assertIn("_swe/edd/cancel/evidence/c1-before-fix.txt is named by no row", out)
 
+    def test_nothing_may_point_into_the_work_folder(self):
+        project = Project(self)
+        project.write("_swe/edd/cancel/work/run-1/tests.txt", CARGO, age=100)
+        doc = project.read()
+        doc["test_logs"] = ["_swe/edd/cancel/work/run-1/tests.txt"]
+        project.save(doc)
+        out = self.problems(project)
+        self.assertIn("_swe/edd/cancel/work/run-1/tests.txt is in the work folder", out)
+        out = self.problems_after(project, 1, evidence=["_swe/edd/cancel/work/run-1/tests.txt"])
+        self.assertIn("c1: _swe/edd/cancel/work/run-1/tests.txt is in the work folder", out)
+
+    def test_work_folders_are_noted_while_open_and_refused_at_the_close(self):
+        project = Project(self)
+        project.write("_swe/edd/cancel/work/run-1/out.txt", "x\n")
+        project.write("_swe/edd/cancel/work/ledger.before.json", "{}\n")
+        project.change(2, status="open", note="Not run yet.")
+        out = self.problems(project, code=3)
+        self.assertIn("_swe/edd/cancel/work still holds 2 entries: ledger.before.json, run-1.", out)
+        project.change(2, status="proven")
+        out = self.problems(project)
+        self.assertIn("the run is not closed while it holds any", out)
+        os.unlink(project.at("_swe/edd/cancel/work/run-1/out.txt"))
+        os.rmdir(project.at("_swe/edd/cancel/work/run-1"))
+        os.unlink(project.at("_swe/edd/cancel/work/ledger.before.json"))
+        self.problems(project, code=0)
+
     def test_identical_evidence_files_are_noted(self):
         project = Project(self)
         project.write(project.ev + "c2-copy.txt", "$ render demo\nRender cancelled (in capture)\n[exit 130]\n", age=100)
@@ -468,6 +495,86 @@ class TableTest(unittest.TestCase):
         self.assertEqual((code, out), (1, ""))
         self.assertIn("c1: `shows` quotes `[exit 0]`", err)
         self.assertIn("no table: fix the problems first", err)
+
+
+class PruneTest(unittest.TestCase):
+    def test_deletes_the_work_folder_of_a_closed_run(self):
+        project = Project(self)
+        project.write("_swe/edd/cancel/work/run-1/repo/.git/objects/ab", "x\n")
+        os.chmod(project.at("_swe/edd/cancel/work/run-1/repo/.git/objects/ab"), 0o444)
+        project.write("_swe/edd/cancel/work/run-2/out.txt", "x\n")
+        code, out, _ = run("prune", project.path)
+        self.assertEqual(code, 0, out)
+        self.assertIn("Deleted _swe/edd/cancel/work: 2 entries (run-1, run-2).", out)
+        self.assertIn("every criterion is closed and backed", out)
+        self.assertFalse(os.path.exists(project.at("_swe/edd/cancel/work")))
+        self.assertTrue(os.path.isfile(project.at(project.ev + "c1-interrupt.txt")))
+        self.assertIn("No work folder to delete.", run("prune", project.path)[1])
+
+    def test_deletes_nothing_while_the_run_is_open_or_has_another_problem(self):
+        project = Project(self)
+        project.write("_swe/edd/cancel/work/run-1/out.txt", "x\n")
+        project.change(2, status="open", note="Not run yet.")
+        code, out, _ = run("prune", project.path)
+        self.assertEqual(code, 1)
+        self.assertIn("Nothing was deleted", out)
+        project.change(2, status="proven")
+        project.write(project.ev + "c1-before-fix.txt", "old\n")
+        code, out, _ = run("prune", project.path)
+        self.assertEqual(code, 1)
+        self.assertIn("is named by no row", out)
+        self.assertTrue(os.path.isfile(project.at("_swe/edd/cancel/work/run-1/out.txt")))
+
+
+class EvidenceSizeTest(unittest.TestCase):
+    def test_a_large_evidence_folder_and_large_pictures_are_noted(self):
+        project = Project(self)
+        limits = ledger.EVIDENCE_LIMIT, ledger.MEDIA_LIMIT
+        self.addCleanup(lambda: (setattr(ledger, "EVIDENCE_LIMIT", limits[0]),
+                                 setattr(ledger, "MEDIA_LIMIT", limits[1])))
+        code, out, _ = run("check", project.path)
+        self.assertNotIn("more than", out)
+        ledger.EVIDENCE_LIMIT, ledger.MEDIA_LIMIT = 100, 10
+        code, out, _ = run("check", project.path)
+        self.assertEqual(code, 0, out)
+        self.assertIn("the evidence folder _swe/edd/cancel/evidence holds", out)
+        self.assertIn("The largest files: _swe/edd/cancel/evidence/", out)
+        self.assertIn("_swe/edd/cancel/evidence/c3-played.png takes", out)
+        self.assertNotIn("c1-interrupt.txt takes", out)
+
+
+class DiskFooterTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        os.makedirs(os.path.join(self.folder, "work", "run-1"))
+        with open(os.path.join(self.folder, "work", "run-1", "big.bin"), "wb") as handle:
+            handle.write(os.urandom(3 * 1024 * 1024))
+        os.link(os.path.join(self.folder, "work", "run-1", "big.bin"),
+                os.path.join(self.folder, "work", "same.bin"))
+        here = os.getcwd()
+        os.chdir(self.folder)
+        self.addCleanup(os.chdir, here)
+
+    def test_every_command_ends_with_what_the_current_folder_takes(self):
+        code, _, err = run(*["check", "missing/ledger.json"])
+        self.assertEqual(code, 2)
+        last = err.strip().splitlines()[-1]
+        self.assertTrue(last.startswith("ledger.py: disk: the current folder %s takes " % self.folder),
+                        last)
+        self.assertIn(" 3.0 MB; its disk has ", last)
+        self.assertRegex(last, r"free of [0-9.]+ GB\.$")
+        size, whole = ledger.folder_size(self.folder, 5)
+        self.assertTrue(whole)
+        self.assertLess(size, 4 * 1024 * 1024)
+
+    def test_a_folder_too_large_to_count_in_time_is_given_as_a_lower_bound(self):
+        limit = ledger.DISK_SECONDS
+        ledger.DISK_SECONDS = 0
+        self.addCleanup(setattr, ledger, "DISK_SECONDS", limit)
+        _, _, err = run(*["check", "missing/ledger.json"])
+        self.assertIn("takes at least ", err)
+        self.assertIn("(counting stopped after 0 s)", err)
 
 
 if __name__ == "__main__":

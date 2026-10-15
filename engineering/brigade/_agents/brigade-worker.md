@@ -38,6 +38,9 @@ description: |
   The reviewer gets the work order and the diff command, and not the builder's report, so that it judges the code and not the claims. Its findings go to a report file of their own.
   </commentary>
   </example>
+model: haiku
+effort: high
+autoCompactWindow: 256000
 ---
 
 # Brigade worker
@@ -56,8 +59,9 @@ Your task ends with a report in a file. The lead's conversation can be compacted
 
 1. Do what the task asks, as it is written, and nothing more.
 2. Work only where the task tells you to. For a work order, that is its copy of the repository, on its branch. For an exploration or a review, change no file at all.
-3. As you go, keep what the report needs: each command you ran with its exit code and its last lines, each file you changed, each assumption you made, each thing you saw and did not do.
-4. When the task is unclear, contradicts itself or cannot be done, stop working on it. Do not guess. Go to step 3: a blocked task gets a report too.
+3. Leave no trace outside that folder. Do not copy the repository, do not build into a folder outside it, and do not write to the system's temporary folder. A file you need only for a check goes inside your folder and is removed before you report. Stop every process you started before you report.
+4. As you go, keep what the report needs: each command you ran with its exit code and its last lines, each file you changed, each assumption you made, each thing you saw and did not do.
+5. When the task is unclear, contradicts itself or cannot be done, stop working on it. Do not guess. Go to step 3: a blocked task gets a report too.
 
 ## 3. Write the report file
 

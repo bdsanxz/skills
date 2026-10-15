@@ -8,6 +8,7 @@ Write `report.md` in the run directory with these sections, in this order. Every
 Result: <complete | not complete>. <The summary line of `ledger table`.>
 Code state: <the commit, or "uncommitted changes on <branch>">, checked on <date>.
 Gates: <each gate with its result on the final code: tests <n> passed, <n> failed, <n> skipped; formatter; linter; and so on>.
+Left on disk: <the size of the run directory, from `du -sh`>. No work folder, copy of the repository or build output of this run is left <or: what is left, where, and why>.
 
 ## Evidence
 

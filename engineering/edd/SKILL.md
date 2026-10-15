@@ -24,6 +24,8 @@ ledger() { python3 "<this skill's directory>/scripts/ledger.py" "$@"; }
 
 Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs Python 3 and nothing else. `ledger --help` lists its commands. `ledger check` exits 0 when every criterion is closed and backed, 1 when it found problems, 2 on wrong usage, and 3 when nothing is wrong but criteria are still open.
 
+Every command ends with a disk line on standard error: what the current working directory takes on disk, and what its disk has free. A folder too large to count within a few seconds is given as "at least" what was counted. Do not hide standard error. Read the line after every command, and compare it with the one before. When the folder grew by more than the step should have added, or the free space no longer holds what the next step needs, find what grew and remove the leftovers of this run (by Phase 3, step 9) before you go on.
+
 ## Non-negotiable rules
 
 1. No evidence, no "done". A criterion is proven only by evidence recorded in the ledger. A passing test alone, an exit code alone, a memory of an earlier run and somebody's report are not evidence.
@@ -34,6 +36,7 @@ Define it at the start of every shell command that uses it, because shell state 
 6. Record what the evidence shows, not what you expected it to show. Anything odd in it is investigated until it is explained.
 7. Never weaken a criterion, a test or a check to reach a pass, and never change the wording of a criterion without the user.
 8. `ledger check` decides what may be claimed. A row it reports a problem for is not proven, and a task it does not exit 0 for is not complete.
+9. The run keeps the disk clean. A work folder is temporary: it is deleted once its transcripts are read and recorded. What a record cites lives in the evidence folder, never in a work folder. A script copies the repository only for a change the criterion needs, and the copy goes with its work folder.
 
 ## Phase 0: Set up
 
@@ -46,9 +49,10 @@ Before each phase, read that phase's part of `references/tips.md`: the mistakes 
 5. Run `git status` and keep the result. At the close it tells your leftovers apart from what was already there.
 6. Give the run a name and a directory.
    - The name is short, lowercase and hyphenated: the ticket's id when it has one (`t038`), or else what is being built (`cancel-render`). One ticket is one run.
-   - Every working file goes in the run directory, `_swe/edd/<name>/` in the current working directory: `ledger.json`, the evidence in `evidence/`, and a new folder under `work/` for each run of an evidence script. Nothing goes in the system's temporary folder. Do not edit `.gitignore`.
+   - Every working file goes in the run directory, `_swe/edd/<name>/` in the current working directory: `ledger.json`, the evidence in `evidence/`, and a new folder under `work/` for each run of an evidence script. A work folder holds that run and nothing else: no backup of the ledger or of a script, no log of your own. Nothing goes in the system's temporary folder or in the project's scratch folders. Do not edit `.gitignore`.
    - When the project names its own place for evidence, pass it to `ledger init` as `--evidence-dir`.
-   - If the run directory already exists, run `ledger check` on its ledger to see where each criterion stands, and resume from there.
+   - If the run directory already exists, run `ledger check` on its ledger to see where each criterion stands, and resume from there. Delete the work folders an earlier session left, by Phase 3 step 9, before you start new runs.
+7. Find out what one evidence run costs on disk: the size of a build of the product, and of a copy of the repository without its history and build output (`du -sh`). Compare it with the free space (`df -h`). A script that makes several copies, each with its own build, costs that many times as much. Design the scripts so that the run directory stays small, by the rules in `references/evidence.md`.
 
 ## Phase 1: Criteria
 
@@ -90,7 +94,8 @@ Read `references/evidence.md` first: what counts as evidence for each kind of cr
 5. Ask of each check: would it have come out the same with the feature broken? If it would, it is too weak. Strengthen the script, and the test with it. A check for "no process is left" that counts only the main process is an example.
 6. Investigate anything wrong or odd: a warning nobody expected, an exit code, a number that does not fit. Fix a defect in the product, cover it with a test, and go back to step 2 in a new work folder. Fix a defect in the script the same way. Never correct a transcript by hand.
 7. When the evidence shows that the criterion cannot hold as written, because the product is right by a decision made earlier, put it to the user: change the behavior, change the criterion, or leave it open. Do not choose for them.
-8. Delete evidence that a newer run has replaced.
+8. Delete evidence that a newer run has replaced. Keep the evidence folder under 100 MB: `ledger check` notes when it grows past that, and names every picture or recording larger than 5 MB. Delete evidence no criterion relies on any more, and replace each large picture or recording that a criterion needs with a cropped or scaled-down picture, or a sheet of frames, by changing the script and running it again.
+9. Delete the work folder of each run once you have read its transcripts and decided what they show: by its exact path, never by a pattern. Before that, copy into the evidence folder anything a transcript or the ledger must cite, such as a test log, and name it there. Keep a work folder only while you still read it. A run whose folder is gone is made again in a new one, never looked up from memory.
 
 ## Phase 4: Record
 
@@ -110,9 +115,11 @@ Start this phase after the last change to the code. If the code changes again du
 3. Run every evidence script once more, each in a new work folder. Compare the new files with the ones they replace. A difference you cannot explain is a finding, and goes back to Phase 3. Read every file that changed.
 4. Clean up.
    - Delete superseded and duplicate captures from the evidence folder.
-   - Compare `git status` with the result from Phase 0, and remove what you left outside the run directory. Remove files by their exact paths, never by a pattern.
+   - Once `ledger check` reports no problem but the work folder, run `ledger prune _swe/edd/<name>/ledger.json`. It deletes `work/` and checks the ledger again. It deletes nothing while a criterion is open or another problem stands. The run directory then keeps `ledger.json`, the evidence when it lives there, and `report.md`.
+   - Compare `git status` with the result from Phase 0, and remove what you left outside the run directory: copies of the repository, build output, files in the system's temporary folder or the project's scratch folders. Remove files by their exact paths, never by a pattern.
    - Stop the processes you started, and only those.
-5. Run `ledger check`. It must report no problem. Exit code 3 means the run is consistent and not complete: say so in the report.
+   - Measure the run directory with `du -sh` and name its size in the report. A run directory that holds more than its ledger, its evidence and its report still holds leftovers.
+5. Run `ledger check`. It must report no problem. Exit code 3 means the run is consistent and not complete: say so in the report. It refuses to close a run whose `work/` folder still holds anything, and any record that points into `work/`: delete the leftovers, and move what a record needs into the evidence folder.
 6. Update the project's own records (a ticket's checkboxes, a progress file, a roadmap) from the ledger. Mark as done only a criterion that is `proven`, or `waived` by the user. Where the project wants the evidence in the ticket, put the output of `ledger table` there.
 7. If the user asked for a commit, a push or a deploy, what follows it is a claim too. Read the final result of the hooks and of the CI run before saying that it passed. "Queued" and "running" are not "passed".
 
@@ -137,6 +144,6 @@ A stand-in is found by comparing what the check did with the words of the criter
 
 A result you did not produce is a claim until you have checked it.
 
-- **Subagents.** Give a subagent these rules and the criteria word for word. When it reports back: read the tests it wrote, look for tests it skipped or ignored and for defects it worked around, run its evidence scripts yourself on the current code, and compare your results with what it recorded. Keep the evidence you made yourself. Fix or flag every mismatch.
+- **Subagents.** Give a subagent these rules and the criteria word for word, and a run directory of its own. When it reports back, look at what it left on disk: its work folders, copies, build output and processes go by the same rules as yours. Then: read the tests it wrote, look for tests it skipped or ignored and for defects it worked around, run its evidence scripts yourself on the current code, and compare your results with what it recorded. Keep the evidence you made yourself. Fix or flag every mismatch.
 - **CI and other remote runs.** Read the run's final result and its failing step yourself. A test that passes here and fails there points to a difference between the two environments: reproduce it here in the same variant before changing anything.
 - **A check the user ran.** Read the whole transcript. Confirm that it is complete, that it was made by the script you gave them, and that the real condition held for the whole run. Recompute what can be recomputed from the files it left. Tell the user what you could confirm and what you could not.

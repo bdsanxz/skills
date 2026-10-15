@@ -33,7 +33,7 @@ Follow the project's rules on what may not be copied into a record. Never put a 
 
 Evidence is made by a script, so that it can be made again from the final code, by you or by anyone else. A script follows these rules:
 
-1. **A new work folder.** It takes the work folder as its argument and refuses one that exists. It never deletes anything to make room. State from an earlier run cannot leak into this one, and no cleanup command is needed.
+1. **A new work folder.** It takes the work folder as its argument and refuses one that exists. It never deletes anything outside it to make room. State from an earlier run cannot leak into this one. Once you have read the run, the whole folder is deleted, so nothing in it may be needed later.
 2. **The real product.** It runs the built program or the public interface, the way a user would. It does not call internal functions.
 3. **Its own inputs.** It creates every input it needs inside the work folder. It depends on nothing from your session.
 4. **Everything shown.** It prints each command before running it, then everything the command printed, then the exit code.
@@ -43,6 +43,9 @@ Evidence is made by a script, so that it can be made again from the final code, 
 8. **No hidden errors.** No `2>/dev/null` and no `|| true`. When a failure is what the criterion asks for, the failure and its exit code are in the transcript.
 9. **One transcript per criterion.** It writes into the evidence folder, one file per criterion, or one for the few criteria that the same run proves: `c1-interrupt-in-each-stage.txt`, `c4-earlier-video-unchanged.txt`, `c7-render-after-cancel.png`. The name says what the file shows.
 10. **Nothing anywhere else.** It writes only to the work folder and the evidence folder, and it leaves no process running.
+11. **Copies only for a change.** It reads the repository where it stands when the criterion needs nothing changed in it. When a criterion needs a broken or changed repository, it makes one copy for each change, of the files the change needs, without the history and the build output, and removes each copy as soon as its observations are written. It never copies the product's dependencies' sources into the work folder.
+12. **One build.** It builds the product once for the run, into one build folder inside the work folder, or uses the build that already exists for the final code. Copies share that build folder where the toolchain allows it; a copy never gets a fresh build of its own unless the criterion is about that build.
+13. **Evidence outlives the work folder.** What a transcript must point to (a test log, a summary file) is written into the evidence folder, not left in the work folder. A transcript may name a work-folder path only as part of the setup, never as the place where something can be checked.
 
 Do not edit a script while it is running: the shell reads it as it goes. Run a changed script in another new work folder.
 
@@ -114,4 +117,5 @@ after the run, programs it started that are still running: 0
 - For a video or an animation, put the frames that matter on one sheet, each labelled with its frame number or time. For a comparison, put the two sides next to each other on one sheet.
 - Take a picture of the real screen when the criterion is about the screen: a screenshot of the running UI, or of the player while the video plays.
 - Open every picture and look at it before recording it. Say in `shows` what is in the picture, in words, without backticks.
-- Keep each file small enough to open: crop to what matters, and scale down a large sheet.
+- Keep each file small enough to open: crop to what matters, and scale down a large sheet. A picture stays under 5 MB, and the whole evidence folder under 100 MB.
+- Record a video only when the criterion is about motion that a sheet of frames cannot show. Keep it to the seconds that show it, at a small size, and delete every recording that a picture can replace.

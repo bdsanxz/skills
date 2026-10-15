@@ -604,6 +604,41 @@ class MergeTest(unittest.TestCase):
                          "read the diff; npm test passed, 12 tests")
         self.assertFalse(os.path.exists(project.at("src/api/routes.txt")))
 
+    def test_removes_the_tree_its_build_output_and_the_branch_once_merged(self):
+        project = Project(self)
+        project.ok("start", "api")
+        project.work("api", "src/api/routes.txt")
+        with open(os.path.join(project.dir, ".git", "info", "exclude"), "a") as handle:
+            handle.write("target/\n")
+        project.write("target/debug/app", "built\n", root=project.tree("api"))
+        out = project.ok("merge", "api", "--checked", "ran it")
+        self.assertIn("api: tree and branch removed; its commits are in brigade/demo/integration",
+                      out)
+        self.assertFalse(os.path.exists(project.tree("api")))
+        branches = project.git(project.dir, "branch", "--format=%(refname:short)").split()
+        self.assertNotIn("brigade/demo/api", branches)
+        self.assertNotIn("trees/api", project.git(project.dir, "worktree", "list"))
+        self.assertTrue(os.path.isfile(os.path.join(project.tree("integration"),
+                                                    "src/api/routes.txt")))
+
+    def test_a_merged_tree_that_cannot_be_removed_stays_for_clean(self):
+        project = Project(self)
+        project.ok("start", "api")
+        project.work("api", "src/api/routes.txt")
+        project.git(project.dir, "worktree", "lock", project.tree("api"))
+        out = project.ok("merge", "api", "--checked", "ran it")
+        self.assertIn("Merged api", out)
+        self.assertIn("note: api: its tree", out)
+        self.assertIn("Run clean once it is free.", out)
+        self.assertTrue(os.path.isdir(project.tree("api")))
+        code, out, _ = project.do("clean")
+        self.assertEqual(code, 1)
+        self.assertIn("PROBLEM  api: its tree", out)
+        project.git(project.dir, "worktree", "unlock", project.tree("api"))
+        out = project.ok("clean")
+        self.assertIn("api: tree and branch removed", out)
+        self.assertFalse(os.path.exists(project.tree("api")))
+
     def test_refuses_an_order_with_problems(self):
         project = Project(self)
         project.ok("start", "api")
@@ -725,13 +760,13 @@ class StatusTest(unittest.TestCase):
 
 
 class CleanTest(unittest.TestCase):
-    def test_removes_merged_orders_and_leaves_the_others(self):
+    def test_leaves_orders_that_are_not_merged_in_place(self):
         project = Project(self)
         project.finish("api")
         project.ok("start", "web")
         project.work("web", "src/web/cart.txt")
         out = project.ok("clean")
-        self.assertIn("api: tree and branch removed", out)
+        self.assertNotIn("api:", out)
         self.assertIn("web: left in place (not merged)", out)
         self.assertFalse(os.path.exists(project.tree("api")))
         self.assertTrue(os.path.isdir(project.tree("web")))
@@ -741,11 +776,16 @@ class CleanTest(unittest.TestCase):
 
     def test_keeps_a_merged_tree_that_holds_uncommitted_files(self):
         project = Project(self)
-        project.finish("api")
+        project.ok("start", "api")
+        project.work("api", "src/api/routes.txt")
+        project.git(project.dir, "worktree", "lock", project.tree("api"))
+        project.ok("merge", "api", "--checked", "ran it")
+        project.git(project.dir, "worktree", "unlock", project.tree("api"))
         project.write("src/api/late.txt", "x\n", root=project.tree("api"))
         code, out, _ = project.do("clean")
         self.assertEqual(code, 1)
-        self.assertIn("api: its tree was not removed", out)
+        self.assertIn("api: its tree", out)
+        self.assertIn("was not removed", out)
         self.assertTrue(os.path.isdir(project.tree("api")))
 
     def test_the_integration_branch_goes_only_when_its_commits_are_delivered(self):
@@ -770,6 +810,91 @@ class CleanTest(unittest.TestCase):
         code, out, _ = project.do("clean", "--integration")
         self.assertEqual(code, 1)
         self.assertIn("the integration tree stays: api still has a tree", out)
+
+
+class DeliverTest(unittest.TestCase):
+    def merged(self):
+        project = Project(self)
+        project.finish("api")
+        return project, project.git(project.dir, "rev-parse", "brigade/demo/integration").strip()
+
+    def test_fast_forwards_the_checked_out_branch_to_the_integration_branch(self):
+        project, head = self.merged()
+        out = project.ok("deliver", "--gates", "npm test passed")
+        self.assertIn("Delivered: main is now at %s" % head[:8], out)
+        self.assertIn("Nothing was pushed.", out)
+        self.assertEqual(project.git(project.dir, "rev-parse", "main").strip(), head)
+        self.assertTrue(os.path.isfile(project.at("src/api/new.txt")))
+        self.assertEqual(project.state()["delivered"], [{"commit": head, "gates": "npm test passed"}])
+        self.assertIn("Nothing to deliver", project.ok("deliver", "--gates", "again"))
+
+    def test_moves_a_branch_that_is_checked_out_nowhere(self):
+        project, head = self.merged()
+        project.git(project.dir, "switch", "-q", "-c", "other")
+        project.ok("deliver", "--gates", "ran them")
+        self.assertEqual(project.git(project.dir, "rev-parse", "main").strip(), head)
+        self.assertFalse(os.path.exists(project.at("src/api/new.txt")))
+
+    def test_refuses_when_the_branch_moved_or_the_checkout_has_changes(self):
+        project, head = self.merged()
+        self.assertEqual(project.do("deliver", "--gates", " ")[0], 2)
+        project.write("ticket.md", "changed\n")
+        code, _, err = project.do("deliver", "--gates", "ran them")
+        self.assertEqual(code, 1)
+        self.assertIn("uncommitted changes to tracked files: ticket.md", err)
+        project.git(project.dir, "commit", "-q", "-am", "the user's own commit")
+        code, _, err = project.do("deliver", "--gates", "ran them")
+        self.assertEqual(code, 1)
+        self.assertIn("main has commits that brigade/demo/integration does not hold", err)
+        self.assertNotEqual(project.git(project.dir, "rev-parse", "main").strip(), head)
+
+
+class ChecksTest(unittest.TestCase):
+    def test_merge_keeps_only_the_text_records_of_the_leads_checks(self):
+        project = Project(self)
+        project.ok("start", "api")
+        project.work("api", "src/api/routes.txt")
+        checks = os.path.join(os.path.dirname(project.plan), "checks", "api")
+        for name in ("gates.txt", "findings.md", "shot.png", "build/app.o"):
+            project.write(name, "x\n", root=checks)
+        out = project.ok("merge", "api", "--checked", "ran it")
+        self.assertIn("removed from", out)
+        self.assertIn("build/app.o", out)
+        self.assertEqual(sorted(os.listdir(checks)), ["findings.md", "gates.txt"])
+
+
+class DiskFooterTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        os.makedirs(os.path.join(self.folder, "work", "run-1"))
+        with open(os.path.join(self.folder, "work", "run-1", "big.bin"), "wb") as handle:
+            handle.write(os.urandom(3 * 1024 * 1024))
+        os.link(os.path.join(self.folder, "work", "run-1", "big.bin"),
+                os.path.join(self.folder, "work", "same.bin"))
+        here = os.getcwd()
+        os.chdir(self.folder)
+        self.addCleanup(os.chdir, here)
+
+    def test_every_command_ends_with_what_the_current_folder_takes(self):
+        code, _, err = run(*["status", "missing/plan.json"])
+        self.assertEqual(code, 2)
+        last = err.strip().splitlines()[-1]
+        self.assertTrue(last.startswith("brigade.py: disk: the current folder %s takes " % self.folder),
+                        last)
+        self.assertIn(" 3.0 MB; its disk has ", last)
+        self.assertRegex(last, r"free of [0-9.]+ GB\.$")
+        size, whole = brigade.folder_size(self.folder, 5)
+        self.assertTrue(whole)
+        self.assertLess(size, 4 * 1024 * 1024)
+
+    def test_a_folder_too_large_to_count_in_time_is_given_as_a_lower_bound(self):
+        limit = brigade.DISK_SECONDS
+        brigade.DISK_SECONDS = 0
+        self.addCleanup(setattr, brigade, "DISK_SECONDS", limit)
+        _, _, err = run(*["status", "missing/plan.json"])
+        self.assertIn("takes at least ", err)
+        self.assertIn("(counting stopped after 0 s)", err)
 
 
 if __name__ == "__main__":

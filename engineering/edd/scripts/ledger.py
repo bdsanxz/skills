@@ -5,10 +5,18 @@
     ledger.py init LEDGER --task TEXT --criterion TEXT [--criterion TEXT ...]
     ledger.py check LEDGER [LEDGER ...]
     ledger.py table LEDGER
+    ledger.py prune LEDGER
 
 `init` writes a new ledger with one open row per criterion. `check` reads the ledger and the
-files it names, and lists every row that claims more than those files show. `table` prints the
+files it names, and lists every row that claims more than those files show. It refuses a record
+that points into the `work` folder beside the ledger, which is deleted after use, and it refuses to
+call a run complete while that folder still holds anything. It notes an evidence folder larger than
+100 MB, and every picture or recording larger than 5 MB. `prune` deletes the `work` folder of a run
+that is closed and backed, and checks the ledger again. `table` prints the
 ledger as a Markdown table for the report, and prints nothing while `check` finds a problem.
+
+Every command ends with a line on standard error: what the current folder takes on disk, and what
+its disk has free.
 
 Exit codes: 0 every criterion is closed and backed; 1 problems were found; 2 wrong usage or an
 unreadable ledger; 3 no problems, but criteria are still open or waiting for the user.
@@ -20,6 +28,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +36,11 @@ import xml.etree.ElementTree as ElementTree
 
 FORMAT = "edd/ledger@1"
 STATUSES = ("open", "proven", "user-check", "waived")
+MB = 1024 * 1024
+EVIDENCE_LIMIT = 100 * MB   # an evidence folder larger than this holds evidence worth deleting
+MEDIA_LIMIT = 5 * MB        # a picture or recording larger than this is worth making smaller
+MEDIA = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".tif", ".tiff", ".bmp",
+         ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v", ".y4m")
 ROW = (
     ("id", ""),
     ("criterion", ""),
@@ -172,6 +186,8 @@ class Ledger:
         self.problems = []
         self.notes = []
         self._texts = {}
+        self.work = os.path.join(os.path.dirname(os.path.abspath(path)), "work")
+        self.work_problem = None
 
     def full(self, relative):
         return os.path.normpath(os.path.join(self.root, relative))
@@ -211,6 +227,33 @@ class Ledger:
                 if not row["note"].strip():
                     self.problem(row, "`note` must say why the criterion is not met and what the closest behaviour is.")
         self.check_evidence_dir()
+        self.check_work()
+
+    def check_work(self):
+        """Work folders are deleted once read: nothing may point into them, and none may outlive the run."""
+        work = self.work
+        named = [(row, item) for row in self.rows for item in row["evidence"] + row["made_by"]]
+        named += [(None, item) for item in self.doc["test_logs"]]
+        for row, item in named:
+            if inside(self.full(item), work):
+                self.problem(row, "%s is in the work folder, which is deleted after use. Copy it into the "
+                                  "evidence folder, or have the script write it there, and name that copy." % item)
+        try:
+            left = sorted(name for name in os.listdir(work) if name != ".DS_Store")
+        except OSError:
+            return
+        if not left:
+            return
+        shown = ", ".join(left[:8]) + (" and %d more" % (len(left) - 8) if len(left) > 8 else "")
+        text = ("%s still holds %d entr%s: %s. Delete each work folder, by its exact path, once its "
+                "transcripts are read and recorded" % (os.path.relpath(work, self.root), len(left),
+                                                       "y" if len(left) == 1 else "ies", shown))
+        counts = self.counts()
+        if counts["open"] or counts["user-check"]:
+            self.notes.append(text + ".")
+        else:
+            self.work_problem = text + "; the run is not closed while it holds any."
+            self.problem(None, self.work_problem)
 
     def problem(self, row, text):
         self.problems.append("%s: %s" % (row["id"], text) if row else text)
@@ -369,6 +412,7 @@ class Ledger:
                         self.problem(None, "%s is named by no row. Delete it when it is superseded or a "
                                            "leftover; otherwise name it in the row it proves."
                                      % os.path.relpath(path, self.root))
+        self.check_size()
         by_hash = {}
         for row in self.rows:
             for item in row["evidence"]:
@@ -379,6 +423,32 @@ class Ledger:
             if len(items) > 1:
                 self.notes.append("these evidence files hold the same bytes: %s. Keep both only when "
                                   "that is intended." % ", ".join(sorted(items)))
+
+    def check_size(self):
+        """Notes an evidence folder that has grown large, and the pictures and recordings that make it so."""
+        if not os.path.isdir(self.evidence_dir):
+            return
+        sizes = []
+        for folder, _, names in os.walk(self.evidence_dir):
+            for name in names:
+                path = os.path.join(folder, name)
+                if not os.path.islink(path):
+                    sizes.append((os.path.getsize(path), os.path.relpath(path, self.root)))
+        sizes.sort(reverse=True)
+        total = sum(size for size, _ in sizes)
+        if total > EVIDENCE_LIMIT:
+            self.notes.append(
+                "the evidence folder %s holds %s, more than %s. Delete the evidence that is no longer "
+                "relevant, and make large pictures and recordings smaller. The largest files: %s." % (
+                    os.path.relpath(self.evidence_dir, self.root), megabytes(total),
+                    megabytes(EVIDENCE_LIMIT),
+                    ", ".join("%s (%s)" % (name, megabytes(size)) for size, name in sizes[:5])))
+        for size, name in sizes:
+            if size > MEDIA_LIMIT and name.lower().endswith(MEDIA):
+                self.notes.append(
+                    "%s takes %s. Remove it when no criterion needs it; otherwise replace it with a "
+                    "cropped or scaled-down picture, or a sheet of frames, and name that instead."
+                    % (name, megabytes(size)))
 
     def counts(self):
         return {status: sum(row["status"] == status for row in self.rows) for status in STATUSES}
@@ -522,6 +592,45 @@ def check(args):
     return 1 if 1 in codes else 3 if 3 in codes else 0
 
 
+# --------------------------------------------------------------------------------- prune
+
+
+def prune(args):
+    ledger = Ledger(args.ledger)
+    ledger.check()
+    other = [text for text in ledger.problems if text != ledger.work_problem]
+    counts = ledger.counts()
+    if other or counts["open"] or counts["user-check"]:
+        report(ledger, sys.stdout)
+        print("Nothing was deleted: prune only a run that `check` finds closed and backed, apart "
+              "from its work folder.")
+        return 1
+    if os.path.isdir(ledger.work):
+        left = sorted(os.listdir(ledger.work))
+        shutil.rmtree(ledger.work, onerror=writable_then_retry)
+        print("Deleted %s: %d entr%s (%s)." % (
+            os.path.relpath(ledger.work, ledger.root), len(left), "y" if len(left) == 1 else "ies",
+            ", ".join(left[:8]) + (" and %d more" % (len(left) - 8) if len(left) > 8 else "")))
+    else:
+        print("No work folder to delete.")
+    again = Ledger(args.ledger)
+    again.check()
+    report(again, sys.stdout)
+    return again.exit_code()
+
+
+def writable_then_retry(function, path, _):
+    """Lets `rmtree` delete a read-only file, such as one in a copied git repository."""
+    os.chmod(os.path.dirname(path), 0o700)
+    if not os.path.islink(path):
+        os.chmod(path, 0o700)
+    function(path)
+
+
+def megabytes(size):
+    return "%.1f MB" % (size / float(MB))
+
+
 # --------------------------------------------------------------------------------- table
 
 
@@ -560,6 +669,68 @@ def table(args):
     return ledger.exit_code()
 
 
+# ---------------------------------------------------------------------------------- disk
+
+# How long the disk footer may spend counting the current folder. A larger folder is reported as
+# "at least" what was counted in that time.
+DISK_SECONDS = 5
+
+
+def folder_size(folder, seconds):
+    """The bytes the files under a folder take on disk, and whether the count finished in time.
+
+    Counts the blocks each file takes, as `du` does, once per file however many links it has,
+    without following symbolic links.
+    """
+    total, seen, stack = 0, set(), [folder]
+    stop = time.monotonic() + seconds
+    while stack:
+        if time.monotonic() > stop:
+            return total, False
+        try:
+            entries = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with entries:
+            for entry in entries:
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                    is_folder = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    continue
+                if is_folder:
+                    stack.append(entry.path)
+                elif info.st_nlink > 1:
+                    if (info.st_dev, info.st_ino) in seen:
+                        continue
+                    seen.add((info.st_dev, info.st_ino))
+                total += getattr(info, "st_blocks", 0) * 512 or info.st_size
+    return total, True
+
+
+def amount(size):
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return ("%d %s" if unit == "bytes" else "%.1f %s") % (size, unit)
+        size /= 1024.0
+
+
+def disk_footer(program):
+    """Ends every command with what the current folder takes on disk, and what its disk has free."""
+    sys.stdout.flush()
+    try:
+        here = os.getcwd()
+        size, whole = folder_size(here, DISK_SECONDS)
+        free = shutil.disk_usage(here)
+    except OSError as error:
+        print("%s: disk: could not be measured: %s" % (program, error), file=sys.stderr)
+        return
+    print("%s: disk: the current folder %s takes %s%s%s; its disk has %s free of %s." % (
+        program, here, "" if whole else "at least ", amount(size),
+        "" if whole else " (counting stopped after %g s)" % DISK_SECONDS,
+        amount(free.free), amount(free.total)), file=sys.stderr)
+
+
 # ---------------------------------------------------------------------------------- main
 
 
@@ -589,10 +760,20 @@ def parser():
     show = commands.add_parser("table", help="print the ledger as a Markdown table for the report")
     show.add_argument("ledger")
     show.set_defaults(run=table)
+    cut = commands.add_parser("prune", help="delete the work folder of a run that is closed and backed")
+    cut.add_argument("ledger")
+    cut.set_defaults(run=prune)
     return top
 
 
 def main(argv=None):
+    try:
+        return command_line(argv)
+    finally:
+        disk_footer("ledger.py")
+
+
+def command_line(argv):
     args = parser().parse_args(argv)
     if args.command == "init" and args.criteria_from and args.criterion:
         print("ledger.py: give --criteria-from or --criterion, not both.", file=sys.stderr)

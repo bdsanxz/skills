@@ -9,6 +9,7 @@
     brigade.py inspect PLAN [ORDER ...]
     brigade.py rework PLAN ORDER --findings FILE
     brigade.py merge PLAN ORDER --checked TEXT
+    brigade.py deliver PLAN --gates TEXT
     brigade.py status PLAN
     brigade.py clean PLAN [--integration]
 
@@ -20,11 +21,17 @@ integration tree, and a tree for each order named. `brief` writes the work order
 subagent, which names the file the subagent writes its report to. `inspect` compares what an
 order's branch holds with what the order allows, and refuses an order whose report is not on file.
 `rework` opens a new round for an order that was not accepted, and writes its rework order.
-`merge` merges an inspected order into the integration branch. `status` shows where every order
-and criterion stands. `clean` removes the trees and branches of merged orders.
+`merge` merges an inspected order into the integration branch, then removes the order's tree, with
+its build output, and its branch, whose commits are now in the integration branch. `status` shows
+where every order and criterion stands. `deliver` fast-forwards the branch the run started from to
+the integration branch, once the gates have passed there. `clean` removes the trees and branches of merged orders
+that are still there.
 
 The run directory keeps what each subagent was asked in `orders`, and what it answered in
 `reports`: <order>.md for the first round, <order>.round-2.md for the next, and so on.
+
+Every command ends with a line on standard error: what the current folder takes on disk, and what
+its disk has free.
 
 Exit codes: 0 nothing is wrong (for `status`: every order is merged); 1 problems were found;
 2 wrong usage or an unreadable plan; 3 (`status` only) nothing is wrong, but orders are not
@@ -37,8 +44,10 @@ import json
 import os
 import posixpath
 import re
+import shutil
 import subprocess
 import sys
+import time
 
 PLAN_FORMAT = "brigade/plan@1"
 STATE_FORMAT = "brigade/state@1"
@@ -1133,7 +1142,14 @@ def merge(args):
     run.state["orders"][name].update(merged=head, checked=args.checked.strip())
     run.save()
     print("Merged %s into %s at %s (%s)." % (name, target, short(head), facts))
-    print("Run the gates in %s before the next merge is relied on." % run.shown(tree))
+    removed, said_text = remove_order(run, name, tree)
+    print(("%s: %s" if removed else "note: %s: %s Run clean once it is free.") % (name, said_text))
+    pruned = prune_checks(run, name)
+    if pruned:
+        print("%s: removed from %s what is not a .txt or .md record: %s." % (
+            name, run.shown(os.path.join(run.dir, "checks", name)), some(pruned)))
+    print("Run the gates in %s, then deliver the result to %s." % (
+        run.shown(tree), run.plan["base"]))
     ready = [other["id"] for other in run.live if run.state_of(other) == "ready"]
     if ready:
         print("Ready to start now: %s." % ", ".join(ready))
@@ -1193,10 +1209,119 @@ def status(args):
     return 0 if run.live and all(states[order["id"]] == "merged" for order in run.live) else 3
 
 
+KEPT_RECORDS = (".txt", ".md")
+
+
+def prune_checks(run, name):
+    """Deletes from checks/<order>/ every file that is not a text record. Returns what it deleted."""
+    folder = os.path.join(run.dir, "checks", name)
+    deleted = []
+    for path in sorted(files_in(folder)):
+        if not path.endswith(KEPT_RECORDS):
+            os.remove(path)
+            deleted.append(os.path.relpath(path, folder))
+    for parent, _, _ in sorted(os.walk(folder), reverse=True):
+        if parent != folder and not os.listdir(parent):
+            os.rmdir(parent)
+    return deleted
+
+
+def files_in(folder):
+    """Every file under a folder, symbolic links included and not followed."""
+    found = []
+    for parent, folders, names in os.walk(folder):
+        found.extend(os.path.join(parent, name) for name in names)
+        found.extend(os.path.join(parent, name) for name in folders
+                     if os.path.islink(os.path.join(parent, name)))
+    return found
+
+
+def deliver(args):
+    run = Run(args.plan)
+    run.require_shape()
+    if not args.gates.strip():
+        raise UsageError("--gates is empty. Say which gates you ran in the integration tree, "
+                         "and that they passed.")
+    if not run.state["base_commit"]:
+        raise Problem("the run has no integration branch yet. Start it first: start %s"
+                      % args.plan)
+    base, target = run.plan["base"], run.branch(INTEGRATION)
+    if not commit_of(run.repo, "refs/heads/" + base):
+        raise Problem("the run started from %s, which is not a branch. There is no branch to "
+                      "deliver to: ask the user where the result goes." % base)
+    tree = run.tree(INTEGRATION)
+    if os.path.isdir(tree) and dirty(tree):
+        raise Problem("the integration tree %s has uncommitted changes. Nothing is delivered "
+                      "that is not committed: find out what changed it." % run.shown(tree))
+    head, current = commit_of(run.repo, target), commit_of(run.repo, base)
+    if head == current:
+        print("%s is at %s already, as is %s. Nothing to deliver." % (base, short(head), target))
+        return 0
+    if git(run.repo, "merge-base", "--is-ancestor", current, head, check=False).returncode:
+        raise Problem(
+            "%s has commits that %s does not hold, so it cannot be fast-forwarded. Someone "
+            "committed to it during the run. Ask the user: merge %s into %s in the integration "
+            "tree, run the gates again and deliver, or stop delivering." % (
+                base, target, base, target))
+    holder = checked_out(run, base)
+    if holder and os.path.realpath(holder) != run.repo:
+        raise Problem("%s is checked out in %s. Deliver from the checkout the run started in, or "
+                      "ask the user." % (base, holder))
+    if holder:
+        changed = [line[3:] for line in dirty(run.repo) if not line.startswith("??")
+                   and not inside(os.path.join(run.repo, line[3:].rstrip("/")), run.dir)]
+        if changed:
+            raise Problem("the checkout %s has uncommitted changes to tracked files: %s. They are "
+                          "the user's: ask the user before delivering." % (
+                              run.shown(run.repo), some(changed)))
+        result = git(run.repo, "merge", "--ff-only", "-q", target, check=False)
+    else:
+        result = git(run.repo, "fetch", "-q", ".", "refs/heads/%s:refs/heads/%s" % (target, base),
+                     check=False)
+    if result.returncode:
+        raise Problem("%s was not fast-forwarded to %s:\n%s" % (
+            base, target, (result.stdout + result.stderr).strip()))
+    run.state.setdefault("delivered", []).append({"commit": head, "gates": args.gates.strip()})
+    run.save()
+    print("Delivered: %s is now at %s, the head of %s. Nothing was pushed." % (
+        base, short(head), target))
+    return 0
+
+
+def checked_out(run, branch):
+    """The folder in which a branch is checked out, or None when it is checked out nowhere."""
+    folder = None
+    for line in git(run.repo, "worktree", "list", "--porcelain").stdout.splitlines():
+        if line.startswith("worktree "):
+            folder = line[len("worktree "):]
+        elif line == "branch refs/heads/" + branch:
+            return folder
+    return None
+
+
+def remove_order(run, name, home):
+    """Removes the tree and the branch of a merged order. Returns whether it did, and what happened.
+
+    `git worktree remove` takes the tree's ignored build output with it, and refuses a tree that
+    holds uncommitted or untracked work. `git branch -d` refuses a branch that is not merged.
+    """
+    tree, branch = run.tree(name), run.branch(name)
+    if os.path.isdir(tree):
+        result = git(run.repo, "worktree", "remove", tree, check=False)
+        if result.returncode:
+            return False, "its tree %s was not removed: %s" % (
+                run.shown(tree), result.stderr.strip())
+    if commit_of(run.repo, "refs/heads/" + branch):
+        result = git(home, "branch", "-d", branch, check=False)
+        if result.returncode:
+            return False, "its branch was not deleted: %s" % result.stderr.strip()
+    return True, "tree and branch removed; its commits are in %s." % run.branch(INTEGRATION)
+
+
 def clean(args):
     run = Run(args.plan)
     run.require_shape()
-    target, bad = run.branch(INTEGRATION), 0
+    bad = 0
     home = run.tree(INTEGRATION) if os.path.isdir(run.tree(INTEGRATION)) else run.repo
     for name, record in run.state["orders"].items():
         tree, branch = run.tree(name), run.branch(name)
@@ -1210,20 +1335,12 @@ def clean(args):
                   "agrees: git worktree remove --force %s && git branch -D %s" % (
                       name, why, branch, quoted(tree), branch))
             continue
-        if os.path.isdir(tree):
-            result = git(run.repo, "worktree", "remove", tree, check=False)
-            if result.returncode:
-                print("PROBLEM  %s: its tree was not removed: %s" % (name, result.stderr.strip()))
-                bad += 1
-                continue
-        if has_branch:
-            result = git(home, "branch", "-d", branch, check=False)
-            if result.returncode:
-                print("PROBLEM  %s: its branch was not deleted: %s" % (
-                    name, result.stderr.strip()))
-                bad += 1
-                continue
-        print("%s: tree and branch removed; its commits are in %s." % (name, target))
+        removed, text = remove_order(run, name, home)
+        if not removed:
+            print("PROBLEM  %s: %s" % (name, text))
+            bad += 1
+            continue
+        print("%s: %s" % (name, text))
     if args.integration and run.state["base_commit"]:
         bad += clean_integration(run)
     git(run.repo, "worktree", "prune", check=False)
@@ -1260,6 +1377,68 @@ def clean_integration(run):
     print("%s: tree and branch removed; its commits are in the branch checked out in %s." % (
         INTEGRATION, run.shown(run.repo)))
     return 0
+
+
+# ---------------------------------------------------------------------------------- disk
+
+# How long the disk footer may spend counting the current folder. A larger folder is reported as
+# "at least" what was counted in that time.
+DISK_SECONDS = 5
+
+
+def folder_size(folder, seconds):
+    """The bytes the files under a folder take on disk, and whether the count finished in time.
+
+    Counts the blocks each file takes, as `du` does, once per file however many links it has,
+    without following symbolic links.
+    """
+    total, seen, stack = 0, set(), [folder]
+    stop = time.monotonic() + seconds
+    while stack:
+        if time.monotonic() > stop:
+            return total, False
+        try:
+            entries = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with entries:
+            for entry in entries:
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                    is_folder = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    continue
+                if is_folder:
+                    stack.append(entry.path)
+                elif info.st_nlink > 1:
+                    if (info.st_dev, info.st_ino) in seen:
+                        continue
+                    seen.add((info.st_dev, info.st_ino))
+                total += getattr(info, "st_blocks", 0) * 512 or info.st_size
+    return total, True
+
+
+def amount(size):
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return ("%d %s" if unit == "bytes" else "%.1f %s") % (size, unit)
+        size /= 1024.0
+
+
+def disk_footer(program):
+    """Ends every command with what the current folder takes on disk, and what its disk has free."""
+    sys.stdout.flush()
+    try:
+        here = os.getcwd()
+        size, whole = folder_size(here, DISK_SECONDS)
+        free = shutil.disk_usage(here)
+    except OSError as error:
+        print("%s: disk: could not be measured: %s" % (program, error), file=sys.stderr)
+        return
+    print("%s: disk: the current folder %s takes %s%s%s; its disk has %s free of %s." % (
+        program, here, "" if whole else "at least ", amount(size),
+        "" if whole else " (counting stopped after %g s)" % DISK_SECONDS,
+        amount(free.free), amount(free.total)), file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------------- main
@@ -1325,18 +1504,27 @@ def parser():
                      help="a file with what you found, or - to read it from standard input")
     one.set_defaults(run_command=rework)
 
-    one = commands.add_parser("merge", help="merge an order into the integration branch")
+    one = commands.add_parser(
+        "merge", help="merge an order into the integration branch, and remove its tree and branch")
     one.add_argument("plan", metavar="PLAN")
     one.add_argument("order", metavar="ORDER")
     one.add_argument("--checked", required=True, metavar="TEXT",
                      help="what you ran and read yourself before accepting the order")
     one.set_defaults(run_command=merge)
 
+    one = commands.add_parser(
+        "deliver", help="fast-forward the branch the run started from to the integration branch")
+    one.add_argument("plan", metavar="PLAN")
+    one.add_argument("--gates", required=True, metavar="TEXT",
+                     help="which gates you ran in the integration tree, and that they passed")
+    one.set_defaults(run_command=deliver)
+
     one = commands.add_parser("status", help="show where every order and criterion stands")
     one.add_argument("plan", metavar="PLAN")
     one.set_defaults(run_command=status)
 
-    one = commands.add_parser("clean", help="remove the trees and branches of merged orders")
+    one = commands.add_parser(
+        "clean", help="remove the trees and branches of merged orders that are still there")
     one.add_argument("plan", metavar="PLAN")
     one.add_argument("--integration", action="store_true",
                      help="also remove the integration tree and branch, once the result is in "
@@ -1346,6 +1534,13 @@ def parser():
 
 
 def main(argv=None):
+    try:
+        return command_line(argv)
+    finally:
+        disk_footer("brigade.py")
+
+
+def command_line(argv):
     args = parser().parse_args(argv)
     if args.command == "init" and args.criteria_from and args.criterion:
         print("brigade.py: give --criteria-from or --criterion, not both.", file=sys.stderr)
