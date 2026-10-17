@@ -49,6 +49,8 @@ Evidence is made by a script, so that it can be made again from the final code, 
 
 Do not edit a script while it is running: the shell reads it as it goes. Run a changed script in another new work folder.
 
+Keep the script in the evidence folder, beside what it writes, and name it in the row's `made_by`.
+
 A script in bash can start from this:
 
 ```bash
@@ -81,6 +83,10 @@ cd "$W"
     echo "after the run, the output folder holds: $(ls -A out | tr '\n' ' ')"
 } > "$EV/c1-<what-it-shows>.txt" 2>&1
 ```
+
+## Comparing a rerun
+
+A script writes its evidence over the files of its last run. Before you run it again to compare (at the close, or to check a subagent's work), copy the evidence folder into a new folder under `work/`, such as `work/before-close/`. Compare each new file with its copy: `diff` for text, a hash or a pixel count for a picture. Then delete the copy by its exact path, like any work folder. Never keep the copy in the evidence folder: every file there must be named by a row.
 
 ## The transcript
 

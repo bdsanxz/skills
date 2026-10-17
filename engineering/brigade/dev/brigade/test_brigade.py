@@ -426,7 +426,8 @@ class BriefTest(unittest.TestCase):
                      "`npm ci`", "`npm test`", "`npm run lint`", "POST /orders takes {items}.",
                      "curl the endpoint", "Routes live in src/api/routes, one file each.",
                      "Build the checkout", "Build the api part.", project.dir,
-                     "Commit all of your work on `brigade/demo/api`"):
+                     "Commit all of your work on `brigade/demo/api`",
+                     "merge `brigade/demo/integration` into your copy"):
             self.assertIn(text, out)
         self.assertNotIn("- c2:", out)
         self.assertNotIn("Conventions you set", out)
@@ -827,6 +828,14 @@ class DeliverTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(project.at("src/api/new.txt")))
         self.assertEqual(project.state()["delivered"], [{"commit": head, "gates": "npm test passed"}])
         self.assertIn("Nothing to deliver", project.ok("deliver", "--gates", "again"))
+        self.assertIn("every merge is delivered", project.do("status")[1])
+
+    def test_status_says_what_is_not_delivered_and_where_the_run_started(self):
+        project, head = self.merged()
+        start = project.state()["base_commit"]
+        out = project.do("status")[1]
+        self.assertIn("Started from main at %s. main is now at %s: " % (start[:8], start[:8]), out)
+        self.assertIn("commits of the integration branch not delivered yet", out)
 
     def test_moves_a_branch_that_is_checked_out_nowhere(self):
         project, head = self.merged()

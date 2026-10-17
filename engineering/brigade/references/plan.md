@@ -9,7 +9,7 @@
 | `run` | The run name. It is part of every branch name: `brigade/<run>/<order>`. Written by `init`. |
 | `task` | The task in one line. Every work order carries it. |
 | `repo` | The repository, relative to the plan's own directory. Written by `init`; leave it. |
-| `base` | The branch or commit the run starts from. The integration branch is created from it. |
+| `base` | The branch the run starts from. The integration branch is created from it, and `brigade deliver` fast-forwards it to the integration branch after each merge that passes the gates. With a commit in place of a branch, nothing can be delivered, and the user decides where the result goes. |
 | `source` | The user's plan or tickets, when the orders and their dependencies are taken from one. Empty when you mapped the graph yourself. |
 | `trees` | Where the trees go, relative to the plan's directory. `trees` unless you have a reason. |
 | `setup` | The commands a fresh checkout needs before its gates can pass. Every work order carries them. |

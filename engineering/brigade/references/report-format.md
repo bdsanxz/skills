@@ -6,7 +6,7 @@ Write `report.md` in the run directory with these sections, in this order. Take 
 # Brigade report: <task>
 
 Result: <complete | not complete>. <n> of <n> criteria are met on the merged result.
-Where: branch `brigade/<run>/integration` at <commit>, started from <base> at <commit>.
+Where: branch `brigade/<run>/integration` at <commit>, started from <base> at <the commit `brigade status` names after "Started from">.
 Delivered into <branch> at <commit> by fast-forward <, or: what is not delivered yet, and why>. <Pushed | not pushed>.
 Gates on the merged result: <each gate with its result: tests <n> passed, <n> failed, <n> skipped; linter; and so on>.
 Left on disk: <the size of the run directory, from `du -sh`>, <the trees still in it and why>.
@@ -55,4 +55,4 @@ Rules for the text:
 - A criterion is "met" only when you checked it yourself on the integration branch, after the last merge. An order's own check in its tree, before the merge, does not count for this table.
 - A result given as a number is copied from the output of a run on the merged result, not from a subagent's report and not from memory.
 - Name report files by their paths in the run directory, so that the reader can open them. Say when a report was saved by you from a subagent's reply, and not written by the subagent.
-- Say whether anything was merged into the user's branch or pushed.
+- Say what was delivered into the user's branch, what was not and why, and whether anything was pushed.

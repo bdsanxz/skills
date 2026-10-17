@@ -22,7 +22,8 @@ subagent, which names the file the subagent writes its report to. `inspect` comp
 order's branch holds with what the order allows, and refuses an order whose report is not on file.
 `rework` opens a new round for an order that was not accepted, and writes its rework order.
 `merge` merges an inspected order into the integration branch, then removes the order's tree, with
-its build output, and its branch, whose commits are now in the integration branch. `status` shows
+its build output, and its branch, whose commits are now in the integration branch, and keeps only
+the .txt and .md files of the lead's checks of the order. `status` shows
 where every order and criterion stands. `deliver` fast-forwards the branch the run started from to
 the integration branch, once the gates have passed there. `clean` removes the trees and branches of merged orders
 that are still there.
@@ -966,7 +967,8 @@ def brief(args):
     out.append("- When this order is unclear, contradicts itself or cannot be done, stop and "
                "report. Do not guess, and do not choose for the user.")
     out.append("- Do not push, merge, rebase, reset, switch branches, or create branches or "
-               "worktrees. Do not install anything outside your copy.")
+               "worktrees. The one exception: when a rework order asks you to, merge `%s` into "
+               "your copy. Do not install anything outside your copy." % run.branch(INTEGRATION))
     out.append("- A file you need only for a check goes inside your copy, and is removed before "
                "your last commit.")
     out.append("")
@@ -1197,9 +1199,21 @@ def status(args):
         print("  %-4s %-22s %s" % (criterion["id"], where, cut(criterion["text"], 70)))
     if run.state["base_commit"]:
         branch = run.branch(INTEGRATION)
+        head = commit_of(run.repo, branch)
         print("Integration: %s at %s, in %s." % (
-            branch, short(commit_of(run.repo, branch) or "gone"),
-            run.shown(run.tree(INTEGRATION))))
+            branch, short(head or "gone"), run.shown(run.tree(INTEGRATION))))
+        base, start = run.plan["base"], run.state["base_commit"]
+        now = commit_of(run.repo, "refs/heads/" + base)
+        if not now:
+            print("Started from %s (%s), which is not a branch: nothing is delivered." % (
+                base, short(start)))
+        else:
+            ahead = int(said(git(run.repo, "rev-list", "--count", "%s..%s" % (base, branch))))
+            print("Started from %s at %s. %s is now at %s: %s." % (
+                base, short(start), base, short(now),
+                "every merge is delivered" if not ahead else
+                "%d commit%s of the integration branch not delivered yet" % (
+                    ahead, "" if ahead == 1 else "s")))
     ready = [name for name in states if states[name] == "ready"]
     if ready:
         print("Ready to start now: %s." % ", ".join(ready))

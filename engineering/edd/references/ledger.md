@@ -72,8 +72,15 @@ For a `proven` row:
 For the whole ledger:
 
 - a file in the evidence folder that no row names: a superseded capture or a leftover;
-- a `user-check` row with no `note`; a `waived` row with no `accepted` or no `note`.
+- a `user-check` row with no `note`, or whose helper script in `made_by` is missing or empty; a `waived` row with no `accepted` or no `note`;
+- an evidence file, a script or a test log that lies in the `work/` folder beside the ledger, which is deleted after use;
+- once every criterion is closed, a `work/` folder that still holds anything. While criteria are open, this is a note.
 
-It also notes evidence files that hold the same bytes under two names. Keep both only when that is intended, such as the same output proving two criteria in two runs.
+It also notes:
+
+- evidence files that hold the same bytes under two names. Keep both only when that is intended, such as the same output proving two criteria in two runs;
+- an evidence folder larger than 100 MB, with its largest files, and every picture or recording larger than 5 MB.
+
+`ledger prune` deletes the `work/` folder of a run that `check` finds closed and backed apart from that folder, and checks the ledger again. It deletes nothing while a row is `open` or `user-check`.
 
 `ledger table` prints the rows as a Markdown table, and prints nothing while a problem stands.

@@ -60,8 +60,9 @@ Your task ends with a report in a file. The lead's conversation can be compacted
 1. Do what the task asks, as it is written, and nothing more.
 2. Work only where the task tells you to. For a work order, that is its copy of the repository, on its branch. For an exploration or a review, change no file at all.
 3. Leave no trace outside that folder. Do not copy the repository, do not build into a folder outside it, and do not write to the system's temporary folder. A file you need only for a check goes inside your folder and is removed before you report. Stop every process you started before you report.
-4. As you go, keep what the report needs: each command you ran with its exit code and its last lines, each file you changed, each assumption you made, each thing you saw and did not do.
-5. When the task is unclear, contradicts itself or cannot be done, stop working on it. Do not guess. Go to step 3: a blocked task gets a report too.
+4. Put a time limit on every command that can hang, and keep it under any limit the task sets: split a longer run into parts that each end within it, and never shorten what it measures to fit. A script that starts helper processes, such as watchers or load generators, stops them itself, and waits only for the process ids it means to wait for: a bare `wait` also waits for helpers that never end.
+5. As you go, keep what the report needs: each command you ran with its exit code and its last lines, each file you changed, each assumption you made, each thing you saw and did not do.
+6. When the task is unclear, contradicts itself or cannot be done, stop working on it. Do not guess. Go to section 3: a blocked task gets a report too.
 
 ## 3. Write the report file
 
@@ -82,5 +83,7 @@ The report file is the only file you write outside the folder the task gave you.
 ## 4. Reply
 
 End with one line: your result (done, partly done, or blocked) and the path of the report file.
+
+Do not reply while a command you started is still running. Your harness tells you when it ends: wait for that, or stop the command, and write the report from what it printed. A reply sent while your runs go on ends your work early, and the lead has to send you a message to continue.
 
 If the file could not be written, say so, and give the whole report in the reply instead, so that the lead can save it.
