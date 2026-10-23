@@ -1,7 +1,7 @@
 ---
 name: peers-roster-design
 description: |
-  Designs and sets up a squad: a team of long-lived agent sessions (Claude Code, OpenCode, Antigravity CLI) that work in their own directories and talk to each other through the peers skill. You, the designer, are not a member. When the request leaves the design open, guides the user step by step, one question at a time with a proposed default: the squad's goal and members, then each member's role, communications, project, memory and skills, finding skills on skills.sh and with `npx -y skills@latest find`. After the user confirms the full roster, writes each member's PROJECT.md, ROLE.md, COMMUNICATIONS.md and MEMORY.md and runs one script. The script checks the design, writes each member's CLAUDE.md or AGENTS.md to reference those files by path (never copying them), installs `peers` and the agreed skills into each member's directory with `npx -y skills@latest`, and configures the peers channel MCP server at project scope for Claude Code members. Each member runs its own agent (claude, opencode or agy), model and effort level, with roster defaults and launch-time overrides, and may have a human-readable name that its files, messages and herdr pane show. Optionally launches the squad in herdr, in one workspace laid out by its hierarchy (the supervisor's pane largest, on top; at most five members per window), starting each member with its agent's own command, model and effort (for OpenCode, set through its API). Use this skill whenever the user wants to create, design, set up, staff, extend or reorganize a squad or team of agents, give agents standing roles, or prepare directories for multi-agent work with peers. Do not use it to message existing peers; use the peers skill for that.
+  Designs and sets up a squad: a team of long-lived agent sessions (Claude Code, OpenCode, Antigravity CLI) that work in their own directories and talk to each other through the peers skill. You, the designer, are not a member. When the request leaves the design open, guides the user step by step, one question at a time with a proposed default: the squad's goal and members, then each member's role, communications, project, memory and skills, finding skills on skills.sh and with `npx -y skills@latest find`. After the user confirms the full roster, writes each member's PROJECT.md, ROLE.md, COMMUNICATIONS.md and MEMORY.md and runs one script. The script checks the design, installs the `peers` CLI when it is missing, writes each member's CLAUDE.md or AGENTS.md to reference those files by path (never copying them), installs the `peers` skill and the agreed skills into each member's directory with `npx -y skills@latest`, and configures the peers channel MCP server at project scope for Claude Code members. Each member runs its own agent (claude, opencode or agy), model and effort level, with roster defaults and launch-time overrides, and may have a human-readable name that its files, messages and herdr pane show. Optionally launches the squad in herdr, in one workspace laid out by its hierarchy (the supervisor's pane largest, on top; at most five members per window), starting each member with its agent's own command, model and effort (for OpenCode, set through its API). Use this skill whenever the user wants to create, design, set up, staff, extend or reorganize a squad or team of agents, give agents standing roles, or prepare directories for multi-agent work with peers. Do not use it to message existing peers; use the peers skill for that.
 ---
 
 # Peers roster design
@@ -27,7 +27,7 @@ Before Steps 1, 3 and 6, read that step's part of `references/tips.md`: the mist
 
 ## Step 1: Read the request and choose how to proceed
 
-1. Read the request and every file it names. Check which agents are installed with `command -v claude opencode agy`, which models they offer with `opencode models` and `agy models`, and which effort levels each model has with `opencode api model.list` (each model's `variants`) and `agy models` (one id per level, such as `gemini-3.8-flash-low`); use only agents that are installed and signed in.
+1. Read the request and every file it names. Check which agents are installed with `command -v claude opencode agy`, which models they offer with `opencode models` and `agy models`, and which effort levels each model has with `opencode api model.list` (each model's `variants`) and `agy models` (one id per level, such as `gemini-3.8-flash-low`); use only agents that are installed and signed in. Check for the `peers` CLI with `command -v peers || ls ~/.local/bin/peers`; when it is missing, `build` installs it in Step 5, so only note it for the summary.
 2. Look up what you can instead of asking: the repository's URL, default branch, layout, and build and test commands come from the repository itself.
 3. Decide how much to ask:
    - The request settles the goal, the members, and each member's role, links, project and skills: fill any small gap with a sensible default, then go to Step 4.
@@ -75,7 +75,7 @@ Show the whole design in one message:
 
 - the squad's goal, the workspace path and the repositories;
 - a table with one row per member: name, human-readable name, agent, model and effort (or "agent default"), role summary, reports to, talks to, skills, and any `defaults` the roster sets;
-- what Step 5 will do: create any new repository, the workspace and each member's cwd, write the files, and run `npx -y skills@latest add ...` in each member's cwd for `peers` and its skills; for Claude Code members, also configure the peers channel.
+- what Step 5 will do: install the `peers` CLI when Step 1 found it missing, create any new repository, the workspace and each member's cwd, write the files, and run `npx -y skills@latest add ...` in each member's cwd for `peers` and its skills; for Claude Code members, also configure the peers channel.
 
 Ask one question: create the squad as shown, or change something. Apply each change, show the changed rows, and ask again until the user confirms. When the request itself said to create the squad without asking, the summary is enough: show it and go on.
 
@@ -125,7 +125,13 @@ Ask one question: create the squad as shown, or change something. Apply each cha
    python3 scripts/roster.py build <workspace>
    ```
 
-   For each member it:
+   First, when no `peers` binary is on `PATH` or in `~/.local/bin`, it installs the `peers` CLI with its release install script and prints `INSTALLED peers <version> at <path>`. While the `peers` repository is private, the script needs a GitHub token: `GITHUB_TOKEN`, or the token of a GitHub CLI signed in with `gh auth login`. When the install fails, `build` stops before it touches any member and prints the script's output:
+   - It cannot fetch the script, or the output says the repository is private: ask the user to sign in with `gh auth login` in their own terminal, or to set `GITHUB_TOKEN`, then build again. Never ask for the token itself.
+   - Any other failure: show the user the output and the manual command it prints.
+
+   When the `INSTALLED` line ends with a `WARNING` that the directory is not on `PATH`, members cannot run `peers`. Tell the user to add the directory to `PATH` in their shell profile, and to restart herdr from their own terminal before Step 6, so the members inherit it.
+
+   Then, for each member, it:
 
    1. Writes the instruction file the agent loads on start: `CLAUDE.md` (claude) or `AGENTS.md` (opencode, agy). It references the four files by path and never copies them, so each stays the one source of truth: `CLAUDE.md` imports them with `@<path>`, which Claude Code loads itself, and `AGENTS.md` lists their paths and tells the member to read them first in every session. It adds a squad directory table (each member's agent, model, effort, summary, directory and boss) and how to find addresses.
    2. Installs `peers` and the member's skills into its cwd with `npx -y skills@latest add <source> --skill <name> -a <agent> -y --copy`: into `.claude/skills/` for claude, `.agents/skills/` for opencode and agy.
@@ -145,7 +151,7 @@ The whole squad lives in one herdr workspace, `squad-<squad>`, laid out by its h
 1. Preview it: `python3 scripts/roster.py launch <workspace> --dry-run`. It validates everything and prints the herdr commands it would run, and starts and changes nothing. When it prints `PROBLEM` lines, nothing will launch; fix each one:
    - No running herdr session: ask the user to start herdr from their own terminal, and continue once they say it runs. `--session <name>` picks a session other than the default one.
    - An agent's command missing, a model the agent does not list, or an effort level the model does not have: install or sign in to the agent, or choose another model or level with the user and update `roster.json`.
-   - A member not built: run Step 5's `build` first.
+   - A member not built, or the `peers` CLI not installed: run Step 5's `build` first.
    - The session already holds the squad's workspace: the squad, or part of it, still runs. Start only the members that are missing, each with `--member <name>`. To start the whole squad again, ask the user first, then stop the members' sessions and close the workspace with the command the `PROBLEM` line gives.
    - A member that still has a pane, with `--member`: stop its session and close that pane first, or leave the member running.
    - A `layout:` fault: the layout settings in `scripts/roster.py` are wrong; set them back to values that pass.
@@ -169,4 +175,4 @@ Guide each change the way Step 3 designs a member: one question at a time with a
 
 ## Report
 
-Tell the user, briefly: the workspace path; each member's name and human-readable name, agent, model, effort, role summary and whom it reports to; the skills each received; anything you could not set up and why; and, if you launched the squad, the lead's address and the herdr session holding it. Delete the draft file once the squad is built.
+Tell the user, briefly: whether `build` installed the `peers` CLI, and where; the workspace path; each member's name and human-readable name, agent, model, effort, role summary and whom it reports to; the skills each received; anything you could not set up and why; and, if you launched the squad, the lead's address and the herdr session holding it. Delete the draft file once the squad is built.
