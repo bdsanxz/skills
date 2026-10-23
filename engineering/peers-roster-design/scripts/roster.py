@@ -59,20 +59,15 @@ medium effort:
     {"name": "docs", "agent": "opencode", ...},
     {"name": "web", "agent": "agy", "model": "gemini-3.8-flash", "effort": "medium", ...}]
 
-Layout: the whole squad lives in one herdr workspace, squad-<squad>. A window
-is one tab of it, labelled "<squad> <n>", and holds at most MEMBERS_PER_WINDOW
-members. Window 1 puts the supervisor, the member that reports to "user",
-in a pane across the top, SUPERVISOR_SHARE of its height, and the
-members below it in the hierarchy side by side underneath. The members that do
-not fit fill further windows of the same workspace, in hierarchy order (steps
-of reports_to from "user", then roster order), in rows of at most
-MEMBERS_PER_ROW panes; no window is left with a lone member, whose pane
-would be larger than the supervisor's. The three settings sit at the top of
-roster.py's Layout section, and plan_layout() is the one place that places
-members. check and launch print one WINDOW line per window and validate the
-layout first: every member in exactly one window, no window over the limit,
-and the supervisor alone on top with the largest pane; a failed check is a
-`PROBLEM layout: ...` line. The settings now: {settings}.
+Layout: the whole squad lives in one herdr workspace, squad-<squad>, with
+one tab per member. Each tab holds one pane that fills it, and both are
+labelled with the member's display name. The tabs follow the hierarchy: the
+supervisor, the member that reports to "user", first, then the others by
+steps of reports_to from "user", then in roster order. plan_layout() in
+roster.py's Layout section is the one place that orders them. check and launch
+print one TAB line per member and validate the plan first: every member in
+exactly one tab, the supervisor in tab 1; a failed check is a
+`PROBLEM layout: ...` line.
 
 Exit codes: 0 on success, 1 when the roster has problems or a step fails
 (the output says why), 2 on a usage error.
@@ -899,26 +894,18 @@ def cmd_build(args):
 
 
 # ---------------------------------------------------------------------------
-# Layout. These settings and plan_layout() decide where every member's pane
-# goes; launch only carries the plan out. Change the layout here, and only here.
+# Layout. plan_layout() decides where every member goes; launch only carries
+# the plan out. Change the layout here, and only here.
 # ---------------------------------------------------------------------------
-# The whole squad lives in one herdr workspace. A window is one tab of it. The
-# first window puts the supervisor, the member that reports to "user", in a pane
-# across the top, and the members below it in the hierarchy underneath; the
-# members that do not fit go to further windows of the same workspace, in
-# hierarchy order: by how many steps of reports_to separate them from "user",
-# then by their order in roster.json.
-MEMBERS_PER_WINDOW = 5   # the most members one window holds, the supervisor included
-SUPERVISOR_SHARE = 0.6   # the share of the first window's height the supervisor's pane takes
-MEMBERS_PER_ROW = 4      # the most panes side by side in one row, so that none gets too narrow
+# The whole squad lives in one herdr workspace. Each member has a tab of its
+# own, holding one pane that fills it; tab and pane are labelled with the
+# member's display name. The tabs follow the hierarchy: the supervisor, the
+# member that reports to "user", first, then the others by how many steps of
+# reports_to separate them from "user", then by their order in roster.json.
 
 
 def workspace_label(roster):
     return f"squad-{roster['squad']}"
-
-
-def window_label(roster, number):
-    return f"{roster['squad']} {number}"
 
 
 def hierarchy(members):
@@ -934,126 +921,49 @@ def hierarchy(members):
     return sorted(members, key=lambda m: (depth(m["name"]), members.index(m)))
 
 
-def rows_of(names, height):
-    """Rows of at most MEMBERS_PER_ROW names, as even as possible, sharing height equally."""
-    if not names:
-        return []
-    count = -(-len(names) // MEMBERS_PER_ROW)
-    size, extra = divmod(len(names), count)
-    rows, start = [], 0
-    for r in range(count):
-        n = size + (1 if r < extra else 0)
-        rows.append({"share": height / count, "members": names[start:start + n]})
-        start += n
-    return rows
-
-
 def plan_layout(members):
-    """The squad's windows: [{"number": n, "rows": [{"share": height share, "members": [names]}]}]."""
-    names = [m["name"] for m in hierarchy(members)]
-    if not names:
-        return []
-    supervisor, rest = names[0], names[1:]
-    groups = [rest[:MEMBERS_PER_WINDOW - 1]]
-    rest = rest[MEMBERS_PER_WINDOW - 1:]
-    while rest:
-        groups.append(rest[:MEMBERS_PER_WINDOW])
-        rest = rest[MEMBERS_PER_WINDOW:]
-    # A member alone in a window would get a pane larger than the supervisor's:
-    # give it the last member of the window before, which keeps the hierarchy order.
-    if len(groups) > 1 and len(groups[-1]) == 1 and groups[-2]:
-        groups[-1].insert(0, groups[-2].pop())
-    top = SUPERVISOR_SHARE if groups[0] else 1.0
-    windows = [{"number": 1, "rows": [{"share": top, "members": [supervisor]}] + rows_of(groups[0], 1.0 - top)}]
-    for group in groups[1:]:
-        windows.append({"number": len(windows) + 1, "rows": rows_of(group, 1.0)})
-    return windows
+    """The squad's tabs, in order: [{"number": n, "member": name}]."""
+    return [{"number": i + 1, "member": m["name"]} for i, m in enumerate(hierarchy(members))]
 
 
-def window_members(window):
-    return [n for row in window["rows"] for n in row["members"]]
-
-
-def pane_areas(window):
-    """Each member's share of its window's area."""
-    return {n: row["share"] / len(row["members"]) for row in window["rows"] for n in row["members"]}
-
-
-def layout_problems(windows, members):
-    """What is wrong with a layout: each member in exactly one window, none over the limit,
-    the supervisor alone across the top of the first window with the largest pane."""
+def layout_problems(tabs, members):
+    """What is wrong with a layout: each member in exactly one tab, the supervisor in the first."""
     problems = []
-    if not (isinstance(MEMBERS_PER_WINDOW, int) and MEMBERS_PER_WINDOW >= 1):
-        problems.append(f"MEMBERS_PER_WINDOW is {MEMBERS_PER_WINDOW!r}; it must be a whole number of at least 1")
-    if not (isinstance(MEMBERS_PER_ROW, int) and MEMBERS_PER_ROW >= 1):
-        problems.append(f"MEMBERS_PER_ROW is {MEMBERS_PER_ROW!r}; it must be a whole number of at least 1")
-    if not (isinstance(SUPERVISOR_SHARE, (int, float)) and 0 < SUPERVISOR_SHARE < 1):
-        problems.append(f"SUPERVISOR_SHARE is {SUPERVISOR_SHARE!r}; it must be between 0 and 1")
-    if problems or not members:
+    if not members:
         return problems
     placed = {}
-    for w in windows:
-        names = window_members(w)
-        if not names:
-            problems.append(f"window {w['number']} holds no member")
-        if len(names) > MEMBERS_PER_WINDOW:
-            problems.append(f"window {w['number']} holds {len(names)} members; at most {MEMBERS_PER_WINDOW} fit")
-        if abs(sum(r["share"] for r in w["rows"]) - 1.0) > 1e-6:
-            problems.append(f"window {w['number']}'s rows do not fill its height")
-        for n in names:
-            placed.setdefault(n, []).append(w["number"])
+    for t in tabs:
+        placed.setdefault(t["member"], []).append(t["number"])
     for m in members:
         where = placed.pop(m["name"], [])
         if len(where) != 1:
-            problems.append(f"member {m['name']!r} is in {len(where)} windows ({', '.join(map(str, where)) or 'none'}); "
+            problems.append(f"member {m['name']!r} is in {len(where)} tabs ({', '.join(map(str, where)) or 'none'}); "
                             "it must be in exactly one")
     for n in placed:
         problems.append(f"the layout places {n!r}, who is not a member")
     supervisor = hierarchy(members)[0]["name"]
-    first = windows[0]["rows"][0]["members"] if windows and windows[0]["rows"] else []
-    if first != [supervisor]:
-        problems.append(f"the supervisor {supervisor!r} is not alone across the top of window 1")
-    areas = {n: a for w in windows for n, a in pane_areas(w).items()}
-    larger = [n for n, a in areas.items() if n != supervisor and a >= areas.get(supervisor, 0)]
-    if larger:
-        problems.append(f"the supervisor {supervisor!r} does not have the largest pane: "
-                        f"{', '.join(larger)} {'has' if len(larger) == 1 else 'have'} one as large or larger")
+    if not tabs or tabs[0]["member"] != supervisor:
+        problems.append(f"the supervisor {supervisor!r} is not in tab 1")
     return problems
 
 
-def layout_lines(roster, windows, by_name):
-    """One WINDOW line per window: its tab label, then each row's members and their share of the window."""
-    lines = []
-    for w in windows:
-        areas = pane_areas(w)
-        rows = " / ".join(", ".join(f"{n}{shown(by_name[n])} {areas[n]:.0%}" for n in r["members"]) for r in w["rows"])
-        lines.append(f"WINDOW {w['number']} (tab {window_label(roster, w['number'])!r}, "
-                     f"{len(window_members(w))} of at most {MEMBERS_PER_WINDOW} members): {rows}")
-    return lines
-
-
-def split_steps(window, present):
-    """How to build a window from its first pane, for the members in present only.
-
-    Returns [(member, None, None, None)] for the first pane, then one
-    (member, target member, direction, ratio) per pane: split the target's pane in
-    that direction, the target keeping ratio of it. Rows are split off top to
-    bottom first, then each row into its columns, so every row spans the window.
-    """
-    rows = [dict(r, members=[n for n in r["members"] if n in present]) for r in window["rows"]]
-    rows = [r for r in rows if r["members"]]
-    if not rows:
-        return []
-    total = sum(r["share"] for r in rows)
-    steps = [(rows[0]["members"][0], None, None, None)]
-    for i in range(1, len(rows)):
-        left = sum(r["share"] for r in rows[i - 1:]) / total
-        steps.append((rows[i]["members"][0], rows[i - 1]["members"][0], "down", round(rows[i - 1]["share"] / total / left, 4)))
-    for r in rows:
-        n = len(r["members"])
-        for j in range(1, n):
-            steps.append((r["members"][j], r["members"][j - 1], "right", round(1 / (n - j + 1), 4)))
+def tab_steps(tabs, running, wanted):
+    """What launch does to the tabs, in order: ("open", tab) for each wanted member that does not run,
+    and ("move", tab) for each running member after the first tab opened, since herdr adds a tab last."""
+    steps, opened = [], False
+    for t in tabs:
+        if t["member"] in running:
+            if opened:
+                steps.append(("move", t))
+        elif t["member"] in wanted:
+            steps.append(("open", t))
+            opened = True
     return steps
+
+
+def layout_lines(roster, tabs, by_name):
+    """One TAB line per member's tab, in order."""
+    return [f"TAB {t['number']} {display(by_name[t['member']])!r}: {t['member']}" for t in tabs]
 
 
 # ---------------------------------------------------------------------------
@@ -1092,7 +1002,8 @@ class Herdr:
         if self.dry_run:
             self.count += 1
             return {"workspace": {"workspace_id": "<workspace>"}, "tab": {"tab_id": f"<tab-{self.count}>"},
-                    "root_pane": {"pane_id": f"<pane-{self.count}>"}, "pane": {"pane_id": f"<pane-{self.count}>"}}
+                    "root_pane": {"pane_id": f"<pane-{self.count}>"}, "pane": {"pane_id": f"<pane-{self.count}>"},
+                    "move_result": {"created_tab": {"tab_id": f"<tab-{self.count}>"}}}
         try:
             return json.loads(text)["result"]
         except (ValueError, KeyError, TypeError):
@@ -1198,82 +1109,45 @@ def settings_change(m):
 
 
 def squad_state(h, roster):
-    """The squad's workspace in herdr, if it exists: (workspace id or None, {tab label: tab id}, [panes])."""
+    """The squad's workspace in herdr, if it exists: (workspace id or None, [its panes])."""
     found = [w for w in h.query("workspace", "list").get("workspaces", []) if w.get("label") == workspace_label(roster)]
     if not found:
-        return None, {}, []
+        return None, []
     ws = found[0]["workspace_id"]
-    tabs = {t.get("label"): t["tab_id"] for t in h.query("tab", "list", "--workspace", ws).get("tabs", [])}
-    return ws, tabs, h.query("pane", "list", "--workspace", ws).get("panes", [])
+    return ws, h.query("pane", "list", "--workspace", ws).get("panes", [])
 
 
-def lay_out_window(h, roster, workspace, window, by_name, ws, tab, panes, new, made_for):
-    """Build one window of the plan in the squad's workspace; return the workspace id.
+def open_tab(h, roster, workspace, m, ws):
+    """Open the member's own tab, last in the squad's workspace, which it creates when ws is None.
 
-    new: the members to start here, each in a pane split for it. Any other member
-    of the window that already runs (its pane carries its label) is moved into
-    its place. ws and tab are the squad's workspace and this window's tab, or None
-    when they do not exist yet; panes: every pane in that workspace. made_for
-    receives {member: pane id} for each new member's pane as soon as it exists.
-    """
-    label_of = {display(by_name[n]): n for n in window_members(window)}
-    running = {label_of[p["label"]]: p["pane_id"] for p in panes if p.get("label") in label_of}
-    steps = split_steps(window, set(new) | set(running))
-    if not steps:
-        return ws
-    cwd = {n: os.path.join(workspace, by_name[n]["cwd"]) for n in window_members(window)}
-    root, label, park = steps[0][0], window_label(roster, window["number"]), None
+    Returns (workspace id, pane id): the tab's one pane, in the member's cwd."""
+    cwd, label = os.path.join(workspace, m["cwd"]), display(m)
     if ws is None:
-        made = h.created("workspace", "create", "--cwd", cwd[root], "--label", workspace_label(roster), "--no-focus")
-        anchor = made["root_pane"]["pane_id"]
-        ws = (made.get("workspace") or {}).get("workspace_id") or anchor.split(":")[0]
-        tab = (made.get("tab") or {}).get("tab_id") or f"{ws}:t1"
-        h.run("tab", "rename", tab, label)
-    elif tab is None:
-        made = h.created("tab", "create", "--workspace", ws, "--cwd", cwd[root], "--label", label, "--no-focus")
-        anchor, tab = made["root_pane"]["pane_id"], made["tab"]["tab_id"]
+        made = h.created("workspace", "create", "--cwd", cwd, "--label", workspace_label(roster), "--no-focus")
+        pane = made["root_pane"]["pane_id"]
+        ws = (made.get("workspace") or {}).get("workspace_id") or pane.split(":")[0]
+        h.run("tab", "rename", (made.get("tab") or {}).get("tab_id") or f"{ws}:t1", label)
     else:
-        # Rebuild the existing window: split a fresh pane to build from, and park
-        # every other pane of the window in a tab of its own while the window fills.
-        here = [p["pane_id"] for p in panes if p.get("tab_id") == tab]
-        anchor = h.created("pane", "split", here[0], "--direction", "down", "--cwd", cwd[root],
-                           "--no-focus")["pane"]["pane_id"]
-        parked = h.created("tab", "create", "--workspace", ws, "--cwd", workspace,
-                           "--label", f"{roster['squad']} parked", "--no-focus")
-        park = parked["root_pane"]["pane_id"]
-        for p in here:
-            h.run("pane", "move", p, "--tab", parked["tab"]["tab_id"], "--target-pane", park, "--split", "right",
-                  "--no-focus")
-    placed = {}
-    if root in running:
-        h.run("pane", "move", running[root], "--tab", tab, "--target-pane", anchor, "--split", "right", "--no-focus")
-        h.run("pane", "close", anchor)
-        placed[root] = running[root]
-    else:
-        placed[root] = made_for[root] = anchor
-    for n, target, direction, ratio in steps[1:]:
-        if n in running:
-            h.run("pane", "move", running[n], "--tab", tab, "--target-pane", placed[target], "--split", direction,
-                  "--ratio", str(ratio), "--no-focus")
-            placed[n] = running[n]
-        else:
-            try:
-                placed[n] = made_for[n] = h.created("pane", "split", placed[target], "--direction", direction,
-                                                    "--ratio", str(ratio), "--cwd", cwd[n], "--no-focus")["pane"]["pane_id"]
-            except LaunchError as e:
-                raise LaunchError(f"could not make {n}'s pane in window {window['number']}: {e}")
-    if park:
-        h.run("pane", "close", park)  # the parked tab closes with its last pane
-    for n in new:
-        h.run("pane", "rename", placed[n], display(by_name[n]))  # herdr shows the label above the pane; --member finds it
-    return ws
+        pane = h.created("tab", "create", "--workspace", ws, "--cwd", cwd, "--label", label,
+                         "--no-focus")["root_pane"]["pane_id"]
+    h.run("pane", "rename", pane, label)  # --member finds a running member by its pane's label
+    return ws, pane
+
+
+def move_to_end(h, m, pane):
+    """Move a running member's pane into a new last tab, without restarting it; herdr closes the emptied tab."""
+    made = h.created("pane", "move", pane, "--new-tab", "--no-focus")
+    tab = ((made.get("move_result") or {}).get("created_tab") or {}).get("tab_id")
+    if not tab:
+        raise LaunchError(f"`herdr pane move {pane} --new-tab` reported no new tab for {m['name']}")
+    h.run("tab", "rename", tab, display(m))
 
 
 def cmd_launch(args):
     workspace = os.path.abspath(args.workspace)
     roster = load_roster(workspace)
     problems, notes, members = roster_problems(workspace, roster, overrides_of(args), strict=True)
-    session, windows, state = None, [], (None, {}, [])
+    session, tabs, state = None, [], (None, [])
     if not peers_installed():
         problems.append(f"the peers CLI is not installed; run `python3 {SCRIPT} build {workspace}` first, "
                         "which installs it")
@@ -1281,7 +1155,7 @@ def cmd_launch(args):
         session, why = herdr_session(args.session)
         if why:
             problems.append(why)
-        windows = plan_layout(members)
+        tabs = plan_layout(members)
     if session:
         state = squad_state(Herdr(session, True), roster)
     ws = state[0]
@@ -1298,7 +1172,7 @@ def cmd_launch(args):
             rebuild.append(m)
         elif built.get("model") != m["model"] or built.get("effort") != m["effort"]:
             retune.append(m)
-        held = [p["pane_id"] for p in state[2] if p.get("label") == display(m)]
+        held = [p["pane_id"] for p in state[1] if p.get("label") == display(m)]
         if args.member and held:
             problems.append(f"member {m['name']!r} already has pane {held[0]} in the squad's workspace {ws}; stop its "
                             f"session and close the pane (`herdr --session {session} pane close {held[0]}`) first")
@@ -1318,7 +1192,7 @@ def cmd_launch(args):
     print(f"OK {len(targets)} of {len(members)} members, herdr session {session}")
     for e in targets:
         print(f"MEMBER {e['name']}{shown(e)}: {describe(e)}")
-    for line in layout_lines(roster, windows, by_name):
+    for line in layout_lines(roster, tabs, by_name):
         print(line)
 
     # The agent, model or effort differs from the last build: bring the member's files in line first.
@@ -1342,42 +1216,41 @@ def cmd_launch(args):
 
     h = Herdr(session, args.dry_run)
     wanted = {m["name"] for m in targets}
-    launched, waiting, failed = [], {}, None  # (member, pane) of each member started; {member: pane} not started yet
+    running = {n: p["pane_id"] for n in by_name for p in state[1] if p.get("label") == display(by_name[n])}
+    # (member, pane) of each member started; {member: pane} opened but not started; the member being worked on
+    launched, waiting, failed = [], {}, None
     try:
-        for w in windows:
-            new = [n for n in window_members(w) if n in wanted]
-            if not new:
+        for step, t in tab_steps(tabs, running, wanted):
+            n, m = t["member"], by_name[t["member"]]
+            failed = (m, None)
+            if step == "move":
+                move_to_end(h, m, running[n])
+                print(f"{'WOULD MOVE' if args.dry_run else 'MOVED'} {n}{shown(m)} to a new last tab, "
+                      f"keeping it running in pane {running[n]}")
                 continue
-            failed = (None, None)  # laying out the window: the error names the member
-            ws = lay_out_window(h, roster, workspace, w, by_name, ws, state[1].get(window_label(roster, w["number"])),
-                                state[2], new, waiting)
-            for n in new:
-                m, pane = by_name[n], waiting[n]
-                failed = (m, pane)
-                d = os.path.join(workspace, m["cwd"])
-                # Zoomed, the pane has the window's full size while the agent's dialogs are read and answered.
-                h.run("pane", "zoom", pane, "--on")
-                AGENTS[m["agent"]]["launch"](h, m, pane, f"{roster['squad']}-{m['name']}", d)
-                h.run("pane", "zoom", pane, "--off")
-                launched.append((m, waiting.pop(n)))
-                if AGENTS[m["agent"]]["launch_settings"]:
-                    settings = (f"model {m['model'] or 'the agent' + chr(39) + 's own default'}, "
-                                f"effort {m['effort'] or 'the agent' + chr(39) + 's own default'}")
-                else:
-                    settings = f"model and effort managed by {AGENTS[m['agent']]['label']}"
-                print(f"{'WOULD LAUNCH' if args.dry_run else 'LAUNCHED'} {m['name']}{shown(m)} ({m['agent']}, {settings}) "
-                      f"in herdr session {session}, window {w['number']}, pane {pane}")
+            ws, pane = open_tab(h, roster, workspace, m, ws)
+            waiting[n], failed = pane, (m, pane)
+            AGENTS[m["agent"]]["launch"](h, m, pane, f"{roster['squad']}-{n}", os.path.join(workspace, m["cwd"]))
+            launched.append((m, waiting.pop(n)))
+            if AGENTS[m["agent"]]["launch_settings"]:
+                settings = (f"model {m['model'] or 'the agent' + chr(39) + 's own default'}, "
+                            f"effort {m['effort'] or 'the agent' + chr(39) + 's own default'}")
+            else:
+                settings = f"model and effort managed by {AGENTS[m['agent']]['label']}"
+            print(f"{'WOULD LAUNCH' if args.dry_run else 'LAUNCHED'} {n}{shown(m)} ({m['agent']}, {settings}) "
+                  f"in herdr session {session}, tab {t['number']} {display(m)!r}, pane {pane}")
     except LaunchError as e:
         m, pane = failed
-        print(f"FAILED {m['name']} ({m['agent']}) in pane {pane}: {e}" if m else f"FAILED laying out the panes: {e}")
+        print(f"FAILED {m['name']} ({m['agent']}) in pane {pane}: {e}" if pane
+              else f"FAILED opening or moving {m['name']}'s tab: {e}")
         running = ", ".join(f"{x['name']} (pane {p})" for x, p in launched) or "none"
         idle = ", ".join(f"{n} (pane {p})" for n, p in waiting.items())
         close = " ".join(f"`herdr --session {session} pane close {p}`" for p in waiting.values())
         print(f"Already running: {running}. Not started: "
               + ", ".join(n for n in by_name if n in wanted and n not in {x['name'] for x, _ in launched})
               + f". Fix the cause, "
-              + (f"close the panes of the members that did not start, {idle} ({close}), then " if waiting else "then ")
-              + "launch each member that is not running with --member; it takes its place in its window.")
+              + (f"close the tabs of the members that did not start, {idle} ({close}), then " if waiting else "then ")
+              + "launch each member that is not running with --member; it takes its place in the tab order.")
         sys.exit(1)
     if not args.dry_run:
         print("Find each member's address with `peers list --all-dirs`, "
@@ -1427,9 +1300,7 @@ def add_overrides(p):
 
 def main():
     p = Parser(prog="roster.py", description=__doc__.split("\n\n", 1)[0],
-               epilog=__doc__.split("\n\n", 1)[1].replace("{settings}", (
-                   f"MEMBERS_PER_WINDOW = {MEMBERS_PER_WINDOW}, SUPERVISOR_SHARE = {SUPERVISOR_SHARE}, "
-                   f"MEMBERS_PER_ROW = {MEMBERS_PER_ROW}")))
+               epilog=__doc__.split("\n\n", 1)[1])
     sub = p.add_subparsers(dest="cmd", required=True, metavar="<command>", parser_class=Parser)
     workspace_help = "the squad's root directory, which holds roster.json"
     member_help = "only this member, by its name in roster.json (default: every member)"
@@ -1443,14 +1314,12 @@ the effort ({', '.join(LEVELS)}) must be one the agent and model support
 defaults.effort a member cannot use moves to its nearest level, with a NOTE.
 --agent, --model and --effort check a launch override before you launch.
 Validates the layout too (see `roster.py --help`): every member in exactly
-one window, no window over MEMBERS_PER_WINDOW, the supervisor alone on top
-of window 1 with the largest pane.
+one tab, the supervisor in tab 1.
 Output: `OK <n> members in <workspace>`, one `MEMBER <name> (<display
 name>): agent ..., model ..., effort ...` line per member, saying where each
 value came from (the display name shows only when the roster sets one), and
-one `WINDOW <n> (tab '<squad> <n>', <k> of at most {MEMBERS_PER_WINDOW} members): ...` line per
-window, listing each row's members and their share of the window, rows
-separated by " / " (exit 0); or one `PROBLEM <what>` line per issue (exit 1): a
+one `TAB <n> '<display name>': <member>` line per member, in tab order
+(exit 0); or one `PROBLEM <what>` line per issue (exit 1): a
 `layout: ...` fault, a bad name,
 display name, agent, model, cwd or
 skill entry, a link to an unknown member, a report chain that never reaches
@@ -1495,18 +1364,16 @@ install prints the exact command and its output (exit 1).""".format(installer=PE
     b.add_argument("--member", metavar="NAME", help=member_help)
     b.set_defaults(func=cmd_build)
 
-    n = command(sub, "launch", "Start the built squad in herdr, one workspace laid out by the hierarchy, each member on its agent, model and effort.", f"""
+    n = command(sub, "launch", "Start the built squad in herdr, one workspace with a tab per member, each member on its agent, model and effort.", f"""
 Validates everything first and launches nothing on a problem: the roster,
 every member's agent, model and effort, each agent's command on PATH, a running herdr
 session, that each member is built, and the layout (see `roster.py --help`).
 A full launch also refuses when the session already holds the squad's
 workspace; with --member, a member that still has a pane there is refused.
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab
-per window: the supervisor in a pane across the top of window 1, the members
-below it underneath, and the rest in further windows of at most
-{MEMBERS_PER_WINDOW} members.
-It zooms each member's pane while that member starts, so the agent's dialogs
-are read at full size, and starts each member with its agent's own
+per member in hierarchy order, the supervisor first. Each tab holds one pane
+that fills it, so the agent's dialogs are read at full size. It starts each
+member with its agent's own
 command, model and effort: claude --model --effort, agy --model --effort, and
 for opencode, whose TUI takes neither flag, OpenCode's API: it creates the
 member's session, opens the TUI on it with --session, sets the model with the
@@ -1518,22 +1385,25 @@ the folder-trust, channel and one-time notice prompts it knows, and gives each
 its first prompt; a prompt it does not know stops the launch with the screen.
 Every member runs with --dangerously-skip-permissions. Launch does not watch
 the members afterwards: their replies reach the lead through peers.
---member NAME starts one member into the squad's existing workspace: its
-window is rebuilt in place, the running members' panes moved (not restarted)
-around a new pane for it, so the window matches the plan again. Without the
-workspace, it creates it.
+--member NAME starts one member into the squad's existing workspace, in a new
+tab. herdr adds a tab last, so every running member that comes after it in
+the plan is moved (not restarted) into a new tab behind it, which keeps the
+tabs in hierarchy order. Without the workspace, it creates it.
 --agent, --model and --effort override the roster for this launch: a member
 whose agent, model or effort differs from its last build is rebuilt or
 reconfigured first, and every member's squad directory is rewritten to match.
 The next build or assemble goes back to roster.json; edit roster.json to keep
 a change.
-Output: the check's MEMBER and WINDOW lines, then one `LAUNCHED <member>
-(<agent>, model <model>, effort <level>) in herdr session <s>, window <n>,
-pane <id>` line per member, with the display name after the member name when
-the roster sets one; the pane is labelled with that name, or the member name.
+Output: the check's MEMBER and TAB lines, then one `LAUNCHED <member>
+(<agent>, model <model>, effort <level>) in herdr session <s>, tab <n>
+'<label>', pane <id>` line per member, with the display name after the member
+name when the roster sets one, and a `MOVED <member>` line for each running
+member moved behind a new tab. Tab and pane are labelled with the display
+name, or the member name.
 With --dry-run, the herdr commands it would run. On a failure it stops, names
 the member and pane, lists the members already running and the panes of those
-that did not start, to close before launching each with --member (exit 1).""",
+that did not start, whose tabs to close before launching each with --member
+(exit 1).""",
                  ["python3 roster.py launch ~/squads/shop --dry-run",
                   "python3 roster.py launch ~/squads/shop",
                   "python3 roster.py launch ~/squads/shop --model api=opencode/beam-free --effort api=high "

@@ -86,8 +86,8 @@ echo "unexpected agy call: $*" >&2; exit 9
 EOF
 # herdr: logs every call; answers like herdr does. HERDR_SESSIONS sets `session list`,
 # HERDR_WORKSPACES `workspace list`, HERDR_PANES the panes `pane list` shows,
-# HERDR_SPLIT_BASE where the ids of split panes start,
-# HERDR_FAIL_SPLIT=1 fails the first pane split. agy blocks its first prompt on the trust
+# HERDR_TAB_BASE where the ids of new tabs and their panes start,
+# HERDR_FAIL_TAB=1 fails the first tab create. agy blocks its first prompt on the trust
 # question, then on an Esc notice; HERDR_ODD_DIALOG=1 shows a dialog launch does not know.
 cat >"$TMP/bin/herdr" <<'EOF'
 #!/bin/bash
@@ -98,11 +98,12 @@ case "$1 $2" in
                   echo "${HERDR_SESSIONS:-$running}" ;;
   "workspace create") echo '{"result":{"workspace":{"workspace_id":"w9"},"tab":{"tab_id":"w9:t1"},"root_pane":{"pane_id":"w9:p1"}}}' ;;
   "workspace list") none='{"result":{"workspaces":[]}}'; echo "${HERDR_WORKSPACES:-$none}" ;;
-  "tab list") echo '{"result":{"tabs":[{"label":"demo 1","tab_id":"w9:t1"}]}}' ;;
-  "tab create") echo '{"result":{"tab":{"tab_id":"w9:t5"},"root_pane":{"pane_id":"w9:p50"}}}' ;;
+  "tab create") [ "${HERDR_FAIL_TAB:-}" = 1 ] && { echo '{"error":"tab_create_failed"}'; exit 1; }
+                n=$(($(grep -c "tab create" "$HERDR_LOG")+${HERDR_TAB_BASE:-1}))
+                echo "{\"result\":{\"tab\":{\"tab_id\":\"w9:t$n\"},\"root_pane\":{\"pane_id\":\"w9:p$n\"}}}" ;;
   "pane list") echo "{\"result\":{\"panes\":[${HERDR_PANES:-}]}}" ;;
-  "pane split") [ "${HERDR_FAIL_SPLIT:-}" = 1 ] && { echo '{"error":"pane_split_failed"}'; exit 1; }
-                n=$(grep -c "pane split" "$HERDR_LOG"); echo "{\"result\":{\"pane\":{\"pane_id\":\"w9:p$((n+${HERDR_SPLIT_BASE:-1}))\"}}}" ;;
+  "pane move") n=$(($(grep -c "pane move" "$HERDR_LOG")+50))
+               echo "{\"result\":{\"move_result\":{\"changed\":true,\"created_tab\":{\"tab_id\":\"w9:t$n\"}}}}" ;;
   "pane read") echo 'Quick safety check ... Yes, I trust this folder' ;;
   "agent start")
     if [ "$5" = opencode ] && ! grep -q busy-once "$HERDR_LOG"; then
@@ -283,7 +284,7 @@ check "launch overrides are not build options" "unrecognized arguments: --agent"
 : >"$HERDR_LOG"
 check "launch before build is refused" "member 'lead' is not built" python3 "$SCRIPT" launch "$W"
 check "refused launch says nothing started" "Nothing was launched." python3 "$SCRIPT" launch "$W"
-check "refused launch touches no pane" "0" bash -c "grep -c -e 'workspace create' -e 'pane split' -e 'agent start' '$HERDR_LOG' || true"
+check "refused launch touches no pane" "0" bash -c "grep -c -e 'workspace create' -e 'tab create' -e 'agent start' '$HERDR_LOG' || true"
 check "build" "BUILT docs (agy)" python3 "$SCRIPT" build "$W"
 check "claude gets CLAUDE.md" "# lead: member of the demo squad" cat "$W/lead/CLAUDE.md"
 check "opencode gets AGENTS.md" "# api: member of the demo squad" cat "$W/api/AGENTS.md"
@@ -334,7 +335,7 @@ check "launch needs a running herdr session" "herdr session 'default' is not run
 check "launch needs the named session" "no herdr session named 'work'" python3 "$SCRIPT" launch "$W" --session work
 check "launch needs each agent's CLI" "member 'docs': agent agy needs the \`agy\` command, which is not on PATH" env PATH="$TMP/noagy:/usr/bin:/bin" "$PY" "$SCRIPT" launch "$W"
 check "launch rejects an invalid model" "model 'opus-9' (--model) is not available to agy" python3 "$SCRIPT" launch "$W" --model docs=opus-9
-check "failed validation starts nothing" "0" bash -c "grep -c -e 'workspace create' -e 'pane split' -e 'agent start' -e 'pane run' '$HERDR_LOG' || true"
+check "failed validation starts nothing" "0" bash -c "grep -c -e 'workspace create' -e 'tab create' -e 'agent start' -e 'pane run' '$HERDR_LOG' || true"
 
 # --- launch: dry run prints each agent's own command and model setting ---
 check "dry run claude with --model and --effort" "claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5 --effort high --dangerously-load-development-channels server:peers --" python3 "$SCRIPT" launch "$W" --dry-run
@@ -350,7 +351,7 @@ check "dry run changes nothing" '"agent": "opencode"' cat "$W/api/.peers.json"
 
 # --- launch: real run against the herdr stub ---
 : >"$HERDR_LOG"
-check "launch starts every member" "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr session default, window 1, pane w9:p3" python3 "$SCRIPT" launch "$W"
+check "launch starts every member" "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr session default, tab 3 'docs', pane w9:p3" python3 "$SCRIPT" launch "$W"
 check "claude started with its model" "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5" cat "$HERDR_LOG"
 check "claude trust prompt answered" "pane send-keys w9:p1 down enter" cat "$HERDR_LOG"
 check "claude channel confirmed" "pane wait-output w9:p1 --match inject directly" cat "$HERDR_LOG"
@@ -393,34 +394,36 @@ check "agy gets --model and --effort" "--kind agy --pane w9:p1 -- --dangerously-
 check "launch refuses an unsupported effort" "is not supported by agy with gem-fast" python3 "$SCRIPT" launch "$W" --effort docs=high
 python3 "$SCRIPT" build "$W" --member lead >/dev/null
 check "build returns to roster.json" '"effort": "high"' cat "$W/lead/.peers.json"
-check "launch failure names the member" "FAILED laying out the panes: could not make api's pane in window 1" env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
-check "launch failure lists who runs" "Already running: none. Not started: lead, api, docs." env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
-check "launch failure names the panes to close" "the members that did not start, lead (pane w9:p1) (\`herdr --session default pane close w9:p1\`)" env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
-exits "launch failure exits 1" 1 env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
+check "launch failure names the member" "FAILED opening or moving api's tab: \`herdr tab create" env HERDR_FAIL_TAB=1 python3 "$SCRIPT" launch "$W"
+check "launch failure lists who runs" "Already running: lead (pane w9:p1). Not started: api, docs." env HERDR_FAIL_TAB=1 python3 "$SCRIPT" launch "$W"
+exits "launch failure exits 1" 1 env HERDR_FAIL_TAB=1 python3 "$SCRIPT" launch "$W"
 : >"$HERDR_LOG"
-# --- launch: one workspace, laid out by the hierarchy ---
+# --- launch: one workspace, one tab per member in hierarchy order ---
 : >"$HERDR_LOG"
 python3 "$SCRIPT" launch "$W" >/dev/null
 check "one workspace for the squad" "1" bash -c "grep -c 'workspace create' '$HERDR_LOG'"
-check "its first window is labelled" "tab rename w9:t1 demo 1" cat "$HERDR_LOG"
-check "the supervisor keeps 60% across the top" "pane split w9:p1 --direction down --ratio 0.6" cat "$HERDR_LOG"
-check "the members below share the row" "pane split w9:p2 --direction right --ratio 0.5" cat "$HERDR_LOG"
-check "each member is zoomed while it starts" "pane zoom w9:p2 --on" cat "$HERDR_LOG"
-check "launch prints the layout" "WINDOW 1 (tab 'demo 1', 3 of at most 5 members): lead 60% / api 20%, docs 20%" python3 "$SCRIPT" launch "$W" --dry-run
-check "check prints the layout" "WINDOW 1 (tab 'demo 1', 3 of at most 5 members)" python3 "$SCRIPT" check "$W"
+check "the supervisor's tab comes first" "tab rename w9:t1 lead" cat "$HERDR_LOG"
+check "each member gets its own tab" "tab create --workspace w9 --cwd $W/api --label api --no-focus" cat "$HERDR_LOG"
+check "tabs follow the hierarchy" "lead<api<docs" bash -c "awk '/tab rename w9:t1 lead/{l=NR} /--label api/{a=NR} /--label docs/{d=NR} END{print (l<a&&a<d)?\"lead<api<docs\":l\" \"a\" \"d}' '$HERDR_LOG'"
+check "each pane is labelled" "pane rename w9:p3 docs" cat "$HERDR_LOG"
+lacks "no pane is split" "pane split" cat "$HERDR_LOG"
+lacks "no pane is zoomed" "pane zoom" cat "$HERDR_LOG"
+check "launch prints the tabs" "TAB 1 'lead': lead" python3 "$SCRIPT" launch "$W" --dry-run
+check "check prints the tabs" "TAB 3 'docs': docs" python3 "$SCRIPT" check "$W"
 SQUAD_WS='{"result":{"workspaces":[{"label":"squad-demo","workspace_id":"w9"}]}}'
 check "a second full launch is refused" "already holds the squad's workspace squad-demo (w9)" env HERDR_WORKSPACES="$SQUAD_WS" python3 "$SCRIPT" launch "$W"
 check "a member that still has a pane is refused" "member 'lead' already has pane w9:p1" env HERDR_WORKSPACES="$SQUAD_WS" HERDR_PANES='{"label":"lead","pane_id":"w9:p1","tab_id":"w9:t1"}' python3 "$SCRIPT" launch "$W" --member lead
 : >"$HERDR_LOG"
-check "a relaunched member joins its window" "window 1, pane w9:p12" env HERDR_SPLIT_BASE=10 HERDR_WORKSPACES="$SQUAD_WS" HERDR_PANES='{"label":"lead","pane_id":"w9:p1","tab_id":"w9:t1"},{"label":"api","pane_id":"w9:p2","tab_id":"w9:t1"}' python3 "$SCRIPT" launch "$W" --member docs
+check "a relaunched last member gets a new tab" "tab 3 'docs', pane w9:p11" env HERDR_TAB_BASE=10 HERDR_WORKSPACES="$SQUAD_WS" HERDR_PANES='{"label":"lead","pane_id":"w9:p1","tab_id":"w9:t1"},{"label":"api","pane_id":"w9:p2","tab_id":"w9:t2"}' python3 "$SCRIPT" launch "$W" --member docs
 lacks "it makes no second workspace" "workspace create" cat "$HERDR_LOG"
-check "its window is rebuilt from a fresh pane" "pane split w9:p1 --direction down --cwd $W/lead --no-focus" cat "$HERDR_LOG"
-check "the running members are parked meanwhile" "pane move w9:p2 --tab w9:t5 --target-pane w9:p50 --split right" cat "$HERDR_LOG"
-check "the supervisor goes back on top" "pane move w9:p1 --tab w9:t1 --target-pane w9:p11 --split right --no-focus" cat "$HERDR_LOG"
-check "the next member goes back below it" "pane move w9:p2 --tab w9:t1 --target-pane w9:p1 --split down --ratio 0.6" cat "$HERDR_LOG"
-check "the relaunched member takes its place" "pane split w9:p2 --direction right --ratio 0.5 --cwd $W/docs" cat "$HERDR_LOG"
-check "the fresh pane is closed once the supervisor is back" "pane close w9:p11" cat "$HERDR_LOG"
-check "the parking tab is closed" "pane close w9:p50" cat "$HERDR_LOG"
+lacks "a last member moves nobody" "pane move" cat "$HERDR_LOG"
+: >"$HERDR_LOG"
+env HERDR_TAB_BASE=10 HERDR_WORKSPACES="$SQUAD_WS" HERDR_PANES='{"label":"api","pane_id":"w9:p2","tab_id":"w9:t2"},{"label":"docs","pane_id":"w9:p3","tab_id":"w9:t3"}' python3 "$SCRIPT" launch "$W" --member lead >"$TMP/relaunch.out" 2>&1
+check "a relaunched supervisor gets a new tab" "tab create --workspace w9 --cwd $W/lead --label lead" cat "$HERDR_LOG"
+check "the members after it move behind it" "MOVED api to a new last tab, keeping it running in pane w9:p2" cat "$TMP/relaunch.out"
+check "a moved member's new tab is labelled" "tab rename w9:t51 api" cat "$HERDR_LOG"
+check "moves keep the hierarchy order" "lead<api<docs" bash -c "awk '/--label lead/{l=NR} /pane move w9:p2 --new-tab/{a=NR} /pane move w9:p3 --new-tab/{d=NR} END{print (l<a&&a<d)?\"lead<api<docs\":l\" \"a\" \"d}' '$HERDR_LOG'"
+lacks "moved members are not restarted" "agent start demo-api" cat "$HERDR_LOG"
 : >"$HERDR_LOG"
 
 check "unknown dialog fails with the screen" "Pick a color theme" env HERDR_ODD_DIALOG=1 python3 "$SCRIPT" launch "$W" --member docs
