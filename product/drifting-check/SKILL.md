@@ -1,6 +1,6 @@
 ---
 name: drifting-check
-description: Check whether a set of tasks stays on the same track as the specs and the target outcome, and report every drift clearly with quotes from both sides: tasks that go beyond the specs (over-engineering, which it can also trim from the tasks), specs that no task covers, tasks that contradict the specs, and tasks that no longer serve the target outcome. Use when the user asks to check, audit or verify that tasks, tickets, a plan, a backlog or the work in progress still match the specs, requirements or goal, asks whether the work has drifted or crept in scope, or names this skill. Do not use to write specifications or tasks, to review code, or to test the running product.
+description: "Check whether a set of tasks stays on the same track as the specs and the target outcome, and report every drift clearly with quotes from both sides: tasks that go beyond the specs (over-engineering, which it can also trim from the tasks), specs that no task covers, tasks that contradict the specs, and tasks that no longer serve the target outcome. Use when the user asks to check, audit or verify that tasks, tickets, a plan, a backlog or the work in progress still match the specs, requirements or goal, asks whether the work has drifted or crept in scope, or names this skill. Do not use to write specifications or tasks, to review code, or to test the running product."
 ---
 
 # Drifting check
