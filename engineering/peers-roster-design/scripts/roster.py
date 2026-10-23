@@ -86,6 +86,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 
 SCRIPT = os.path.abspath(__file__)
 PARTS = (("PROJECT.md", "Project"), ("ROLE.md", "Role"),
@@ -95,6 +97,9 @@ NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # The peers skill sits next to this skill, both in this repository and
 # where installers put skills; roster.json can name another source.
 DEFAULT_PEERS = os.path.normpath(os.path.join(os.path.dirname(SCRIPT), "..", "..", "peers"))
+# The peers CLI's install script, which build runs when no peers binary is found;
+# PEERS_INSTALLER_URL names another one, such as a fork's.
+PEERS_INSTALLER = "https://raw.githubusercontent.com/bdsanxz/peers/main/install.sh"
 DEFAULT_AGENT = "claude"
 # Effort levels, lowest first: the levels claude --effort and agy --effort take.
 LEVELS = ("low", "medium", "high", "xhigh", "max")
@@ -612,9 +617,66 @@ def body(text, title):
     return "\n".join(lines).strip()
 
 
+def peers_dir():
+    """Where the install script puts the peers binary."""
+    return os.environ.get("PEERS_INSTALL_DIR") or os.path.expanduser("~/.local/bin")
+
+
 def peers_command():
     """The global peers binary, by absolute path so Claude Code starts the channel without a PATH lookup."""
-    return shutil.which("peers") or os.path.expanduser("~/.local/bin/peers")
+    return shutil.which("peers") or os.path.join(peers_dir(), "peers")
+
+
+def peers_installed():
+    path = peers_command()
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def peers_installer():
+    return os.environ.get("PEERS_INSTALLER_URL") or PEERS_INSTALLER
+
+
+def github_token():
+    """GITHUB_TOKEN, else the GitHub CLI's token, else nothing: a private peers repository needs one."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token and shutil.which("gh"):
+        token = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True).stdout.strip()
+    return token
+
+
+def install_peers():
+    """Install the peers CLI with its install script when no peers binary is found.
+
+    Returns the INSTALLED line, or None when peers was already installed."""
+    if peers_installed():
+        return None
+    url = peers_installer()
+    by_hand = f"`curl -fsSL {url} | sh`"
+    token = github_token()
+    request = urllib.request.Request(url)
+    # The token goes only to GitHub, never to another installer URL.
+    if token and url.startswith("https://raw.githubusercontent.com/"):
+        request.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as answer:
+            script = answer.read()
+    except (urllib.error.URLError, OSError) as e:
+        fail(f"the peers CLI is not installed, and its install script could not be fetched from {url}: {e}. "
+             "A private repository needs GITHUB_TOKEN or a signed-in GitHub CLI (`gh auth login`). "
+             f"Install it by hand with {by_hand}, then run build again")
+    env = dict(os.environ, **({"GITHUB_TOKEN": token} if token else {}))
+    out = subprocess.run(["sh", "-s"], input=script, capture_output=True, env=env)
+    log = (out.stdout + out.stderr).decode(errors="replace").strip()
+    if out.returncode != 0 or not peers_installed():
+        fail(f"the peers CLI did not install: the install script from {url} exited {out.returncode} and "
+             f"{peers_command()} is not there. Its output:\n{log[-1500:]}\n"
+             f"Fix the cause, or install it by hand with {by_hand}, then run build again")
+    version = subprocess.run([peers_command(), "--version"], capture_output=True, text=True).stdout.strip()
+    line = f"INSTALLED {version or 'peers'} at {peers_command()}"
+    if not shutil.which("peers"):
+        line += (f"; WARNING {peers_dir()} is not on PATH, so members cannot run `peers`: add it to PATH in the "
+                 "shell profile, then restart herdr and the agents' services so they inherit it")
+    return line
 
 
 def display(m):
@@ -795,6 +857,8 @@ def checked(args, strict=False):
         print(f"PROBLEM {p}")
     if problems:
         sys.exit(1)
+    if not peers_installed():
+        print(f"NOTE the peers CLI is not installed; build installs it with {peers_installer()}")
     print(f"OK {len(members)} members in {workspace}")
     for e in members:
         print(f"MEMBER {e['name']}{shown(e)}: {describe(e)}")
@@ -827,6 +891,9 @@ def peers_source_of(roster):
 def cmd_build(args):
     workspace, roster, members = checked(args)
     peers_source = peers_source_of(roster)
+    installed = install_peers()
+    if installed:
+        print(installed)
     for m in selected(members, args.member):
         print(f"BUILT {m['name']} ({m['agent']}): " + "; ".join(build_member(workspace, roster, members, m, peers_source)))
 
@@ -1207,6 +1274,9 @@ def cmd_launch(args):
     roster = load_roster(workspace)
     problems, notes, members = roster_problems(workspace, roster, overrides_of(args), strict=True)
     session, windows, state = None, [], (None, {}, [])
+    if not peers_installed():
+        problems.append(f"the peers CLI is not installed; run `python3 {SCRIPT} build {workspace}` first, "
+                        "which installs it")
     if members is not None:
         session, why = herdr_session(args.session)
         if why:
@@ -1404,15 +1474,22 @@ Output: the check's lines, then one `ASSEMBLED <member>` line per member.""",
     a.add_argument("--member", metavar="NAME", help=member_help)
     a.set_defaults(func=cmd_assemble)
 
-    b = command(sub, "build", "Check and assemble, then install skills and configure each member.", """
+    b = command(sub, "build", "Check and assemble, install the peers CLI when it is missing, then install skills and configure each member.", """
+First installs the peers CLI when no peers binary is on PATH or in
+~/.local/bin (or PEERS_INSTALL_DIR), with its install script:
+  {installer}
+PEERS_INSTALLER_URL names another script. A private repository needs
+GITHUB_TOKEN or a signed-in gh; the token is sent only to
+raw.githubusercontent.com.
 For each member: writes its instruction file and .peers.json, installs peers
 and its roster skills into its cwd with `npx -y skills@latest add` for its
 agent, and applies the agent's own setup: the peers channel for claude
 (.mcp.json, approved in .claude/settings.local.json). It never writes a model
 or effort into an opencode member's opencode.json. Needs npx (Node.js). Safe
 to run again.
-Output: the check's lines, then one `BUILT <member>` line per member. A
-failed install prints the exact npx command and its output (exit 1).""",
+Output: the check's lines, an `INSTALLED peers <version> at <path>` line when
+it installed the CLI, then one `BUILT <member>` line per member. A failed
+install prints the exact command and its output (exit 1).""".format(installer=PEERS_INSTALLER),
                  ["python3 roster.py build ~/squads/shop", "python3 roster.py build ~/squads/shop --member web"])
     b.add_argument("workspace", help=workspace_help)
     b.add_argument("--member", metavar="NAME", help=member_help)

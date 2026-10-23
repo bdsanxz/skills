@@ -125,6 +125,10 @@ case "$1 $2" in
   *) echo '{"result":{}}' ;;
 esac
 EOF
+cat >"$TMP/bin/peers" <<'EOF'
+#!/bin/sh
+echo peers 0.0.1
+EOF
 chmod +x "$TMP/bin/"*
 export PATH="$TMP/bin:$PATH" NPX_LOG="$TMP/npx.log" HERDR_LOG="$TMP/herdr.log" OPENCODE_LOG="$TMP/opencode.log"
 fails=0
@@ -464,4 +468,26 @@ edit 'r["members"][2]["skills"] = [{"source": "acme/skills", "skill": "silent"}]
 check "install that leaves nothing is caught" "did not install 'silent'" python3 "$SCRIPT" build "$W" --member docs
 edit 'r["members"][2]["skills"] = [{"source": "acme/skills", "skill": "peers"}]'
 check "peers is not listed by hand" "which every member gets" python3 "$SCRIPT" check "$W"
+
+# --- the peers CLI: build installs it when it is missing ---
+edit 'r["members"][2].pop("skills", None)'
+mkdir -p "$TMP/nopeers" "$TMP/home"
+for t in npx claude opencode agy herdr; do ln -sf "$TMP/bin/$t" "$TMP/nopeers/$t"; done
+cat >"$TMP/installer.sh" <<'EOF'
+[ "${INSTALLER_FAIL:-}" = 1 ] && { echo "peers-install: error: no release" >&2; exit 1; }
+dir="${PEERS_INSTALL_DIR:-$HOME/.local/bin}"
+mkdir -p "$dir" && printf '#!/bin/sh\necho peers 0.0.1\n' >"$dir/peers" && chmod +x "$dir/peers"
+EOF
+nopeers() { env PATH="$TMP/nopeers:/usr/bin:/bin" HOME="$TMP/home" GITHUB_TOKEN= PEERS_INSTALL_DIR= PEERS_INSTALLER_URL="file://$TMP/installer.sh" "$@"; }
+check "check notes a missing peers CLI" "NOTE the peers CLI is not installed; build installs it with file://$TMP/installer.sh" nopeers "$PY" "$SCRIPT" check "$W"
+check "launch needs the peers CLI" "the peers CLI is not installed; run" nopeers "$PY" "$SCRIPT" launch "$W" --dry-run
+check "a failed peers install shows its output" "peers-install: error: no release" nopeers env INSTALLER_FAIL=1 "$PY" "$SCRIPT" build "$W" --member lead
+check "an unreachable installer is named" "could not be fetched from file://$TMP/missing.sh" nopeers env PEERS_INSTALLER_URL="file://$TMP/missing.sh" "$PY" "$SCRIPT" build "$W" --member lead
+nopeers "$PY" "$SCRIPT" build "$W" --member lead >"$TMP/install.out" 2>&1
+check "build installs a missing peers CLI" "INSTALLED peers 0.0.1 at $TMP/home/.local/bin/peers" cat "$TMP/install.out"
+check "the install warns when its directory is not on PATH" "is not on PATH, so members cannot run \`peers\`" cat "$TMP/install.out"
+check "the channel runs the installed peers" "\"command\": \"$TMP/home/.local/bin/peers\"" cat "$W/lead/.mcp.json"
+lacks "an installed peers CLI is not installed again" "INSTALLED" nopeers "$PY" "$SCRIPT" build "$W" --member lead
+check "PEERS_INSTALL_DIR picks the directory" "INSTALLED peers 0.0.1 at $TMP/pdir/peers" nopeers env HOME="$TMP/home2" PEERS_INSTALL_DIR="$TMP/pdir" "$PY" "$SCRIPT" build "$W" --member lead
+python3 "$SCRIPT" build "$W" --member lead >/dev/null
 [ $fails -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
