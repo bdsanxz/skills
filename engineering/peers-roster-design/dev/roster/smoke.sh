@@ -85,6 +85,8 @@ cat >"$TMP/bin/agy" <<'EOF'
 echo "unexpected agy call: $*" >&2; exit 9
 EOF
 # herdr: logs every call; answers like herdr does. HERDR_SESSIONS sets `session list`,
+# HERDR_WORKSPACES `workspace list`, HERDR_PANES the panes `pane list` shows,
+# HERDR_SPLIT_BASE where the ids of split panes start,
 # HERDR_FAIL_SPLIT=1 fails the first pane split. agy blocks its first prompt on the trust
 # question, then on an Esc notice; HERDR_ODD_DIALOG=1 shows a dialog launch does not know.
 cat >"$TMP/bin/herdr" <<'EOF'
@@ -94,9 +96,13 @@ echo "$*" >>"$HERDR_LOG"
 case "$1 $2" in
   "session list") running='{"sessions":[{"name":"default","default":true,"running":true}]}'
                   echo "${HERDR_SESSIONS:-$running}" ;;
-  "workspace create") echo '{"result":{"root_pane":{"pane_id":"w9:p1"}}}' ;;
+  "workspace create") echo '{"result":{"workspace":{"workspace_id":"w9"},"tab":{"tab_id":"w9:t1"},"root_pane":{"pane_id":"w9:p1"}}}' ;;
+  "workspace list") none='{"result":{"workspaces":[]}}'; echo "${HERDR_WORKSPACES:-$none}" ;;
+  "tab list") echo '{"result":{"tabs":[{"label":"demo 1","tab_id":"w9:t1"}]}}' ;;
+  "tab create") echo '{"result":{"tab":{"tab_id":"w9:t5"},"root_pane":{"pane_id":"w9:p50"}}}' ;;
+  "pane list") echo "{\"result\":{\"panes\":[${HERDR_PANES:-}]}}" ;;
   "pane split") [ "${HERDR_FAIL_SPLIT:-}" = 1 ] && { echo '{"error":"pane_split_failed"}'; exit 1; }
-                n=$(grep -c "pane split" "$HERDR_LOG"); echo "{\"result\":{\"pane\":{\"pane_id\":\"w9:p$((n+1))\"}}}" ;;
+                n=$(grep -c "pane split" "$HERDR_LOG"); echo "{\"result\":{\"pane\":{\"pane_id\":\"w9:p$((n+${HERDR_SPLIT_BASE:-1}))\"}}}" ;;
   "pane read") echo 'Quick safety check ... Yes, I trust this folder' ;;
   "agent start")
     if [ "$5" = opencode ] && ! grep -q busy-once "$HERDR_LOG"; then
@@ -284,7 +290,7 @@ check "claude file imports by path" "- Memory: @$W/lead/MEMORY.md" cat "$W/lead/
 check "claude file copies nothing" "absent" bash -c "grep -q 'You are lead.' '$W/lead/CLAUDE.md' && echo copied || echo absent"
 check "squad directory shows agent and model" '`docs` (you) | agy | gem-fast |' cat "$W/docs/AGENTS.md"
 check "squad directory shows a member model" '`lead` | claude | claude-sonnet-5-5 | high |' cat "$W/docs/AGENTS.md"
-check "peers path per agent" "$W/docs/.agents/skills/peers/scripts/peers.py list --all-dirs" cat "$W/docs/AGENTS.md"
+check "peers command in the instructions" "through the peers skill (\`peers\`)" cat "$W/docs/AGENTS.md"
 check "lessons go to MEMORY.md" "as one short entry. Never record lessons in this file." cat "$W/api/AGENTS.md"
 check "regenerate hint names assemble" "roster.py assemble $W --member api" cat "$W/api/AGENTS.md"
 printf -- '# Memory\n' >"$W/api/MEMORY.md"
@@ -296,7 +302,7 @@ check "peers installed for claude" "SKILL.md" ls "$W/lead/.claude/skills/peers"
 check "peers installed for agy" "SKILL.md" ls "$W/docs/.agents/skills/peers"
 check "extra skills in one call" "add acme/skills -a opencode -y --copy --skill go-testing --skill sql" cat "$NPX_LOG"
 check "agy skills agent name" "-a antigravity" cat "$NPX_LOG"
-check "channel in .mcp.json" "$W/lead/.claude/skills/peers/scripts/peers.py" cat "$W/lead/.mcp.json"
+check "channel in .mcp.json" "peers ['channel']" python3 -c "import json,os;s=json.load(open('$W/lead/.mcp.json'))['mcpServers']['peers'];print(os.path.basename(s['command']), s['args'])"
 check "channel approved" "['peers']" python3 -c "import json;print(json.load(open('$W/lead/.claude/settings.local.json'))['enabledMcpjsonServers'])"
 check "build writes no opencode.json" "absent" bash -c "[ -e '$W/api/opencode.json' ] && echo present || echo absent"
 check "opencode records its model" '"model": "opencode/big-pickle"' cat "$W/api/.peers.json"
@@ -305,7 +311,6 @@ check "role file for each member" '"role": "api"' cat "$W/api/.peers.json"
 check "role file names the squad" '"squad": "demo"' cat "$W/lead/.peers.json"
 check "role file records agent and model" '"agent": "agy",
   "model": "gem-fast"' cat "$W/docs/.peers.json"
-check "member peers sends with its role" "docs" bash -c "cd '$W/docs' && python3 -c 'import importlib.util as u, sys; s=u.spec_from_file_location(\"p\", sys.argv[1]); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.own_identity()[0])' '$HERE/../../../peers/scripts/peers.py'"
 check "no channel for opencode" "absent" bash -c "[ -e '$W/api/.mcp.json' ] && echo present || echo absent"
 echo '{"mcpServers":{"other":{"command":"x"}},"x":1}' >"$W/lead/.mcp.json"
 python3 "$SCRIPT" build "$W" --member lead >/dev/null
@@ -341,7 +346,7 @@ check "dry run changes nothing" '"agent": "opencode"' cat "$W/api/.peers.json"
 
 # --- launch: real run against the herdr stub ---
 : >"$HERDR_LOG"
-check "launch starts every member" "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr session default, pane w9:p3" python3 "$SCRIPT" launch "$W"
+check "launch starts every member" "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr session default, window 1, pane w9:p3" python3 "$SCRIPT" launch "$W"
 check "claude started with its model" "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5" cat "$HERDR_LOG"
 check "claude trust prompt answered" "pane send-keys w9:p1 down enter" cat "$HERDR_LOG"
 check "claude channel confirmed" "pane wait-output w9:p1 --match inject directly" cat "$HERDR_LOG"
@@ -384,10 +389,36 @@ check "agy gets --model and --effort" "--kind agy --pane w9:p1 -- --dangerously-
 check "launch refuses an unsupported effort" "is not supported by agy with gem-fast" python3 "$SCRIPT" launch "$W" --effort docs=high
 python3 "$SCRIPT" build "$W" --member lead >/dev/null
 check "build returns to roster.json" '"effort": "high"' cat "$W/lead/.peers.json"
-check "launch failure names the member" "FAILED api (opencode) in pane (not created)" env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
-check "launch failure lists who runs" "Already running: lead (pane w9:p1)." env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
+check "launch failure names the member" "FAILED laying out the panes: could not make api's pane in window 1" env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
+check "launch failure lists who runs" "Already running: none. Not started: lead, api, docs." env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
+check "launch failure names the panes to close" "the members that did not start, lead (pane w9:p1) (\`herdr --session default pane close w9:p1\`)" env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
 exits "launch failure exits 1" 1 env HERDR_FAIL_SPLIT=1 python3 "$SCRIPT" launch "$W"
 : >"$HERDR_LOG"
+# --- launch: one workspace, laid out by the hierarchy ---
+: >"$HERDR_LOG"
+python3 "$SCRIPT" launch "$W" >/dev/null
+check "one workspace for the squad" "1" bash -c "grep -c 'workspace create' '$HERDR_LOG'"
+check "its first window is labelled" "tab rename w9:t1 demo 1" cat "$HERDR_LOG"
+check "the supervisor keeps 60% across the top" "pane split w9:p1 --direction down --ratio 0.6" cat "$HERDR_LOG"
+check "the members below share the row" "pane split w9:p2 --direction right --ratio 0.5" cat "$HERDR_LOG"
+check "each member is zoomed while it starts" "pane zoom w9:p2 --on" cat "$HERDR_LOG"
+check "launch prints the layout" "WINDOW 1 (tab 'demo 1', 3 of at most 5 members): lead 60% / api 20%, docs 20%" python3 "$SCRIPT" launch "$W" --dry-run
+check "check prints the layout" "WINDOW 1 (tab 'demo 1', 3 of at most 5 members)" python3 "$SCRIPT" check "$W"
+SQUAD_WS='{"result":{"workspaces":[{"label":"squad-demo","workspace_id":"w9"}]}}'
+check "a second full launch is refused" "already holds the squad's workspace squad-demo (w9)" env HERDR_WORKSPACES="$SQUAD_WS" python3 "$SCRIPT" launch "$W"
+check "a member that still has a pane is refused" "member 'lead' already has pane w9:p1" env HERDR_WORKSPACES="$SQUAD_WS" HERDR_PANES='{"label":"lead","pane_id":"w9:p1","tab_id":"w9:t1"}' python3 "$SCRIPT" launch "$W" --member lead
+: >"$HERDR_LOG"
+check "a relaunched member joins its window" "window 1, pane w9:p12" env HERDR_SPLIT_BASE=10 HERDR_WORKSPACES="$SQUAD_WS" HERDR_PANES='{"label":"lead","pane_id":"w9:p1","tab_id":"w9:t1"},{"label":"api","pane_id":"w9:p2","tab_id":"w9:t1"}' python3 "$SCRIPT" launch "$W" --member docs
+lacks "it makes no second workspace" "workspace create" cat "$HERDR_LOG"
+check "its window is rebuilt from a fresh pane" "pane split w9:p1 --direction down --cwd $W/lead --no-focus" cat "$HERDR_LOG"
+check "the running members are parked meanwhile" "pane move w9:p2 --tab w9:t5 --target-pane w9:p50 --split right" cat "$HERDR_LOG"
+check "the supervisor goes back on top" "pane move w9:p1 --tab w9:t1 --target-pane w9:p11 --split right --no-focus" cat "$HERDR_LOG"
+check "the next member goes back below it" "pane move w9:p2 --tab w9:t1 --target-pane w9:p1 --split down --ratio 0.6" cat "$HERDR_LOG"
+check "the relaunched member takes its place" "pane split w9:p2 --direction right --ratio 0.5 --cwd $W/docs" cat "$HERDR_LOG"
+check "the fresh pane is closed once the supervisor is back" "pane close w9:p11" cat "$HERDR_LOG"
+check "the parking tab is closed" "pane close w9:p50" cat "$HERDR_LOG"
+: >"$HERDR_LOG"
+
 check "unknown dialog fails with the screen" "Pick a color theme" env HERDR_ODD_DIALOG=1 python3 "$SCRIPT" launch "$W" --member docs
 lacks "unknown dialog gets no keys" "agent send-keys demo-docs" cat "$HERDR_LOG"
 
@@ -409,14 +440,6 @@ check "unnamed member shows its member name" '| `docs` (you) | docs | agy |' cat
 check "files explain the two names" "Call members by their human-readable name" cat "$W/docs/AGENTS.md"
 check ".peers.json records the display name" '"display_name": "Rina (backend)"' cat "$W/api/.peers.json"
 lacks "unnamed .peers.json has no display name" "display_name" cat "$W/docs/.peers.json"
-PEERS_PY="$HERE/../../../peers/scripts/peers.py"
-ident() { # dir, python args to own_identity
-  (cd "$1" && python3 -c "import importlib.util as u, sys; s=u.spec_from_file_location(\"p\", sys.argv[1]); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.own_identity($2))" "$PEERS_PY")
-}
-check "peers takes the name from .peers.json" "('api', 'Rina (backend)')" ident "$W/api" ""
-check "--role user borrows no member name" "('user', '')" ident "$W/api" "'user'"
-check "--name wins" "('api', 'Ana')" ident "$W/api" "None, 'Ana'"
-check "unnamed member sends no name" "('docs', '')" ident "$W/docs" ""
 : >"$HERDR_LOG"; : >"$OPENCODE_LOG"
 check "LAUNCHED shows the display name" "LAUNCHED api (Rina (backend)) (opencode" python3 "$SCRIPT" launch "$W" --member api
 check "pane labelled with the display name" "pane rename w9:p1 Rina (backend)" cat "$HERDR_LOG"
@@ -426,7 +449,7 @@ python3 "$SCRIPT" launch "$W" --member lead >/dev/null
 check "claude session name" "-n 'Lena (lead) [demo-lead]'" cat "$HERDR_LOG"
 : >"$HERDR_LOG"
 python3 "$SCRIPT" launch "$W" --member docs >/dev/null
-lacks "unnamed member's pane keeps its label" "pane rename" cat "$HERDR_LOG"
+check "unnamed member's pane is labelled with its member name" "pane rename w9:p1 docs" cat "$HERDR_LOG"
 edit 'del r["members"][0]["display_name"]; del r["members"][1]["display_name"]'
 python3 "$SCRIPT" assemble "$W" >/dev/null
 lacks "removing names clears .peers.json" "display_name" cat "$W/api/.peers.json"
