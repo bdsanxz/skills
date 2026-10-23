@@ -46,16 +46,16 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 
 ## Step 6: launch the squad
 
-### Keep the whole squad in one laid-out workspace
+### Keep the whole squad in one workspace, one tab per member
 
-- **Situation:** Members are started by hand, one at a time, or each relaunch opens its own workspace. Or so many panes share one tab that each is too narrow to read.
-- **Practice:** Start members only through `launch`. It puts the whole squad in one workspace laid out by the hierarchy: the supervisor's pane largest, across the top, and at most five members per window. Relaunch one member with `launch --member <name>`, which puts it back in its own window. Read the `WINDOW` lines of `--dry-run` with the user before the real launch.
-- **Why:** In one workspace, the user sees the squad's hierarchy at a glance and finds every member in one place. Panes scattered over workspaces, or squeezed into one tab, hide who leads. Narrow panes also wrap an agent's start-up dialogs so that they can no longer be recognised and answered.
+- **Situation:** Members are started by hand, one at a time, or each relaunch opens its own workspace. Or members are split into panes that share one tab, and each pane is too narrow to read.
+- **Practice:** Start members only through `launch`. It puts the whole squad in one workspace, each member in a tab of its own, in hierarchy order with the supervisor first. Relaunch one member with `launch --member <name>`, which puts its tab back in its place. Read the `TAB` lines of `--dry-run` with the user before the real launch.
+- **Why:** In one workspace, the user finds every member in one place, and the tab order shows who leads. Members scattered over workspaces are hard to find. Panes split side by side are narrow, and a narrow pane wraps an agent's start-up dialogs so that they can no longer be recognised and answered.
 
 ### Preview before you launch
 
 - **Situation:** A full launch is started before anything has been tried on this machine.
-- **Practice:** Run `launch --dry-run` first and fix every `PROBLEM`. Then launch. When a member fails, `launch` stops there: fix the cause, close the panes it names, and start each missing member with `--member <name>`. Do not start the whole squad again.
+- **Practice:** Run `launch --dry-run` first and fix every `PROBLEM`. Then launch. When a member fails, `launch` stops there: fix the cause, close the tabs of the panes it names, and start each missing member with `--member <name>`. Do not start the whole squad again.
 - **Why:** The dry run catches a missing agent, an unknown model or an unbuilt member before any pane opens. Resuming with `--member` keeps the members that already run, with their sessions and history.
 
 ### A relaunched member has a new address

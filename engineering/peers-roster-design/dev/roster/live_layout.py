@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Lays squads out in a real herdr session, with shells instead of agents, and measures them.
+"""Opens squads' tabs in a real herdr session, with shells instead of agents, and checks them.
 
 Usage: python3 live_layout.py [--session NAME] [--keep] [SIZE ...]
 
-For each squad size (default: 3 5 7) it builds the squad's windows with
-roster.py's own lay_out_window in one new workspace, reads every tab's pane
-layout back from herdr, and checks: one workspace, one tab per planned window,
-each pane where the plan puts it with about its planned share of the window,
-and the supervisor's pane the largest. Then it closes the supervisor's pane and
-a worker's, places them again the way `launch --member` does, and checks the
-first window again. Starts no agent. Closes each workspace afterwards unless
---keep is given. Needs a running herdr session (default: herdr's default).
+For each squad size (default: 3 5 7) it opens the squad's tabs with roster.py's
+own tab_steps, open_tab and move_to_end in one new workspace, reads the tabs
+and panes back from herdr, and checks: one workspace, one tab per member in
+hierarchy order, each tab labelled with its member and holding one pane with
+the same label. Then it closes the supervisor's pane and a worker's, opens
+them again the way `launch --member` does, and checks again that the tabs are
+in hierarchy order and that the running members kept their panes. Starts no
+agent. Closes each workspace afterwards unless --keep is given. Needs a
+running herdr session (default: herdr's default).
 """
 import argparse
 import os
@@ -38,42 +39,31 @@ def squad(n):
     return members
 
 
-def measure(h, rdict, windows, by_name, ws, label):
-    """Compare every tab of the workspace with the plan."""
-    tabs = {t["label"]: t["tab_id"] for t in h.query("tab", "list", "--workspace", ws).get("tabs", [])}
-    check(f"{label}: {len(windows)} tab(s), one per window",
-          sorted(tabs) == sorted(roster.window_label(rdict, w["number"]) for w in windows), sorted(tabs))
+def place(h, rdict, root, tabs, by_name, wanted):
+    """Carry out launch's tab steps for the wanted members; return the workspace id."""
+    ws, panes = roster.squad_state(h, rdict)
+    running = {n: p["pane_id"] for n in by_name for p in panes if p.get("label") == roster.display(by_name[n])}
+    for step, t in roster.tab_steps(tabs, running, wanted):
+        m = by_name[t["member"]]
+        if step == "move":
+            roster.move_to_end(h, m, running[m["name"]])
+        else:
+            ws, _ = roster.open_tab(h, rdict, root, m, ws)
+    return ws
+
+
+def measure(h, rdict, tabs, by_name, ws, label):
+    """Compare the workspace's tabs and panes with the plan; return {member: pane id}."""
+    got = sorted(h.query("tab", "list", "--workspace", ws).get("tabs", []), key=lambda t: t["number"])
+    want = [roster.display(by_name[t["member"]]) for t in tabs]
+    check(f"{label}: one tab per member, in hierarchy order", [t.get("label") for t in got] == want,
+          f"{[t.get('label') for t in got]} vs {want}")
     panes = h.query("pane", "list", "--workspace", ws).get("panes", [])
-    areas = {}
-    for w in windows:
-        tab = tabs.get(roster.window_label(rdict, w["number"]))
-        here = [p for p in panes if p.get("tab_id") == tab]
-        if not here:
-            check(f"{label}: window {w['number']} has panes", False)
-            continue
-        layout = h.query("pane", "layout", "--pane", here[0]["pane_id"]).get("layout", {})
-        area = layout["area"]["width"] * layout["area"]["height"]
-        rect = {p["pane_id"]: p["rect"] for p in layout["panes"]}
-        named = {p.get("label"): p["pane_id"] for p in here}
-        planned = roster.pane_areas(w)
-        got = {n: rect[named[roster.display(by_name[n])]]["width"] * rect[named[roster.display(by_name[n])]]["height"]
-               / area for n in planned if roster.display(by_name[n]) in named}
-        check(f"{label}: window {w['number']} holds exactly its members",
-              sorted(got) == sorted(planned) and len(here) == len(planned), f"{sorted(named)} vs {sorted(planned)}")
-        # Cells are whole numbers and splits draw borders, so allow a few points.
-        check(f"{label}: window {w['number']} sizes match the plan",
-              all(abs(got[n] - planned[n]) < 0.05 for n in got),
-              ", ".join(f"{n} {got[n]:.0%}/{planned[n]:.0%}" for n in got))
-        for row_index, row in enumerate(w["rows"]):
-            ys = {rect[named[roster.display(by_name[n])]]["y"] for n in row["members"] if roster.display(by_name[n]) in named}
-            check(f"{label}: window {w['number']} row {row_index + 1} is one row", len(ys) == 1, ys)
-        if w["number"] == 1:
-            top = rect[named["boss"]]
-            check(f"{label}: supervisor across the top", top["y"] == 0 and top["width"] == layout["area"]["width"], top)
-        areas.update({n: a * 1 for n, a in got.items()})
-    check(f"{label}: supervisor's pane is the largest",
-          all(a < areas.get("boss", 0) for n, a in areas.items() if n != "boss"), areas)
-    return panes
+    for t in got:
+        here = [p for p in panes if p.get("tab_id") == t["tab_id"]]
+        check(f"{label}: tab {t.get('label')!r} holds one pane with its label",
+              len(here) == 1 and here[0].get("label") == t.get("label"), here)
+    return {p.get("label"): p["pane_id"] for p in panes}
 
 
 def run(h, n, keep):
@@ -83,31 +73,26 @@ def run(h, n, keep):
         os.makedirs(os.path.join(root, m["cwd"]))
     rdict = {"squad": f"layout{n}"}
     by_name = {m["name"]: m for m in members}
-    windows = roster.plan_layout(members)
+    tabs = roster.plan_layout(members)
     label = f"{n} members"
-    check(f"{label}: plan is valid", not roster.layout_problems(windows, members))
-    if any(w["workspace_id"] for w in h.query("workspace", "list").get("workspaces", [])
-           if w.get("label") == roster.workspace_label(rdict)):
+    check(f"{label}: plan is valid", not roster.layout_problems(tabs, members))
+    if roster.squad_state(h, rdict)[0]:
         check(f"{label}: no leftover workspace {roster.workspace_label(rdict)}", False)
         return
-    ws, made = None, {}
-    for w in windows:
-        ws = roster.lay_out_window(h, rdict, root, w, by_name, ws, None, [], roster.window_members(w), made)
+    ws = place(h, rdict, root, tabs, by_name, set(by_name))
     found = [w for w in h.query("workspace", "list").get("workspaces", []) if w.get("label") == roster.workspace_label(rdict)]
     check(f"{label}: exactly one workspace", len(found) == 1, found)
-    panes = measure(h, rdict, windows, by_name, ws, label)
+    before = measure(h, rdict, tabs, by_name, ws, label)
 
-    # Relaunch: the supervisor's pane and a worker's close, then each is placed again.
-    gone = ["boss"] + [x for x in roster.window_members(windows[0]) if x.startswith("worker")][:1]
+    # Relaunch: the supervisor's pane and a worker's close, then both are opened again.
+    gone = ["boss"] + [m["name"] for m in members if m["name"].startswith("worker")][:1]
     for x in gone:
-        h.run("pane", "close", made[x])
-    for x in gone:
-        ws_id, tabs, panes = roster.squad_state(h, rdict)
-        w = next(w for w in windows if x in roster.window_members(w))
-        # With its last pane closed, a workspace closes too; the member then gets a new one.
-        ws = roster.lay_out_window(h, rdict, root, w, by_name, ws_id, tabs.get(roster.window_label(rdict, w["number"])),
-                                   panes, [x], {})
-    measure(h, rdict, windows, by_name, ws, f"{label} after relaunching {', '.join(gone)}")
+        h.run("pane", "close", before[x])
+    ws = place(h, rdict, root, tabs, by_name, set(gone))
+    after = measure(h, rdict, tabs, by_name, ws, f"{label} after relaunching {', '.join(gone)}")
+    kept = [x for x in by_name if x not in gone]
+    check(f"{label}: running members kept their panes", all(after.get(x) == before[x] for x in kept),
+          {x: (before[x], after.get(x)) for x in kept})
     if keep:
         print(f"     kept workspace {ws} ({roster.workspace_label(rdict)})")
     else:
