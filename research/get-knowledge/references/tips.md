@@ -4,7 +4,7 @@ Every tip here is a mistake an agent actually made while using this skill, with 
 
 ## Tools and shell
 
-- **The command in a shell variable.** `K="python3 .../knowledge.py"; $K local ...` fails in zsh, which does not split a variable into words. Define the `knowledge` function at the start of each command.
+- **The command in a shell variable.** `K="bun .../knowledge.js"; $K local ...` fails in zsh, which does not split a variable into words. Define the `knowledge` function at the start of each command.
 - **A separator made of equals signs.** `echo =====` between two commands fails in zsh, which reads a word that begins with `=` as the name of a command to look up. Quote the separator, or use `echo "--"`.
 
 ## Step 2: Look locally

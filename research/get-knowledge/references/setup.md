@@ -68,12 +68,14 @@ The user sets the variable themselves, in their shell profile or their agent's s
 
 The providers do not take the search options in the same way:
 
-| Option | Exa | Keenable | Parallel |
-| --- | --- | --- | --- |
-| `--num-results` | yes | yes | cuts its list, which has at most 10 results |
-| `--type` | `auto`, `fast`, `deep` | not used | not used |
-| `--livecrawl preferred` | yes | not used | not used |
-| `--context-max-characters` | yes | the length of each snippet | not used |
+| Option | Exa with a key | Exa without a key | Keenable | Parallel |
+| --- | --- | --- | --- | --- |
+| `--num-results` | yes | yes | yes | cuts its list, which has at most 10 results |
+| `--type` | `auto`, `fast`, `deep` | not used | not used | not used |
+| `--livecrawl preferred` | yes | not used | not used | not used |
+| `--context-max-characters` | yes | not used | the length of each snippet | not used |
+
+Exa's keyless service takes only the query and the number of results, so `--type`, `--livecrawl` and `--context-max-characters` need an Exa key to have an effect.
 
 Parallel is asked with the query alone. With a key it always searches in its advanced mode; its keyless service always searches in its fast mode. Its excerpts are passed on whole, and they are longer than the highlights of the other two.
 

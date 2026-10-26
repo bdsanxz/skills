@@ -18,10 +18,10 @@ Three words are used throughout:
 `knowledge` below stands for this shell function:
 
 ```
-knowledge() { python3 "<this skill's directory>/scripts/knowledge.py" "$@"; }
+knowledge() { bun "<this skill's directory>/scripts/knowledge.js" "$@"; }
 ```
 
-Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs Python 3.9 or newer and nothing else. `knowledge --help` lists the commands, and `knowledge <command> --help` their options. Every command exits 0 when it did what was asked, 1 when the request failed, and 2 on wrong usage. Finding nothing is not a failure.
+Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs [Bun](https://bun.sh) and nothing else; when `bun` is not found, tell the user to install it and stop. `knowledge --help` lists the commands, and `knowledge <command> --help` gives a command's options and examples. Every command exits 0 when it did what was asked, 1 when the request failed, and 2 on wrong usage, with a message that names the command's help. Finding nothing is not a failure.
 
 Before each of Steps 2 to 4, read that step's part of `references/tips.md`. It holds the mistakes agents made in that step and what to do instead.
 
@@ -65,7 +65,7 @@ The query is one argument, in quotes. It prints each result's title, URL and hig
 2. Choose candidates by their source: the official documentation, the project's own repository or the original publication before a summary of it. Once these show up in the results, stop searching and go to Step 4.
 3. Look at each candidate's URL before you fetch it. A URL that names an old version, tag or commit shows that old state. When you need the current state, change that part to the current version or the default branch.
 4. Do not answer from highlights. They are for choosing which URL to fetch.
-5. Use the options when they help: `--num-results <n>` for more than the default 5 (at most 20), `--type deep` for a harder question, `--livecrawl preferred` when the newest state of a page matters, `--context-max-characters <n>` for longer highlights, `--provider exa`, `--provider keenable` or `--provider parallel` to ask that provider first for this one search.
+5. Use the options when they help: `--num-results <n>` for more than the default 5 (at most 20), `--provider exa`, `--provider keenable` or `--provider parallel` to ask that provider first for this one search. With an Exa key, `--type deep` searches harder and `--livecrawl preferred` asks for pages crawled now; `--context-max-characters <n>` gives longer highlights with an Exa key and with Keenable. Without a key, Exa takes none of these three.
 6. Stop searching when three queries in a row bring nothing new. Report what you tried instead of rewording a fourth time.
 
 A note that one provider's limit was reached and the next was tried is not a failure. When all of them fail, tell the user what the message says; `references/setup.md` describes the providers and the API keys that lift the limits.
