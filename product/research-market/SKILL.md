@@ -9,21 +9,21 @@ Understand an audience from its own unprompted posts: collect them by topic and 
 
 ## Running the scripts
 
-The three scripts need only Python 3 and no setup:
+The commands `market collect`, `market list` and `market tally` below run through this shell function:
 
 ```
-python3 "<this skill's directory>/scripts/collect.py" --help
-python3 "<this skill's directory>/scripts/list.py" --help
-python3 "<this skill's directory>/scripts/tally.py" --help
+market() { bun "<this skill's directory>/scripts/market.js" "$@"; }
 ```
 
-`collect.py`, `list.py` and `tally.py` below stand for these full commands. `collect.py` reads X/Twitter and Bluesky through the FxEmbed API, which needs no key or login. Fetch posts only through it: do not scrape the sites, and do not use another source in its place.
+Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs [Bun](https://bun.sh) and nothing else; when `bun` is not found, tell the user to install it and stop. `market --help` lists the commands, and `market <command> --help` gives a command's options and examples. Every command exits 0 when it did what was asked, 1 when the request failed (nothing could be collected, or coding lines cannot be counted), and 2 on wrong usage or an input file that cannot be used, with a message that names the command's help.
+
+`market collect` reads X/Twitter and Bluesky through the FxEmbed API, which needs no key or login. Fetch posts only through it: do not scrape the sites, and do not use another source in its place.
 
 Before each step, read that step's part of `references/tips.md`: the mistakes earlier runs made there, and how to avoid them.
 
 ## Rules
 
-1. Base every finding on the collected posts. Never invent a post, a quote, a handle or a number. Every count comes from `tally.py`.
+1. Base every finding on the collected posts. Never invent a post, a quote, a handle or a number. Every count comes from `market tally`.
 2. A finding is a hypothesis about an audience, not a fact about a market. The people who post are not everyone, and they post at their angriest and happiest. Say so, and say what would have to be checked.
 3. Anything that does not come from the posts must be verifiable: a public page you opened in this session and link. What you remember about a product, a market or a price is not verifiable; check it or leave it out.
 4. When evidence is missing, write "Unknown" and say what would settle it. Never support an assessment or a rating with a guess or an invented figure.
@@ -56,7 +56,7 @@ Write `_swe/research-market/<name>/queries.txt`, one search per line as `goal | 
 2. Spread them over the goals: pains, wishes, recommendation requests, alternatives and switching, triggers, objections, price, delight, and current behaviour. A plan made only of complaints finds only what is broken.
 3. Use the audience's languages and slang, and the synonyms of the sheet.
 4. Include queries that could contradict what you or the user expect.
-5. Check the plan with `collect.py --out <file> --queries-file <queries file> --dry`, which prints the searches without running them.
+5. Check the plan with `market collect --out <file> --queries-file <queries file> --dry`, which prints the searches without running them.
 
 ## Step 3: Collect posts
 
@@ -65,20 +65,20 @@ Every call uses the same `--out _swe/research-market/<name>/posts.json`. A furth
 1. **Topic queries**, once per search tab:
 
    ```
-   collect.py --out <file> --queries-file <queries file> --since 2026-04-01 --per-query 25 --max 300
-   collect.py --out <file> --queries-file <queries file> --since 2026-04-01 --per-query 10 --max 150 --feed top
+   market collect --out <file> --queries-file <queries file> --since 2026-04-01 --per-query 25 --max 300
+   market collect --out <file> --queries-file <queries file> --since 2026-04-01 --per-query 10 --max 150 --feed top
    ```
 
    `--days <N>` stands for the last N days. Times are UTC. Queries run on X/Twitter; add `--platform bluesky` for a second call when the audience is there.
 2. **Posts sent to an account**, for each official account of the sheet:
 
    ```
-   collect.py --out <file> --account x:<handle> --since 2026-04-01 --max 100 --exclude-from <brand handle>
+   market collect --out <file> --account x:<handle> --since 2026-04-01 --max 100 --exclude-from <brand handle>
    ```
 
    Exclude the company's own accounts, whose replies otherwise fill the result. `--terms "<product name>"` narrows the search when the account covers several products.
-3. **Listed posts**, when the user gave URLs or IDs: `collect.py --out <file> --post <url or id>`, or `--posts-file` for a long list. Each post is fetched with its thread.
-4. **Threads worth reading.** The answers to a recommendation request, and the replies under a post many people agreed with, often hold more than the post. Fetch them with `collect.py --out <file> --post <url> --replies`.
+3. **Listed posts**, when the user gave URLs or IDs: `market collect --out <file> --post <url or id>`, or `--posts-file` for a long list. Each post is fetched with its thread.
+4. **Threads worth reading.** The answers to a recommendation request, and the replies under a post many people agreed with, often hold more than the post. Fetch them with `market collect --out <file> --post <url> --replies`.
 
 After each call, read the printed summary:
 
@@ -89,16 +89,16 @@ After each call, read the printed summary:
 
 ## Step 4: Read and code
 
-1. Read every post with `list.py <posts file>`, in ranges with `--from` and `--to` when the file is long. Each line has the post's number, date, author, engagement, the goal it was collected for, and its text.
+1. Read every post with `market list <posts file>`, in ranges with `--from` and `--to` when the file is long. Each line has the post's number, date, author, engagement, the goal it was collected for, and its text.
 2. For each post that shows something about the audience, write lines in `_swe/research-market/<name>/coding.txt`, following `references/dimensions.md`: one line per dimension the post shows, with a theme, the sentiment, the intensity, the segment, and the author's exact words.
 3. Leave uncoded what is not the audience speaking: advertising, giveaways, repeated automated posts, companies and their staff, and posts about another meaning of a search word.
-4. Read the parent of a reply before coding it when it cannot be understood alone. If the parent is not in the file and the post matters, add it with `collect.py --out <file> --post <reply_to url>`.
+4. Read the parent of a reply before coding it when it cannot be understood alone. If the parent is not in the file and the post matters, add it with `market collect --out <file> --post <reply_to url>`.
 5. Code the posts that contradict the expected pattern with the same care as the ones that fit it.
-6. `list.py <posts file> --uncoded <coding file>` shows what is still unread after an interruption or a later collection.
+6. `market list <posts file> --uncoded <coding file>` shows what is still unread after an interruption or a later collection.
 
 ## Step 5: Count
 
-Run `tally.py <posts file> <coding file>`. It returns:
+Run `market tally <posts file> <coding file>`. It returns:
 
 - `themes`: for each dimension and theme, the posts, distinct authors, distinct days, first and last date, mean intensity, sentiment split, engagement, segments and most-engaged posts;
 - `dimensions`: how much evidence each dimension has;
@@ -161,9 +161,9 @@ Reply to the user with a concise report:
 
 1. **Summary**: three to five sentences with the main findings and what they imply, answering the research questions.
 2. **Scope and sample**: topic, audience, languages, time range, the number of queries and the accounts covered, posts collected, posts coded, and what could not be fetched. Attach or point to the queries file.
-3. **Main themes**: the table from `tally.py <posts file> <coding file> --markdown`, ordered by frequency and intensity, with one representative quote or paraphrase and link for each of the top themes. Add `--markdown segments` when the user asked for a breakdown by segment.
+3. **Main themes**: the table from `market tally <posts file> <coding file> --markdown`, ordered by frequency and intensity, with one representative quote or paraphrase and link for each of the top themes. Add `--markdown segments` when the user asked for a breakdown by segment.
 4. **Profile by dimension**: the top themes of each dimension that has evidence, in a line or two each: pains, jobs, wishes, triggers, criteria, objections, alternatives and reasons for switching, price sensitivity. Name the dimensions with no evidence.
-5. **Audience language**: the most-used phrases from `tally.py <posts file> <coding file> --markdown words`, with what each is used for. These are the words for copy, naming and search.
+5. **Audience language**: the most-used phrases from `market tally <posts file> <coding file> --markdown words`, with what each is used for. These are the words for copy, naming and search.
 6. **Ranked opportunities**: first a table with one row each in rank order:
 
    | Rank | Idea | Type | Problem & Relevance | Innovation & Creativity | Technical Implementation | Impact & Feasibility |

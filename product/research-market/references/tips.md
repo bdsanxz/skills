@@ -16,7 +16,7 @@ Mistakes earlier runs of this skill made, and how to avoid them. Read the part f
 
 ## Reading and coding
 
-- **Read with `list.py`, not the data file.** The listing is about a third of the size and gives each post the number the coding file needs. For a large file, read it in ranges with `--from` and `--to`.
+- **Read with `market list`, not the data file.** The listing is about a third of the size and gives each post the number the coding file needs. For a large file, read it in ranges with `--from` and `--to`.
 - **Refer to posts by number.** Copying long URLs by hand into the coding file is where mistakes come from.
 - **Posts with a picture are often unreadable alone.** "Why is it like this?" with a screenshot says nothing in text. Leave it uncoded unless its thread explains it.
 - **Near-identical posts by one author count once.** People repeat a complaint to several accounts. Code one of them.

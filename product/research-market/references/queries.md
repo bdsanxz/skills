@@ -16,7 +16,7 @@ The goal is a dimension key from `dimensions.md`, or any short label of your own
 
 ## Operators
 
-These work on X/Twitter through `collect.py`, checked against the API. Search is looser than it looks: a quoted phrase or a keyword can match text that is not in the post itself, such as a quoted post or a link title, so expect unrelated posts and leave them uncoded.
+These work on X/Twitter through `market collect`, checked against the API. Search is looser than it looks: a quoted phrase or a keyword can match text that is not in the post itself, such as a quoted post or a link title, so expect unrelated posts and leave them uncoded.
 
 | Operator | What it does | Example |
 | --- | --- | --- |
@@ -31,15 +31,15 @@ These work on X/Twitter through `collect.py`, checked against the API. Search is
 | `-filter:retweets` | Without reposts | append to the query |
 | `filter:links` | Only posts with a link | append to the query |
 
-Do not write `since:` or `until:` yourself. Give the time range to `collect.py`, which adds them and then applies the exact range to the results.
+Do not write `since:` or `until:` yourself. Give the time range to `market collect`, which adds them and then applies the exact range to the results.
 
 A query may be at most 512 characters with its date range.
 
-Bluesky has a search of its own. It has been failing with a server error, so its operators could not be checked: keep a Bluesky query to plain words and quoted phrases, and read in the summary of `collect.py --platform bluesky` whether the search works today.
+Bluesky has a search of its own. It has been failing with a server error, so its operators could not be checked: keep a Bluesky query to plain words and quoted phrases, and read in the summary of `market collect --platform bluesky` whether the search works today.
 
 ## Latest and top
 
-`collect.py --feed latest` returns the newest posts and shows what people say on an ordinary day. `--feed top` returns the posts that resonated most and shows what many agree with, but it favours viral posts. Run the queries once with each and compare: a theme that appears only in `top` may rest on one viral post.
+`market collect --feed latest` returns the newest posts and shows what people say on an ordinary day. `--feed top` returns the posts that resonated most and shows what many agree with, but it favours viral posts. Run the queries once with each and compare: a theme that appears only in `top` may rest on one viral post.
 
 ## Templates
 
@@ -59,7 +59,7 @@ Replace `[TOPIC]`, `[PRODUCT_A]`, `[PRODUCT_B]` and `[ACCOUNT_A]` with the words
 | `switching-cost` | `[PRODUCT_A] ("too lazy to switch" OR "stuck with" OR "can't leave")` |
 | `criteria` | `[TOPIC] ("must have" OR "what matters" OR "deal breaker")` |
 
-Complaints sent to a competitor are collected by account instead of by query: `collect.py --account x:[ACCOUNT_A] --exclude-from [PRODUCT_A]`.
+Complaints sent to a competitor are collected by account instead of by query: `market collect --account x:[ACCOUNT_A] --exclude-from [PRODUCT_A]`.
 
 ## Writing good queries
 

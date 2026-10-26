@@ -12,7 +12,7 @@ post | dimension | theme | sentiment | intensity | segment | exact words
 
 | Field | Content |
 | --- | --- |
-| `post` | The number `list.py` prints for the post. A post URL also works. |
+| `post` | The number `market list` prints for the post. A post URL also works. |
 | `dimension` | One key from the table below. |
 | `theme` | A short label in your own words, the same wording for every post that shares it. |
 | `sentiment` | `neg`, `neu` or `pos`: how the author feels about what this line records. |
@@ -51,7 +51,7 @@ The audience's language is not a dimension of its own. Record it in `exact words
 3. Name a theme the way the audience would state it ("Refund takes weeks"), not as a solution ("Faster refunds") or a category ("Refunds"). Reuse the exact label for every post that shares the theme; a new spelling starts a new theme only when the dimension differs.
 4. Rate intensity from the post: its wording, what the problem cost, how long it has lasted. Capital letters alone are not a 3.
 5. Take the segment from what the author says about their situation ("as a freelancer", "for my shop", "my kids"), or from the product or market the post is about when the user asked for a breakdown by it. Never open a profile to find it.
-6. Copy `exact words` letter for letter, a few words at a time. `tally.py` rejects words that are not in the post.
+6. Copy `exact words` letter for letter, a few words at a time. `market tally` rejects words that are not in the post.
 7. Leave uncoded: advertising, giveaways and promotion, accounts that post the same text repeatedly, posts by companies and their support staff, jokes with no real situation behind them, and posts about another meaning of a search word.
 8. When a post cannot be understood alone, or may be sarcastic, read the post it replies to before coding it.
 9. Code the posts that contradict the pattern you expect with the same care. A `delight` line about the thing others complain about belongs in the file.
@@ -62,7 +62,7 @@ A post, on the fictional topic of healthy meal delivery:
 
 > Ordered diet catering 3 times but the portions keep being tiny and the delivery is always very late. I want to try cooking myself but I have no time. Anyone know a good one?
 
-If `list.py` shows it as post 41, it gives these lines:
+If `market list` shows it as post 41, it gives these lines:
 
 ```
 41 | pain | Portions too small | neg | 2 | - | portions keep being tiny
