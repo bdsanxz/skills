@@ -453,7 +453,7 @@ usual order of work:
 
 Run `dfont COMMAND --help` for what a command does, its options and examples.
 DIR is always the project directory, the one that holds font.json.
-The environment lives in $DESIGN_FONT_HOME, else ~/.cache/design-font.
+The environment lives in $FONT_DESIGN_HOME, else ~/.cache/font-design.
 
 """ + EXIT_CODES
 
