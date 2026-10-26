@@ -92,7 +92,7 @@ There is no maximum or minimum number of tasks. Never merge tasks to shorten the
 ### Required and optional
 
 - Status is `Required` for behavior the sources need for their core outcome, and `Optional` for behavior the sources call optional.
-- An optional task never appears under the `Needs` of a required task. `taskgraph.py check` rejects it.
+- An optional task never appears under the `Needs` of a required task. `taskgraph check` rejects it.
 
 ### Change, fix and port work
 
@@ -129,15 +129,15 @@ There is no maximum or minimum number of tasks. Never merge tasks to shorten the
 - Every task has a `Needs` line: the IDs of the tasks whose behavior must exist before this task's behavior can be observed, or `none`. The dependency graph that these lines form is how an agent finds the tasks that can run in parallel, so each line must be exact.
 - Under `Needs because`, give one reason for each dependency, in product terms (what the other task delivers that this one's behavior cannot be seen without). If the reason is only a preferred order, delete the dependency.
 - List a task under `Needs` only when this task's behavior cannot be observed without the other's. A negative path usually needs the happy path of the same goal. Do not list a dependency for any other reason, such as a preferred sequence of work, a shared file or a wish to review one task first: a needless dependency removes a task from the work that can run in parallel.
-- Leave out a dependency that another dependency already implies (if T4 needs T3 and T3 needs T1, T4 does not list T1). `taskgraph.py check` rejects it.
+- Leave out a dependency that another dependency already implies (if T4 needs T3 and T3 needs T1, T4 does not list T1). `taskgraph check` rejects it.
 - A task that no other task needs, and that needs nothing, is fine: it can start at once and run in parallel with everything.
-- A `Needs` entry may point to a task above or below. The graph must have no cycle and no ID that does not exist; `scripts/taskgraph.py check` finds both.
-- A task is done when every item of its acceptance criteria is ticked (`- [x]`). Tick the items when the checks pass; `taskgraph.py status` reads the ticks to tell which tasks are ready and which are blocked.
+- A `Needs` entry may point to a task above or below. The graph must have no cycle and no ID that does not exist; `taskgraph check` finds both.
+- A task is done when every item of its acceptance criteria is ticked (`- [x]`). Tick the items when the checks pass; `taskgraph status` reads the ticks to tell which tasks are ready and which are blocked.
 - A task that carries `[Qn]` is blocked until the question is answered. The question's `Blocks` line lists exactly the tasks that carry its marker.
 
 ### Coverage table
 
-- The `## Coverage` table lists every statement in the sources that describes behavior (by its ID where the sources have one, with its words), and the tasks or open questions that cover it. A row with no task and no question is a missing task. A task that appears in no row has no source and is removed. `taskgraph.py check` finds both.
+- The `## Coverage` table lists every statement in the sources that describes behavior (by its ID where the sources have one, with its words), and the tasks or open questions that cover it. A row with no task and no question is a missing task. A task that appears in no row has no source and is removed. `taskgraph check` finds both.
 - A non-goal or a deferred item is not a row; it is listed under `Not covered` in the scope.
 
 ### Language
@@ -166,7 +166,7 @@ Check the document against each item before saving it.
 11. Every negative path task says what the actor is told, what progress is kept and how the actor recovers, or marks the missing part with `[Qn]`.
 12. Every `[Qn]` marker refers to an existing open question, and every open question lists the tasks it blocks.
 13. Every task passes the granularity test: one actor, one goal, one outcome that can be checked on its own; none is a layer or a fragment.
-14. Every task has a `Needs` line; its entries are listed only where one task's behavior cannot be observed without the other's, each has a reason under `Needs because`, none implies another, and no required task needs an optional one. `taskgraph.py check` reports no problem.
+14. Every task has a `Needs` line; its entries are listed only where one task's behavior cannot be observed without the other's, each has a reason under `Needs because`, none implies another, and no required task needs an optional one. `taskgraph check` reports no problem.
 15. Every feature with a change, fix or port states what must stay unchanged, and its tasks check it.
 16. The document is in the language of the sources.
 17. A reader who never saw the conversation can tell from the document alone who does what, what they see, and when each task is done.

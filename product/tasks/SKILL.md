@@ -21,10 +21,10 @@ The result is one Markdown `.md` file, with the tasks grouped by feature. Do not
 `taskgraph` below stands for this shell function:
 
 ```
-taskgraph() { python3 "<this skill's directory>/scripts/taskgraph.py" "$@"; }
+taskgraph() { bun "<this skill's directory>/scripts/taskgraph.js" "$@"; }
 ```
 
-Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs Python 3 and nothing else. It reads the tasks document itself: the graph comes from each task's `Needs` line, and a task counts as done when all its acceptance criteria are ticked. `taskgraph --help` lists its commands:
+Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs [Bun](https://bun.sh) and nothing else; when `bun` is not found, tell the user to install it and stop. It reads the tasks document itself: the graph comes from each task's `Needs` line, and a task counts as done when all its acceptance criteria are ticked. `taskgraph --help` lists its commands, and `taskgraph <command> --help` gives what a command checks and prints, with examples:
 
 - `taskgraph check DOC` validates the document and prints every problem with its line number.
 - `taskgraph status DOC` lists the tasks that are done, the tasks that are ready to start now (they do not need each other, so they can run in parallel) and the tasks that are blocked, each with what it waits for.
