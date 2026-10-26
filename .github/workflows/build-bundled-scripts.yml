@@ -1,0 +1,52 @@
+# Rebuild the bundled scripts on every push and commit the result to the pushed branch,
+# so an installed skill runs its scripts without installing any dependencies.
+name: Build bundled scripts
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "**/dev/**"
+      - "**/scripts/**"
+      - ".github/scripts/build-bundled-scripts.sh"
+      - ".github/workflows/build-bundled-scripts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-bundled-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Build and check the bundled scripts
+        run: .github/scripts/build-bundled-scripts.sh
+
+      - name: Commit and push the built scripts
+        run: |
+          git add -A -- ':(glob)**/scripts/**' ':(exclude).github/**'
+          if git diff --cached --quiet; then
+            echo "The built scripts are up to date."
+            exit 0
+          fi
+          git diff --cached --stat
+          # A newer push builds again in its own run; this one only pushes onto the commit it built.
+          git fetch --quiet origin "$GITHUB_REF_NAME"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+            echo "::notice::$GITHUB_REF_NAME moved past ${GITHUB_SHA::7}; the newer run commits the build."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Build bundled scripts" -m "Built from ${GITHUB_SHA::7} by the build-bundled-scripts workflow."
+          git push origin "HEAD:$GITHUB_REF_NAME"
