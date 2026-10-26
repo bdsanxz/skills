@@ -23,6 +23,16 @@ Four words are used throughout:
 5. **Self-contained.** The agent knows only the caller's prompt and its own instructions. Everything else it needs goes into the instructions, and everything the caller must give it goes into the description.
 6. **Docs change; check them.** Each platform reference says when it was checked against which page. When the user's version or a field matters to the agent, re-read that page, and when it disagrees with the reference, follow the page and tell the user what changed.
 
+## Running the script
+
+`check_agent` below stands for this shell function:
+
+```
+check_agent() { bun "<this skill's directory>/scripts/check_agent.js" "$@"; }
+```
+
+Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs [Bun](https://bun.sh) and nothing else; when `bun` is not found, tell the user to install it and stop. `check_agent --help` gives its options, how it tells the platform, what it prints, and its exit codes.
+
 ## Step 1: Learn the job
 
 1. Take from the user's request what the agent is for:
@@ -78,7 +88,7 @@ The instructions are the body of a Markdown file and `developer_instructions` in
 5. End with the protocol. Print it with the agent's name filled in, and paste the output as it is, markers included:
 
    ```
-   python3 "<this skill's directory>/scripts/check_agent.py" --protocol <agent-name>
+   check_agent --protocol <agent-name>
    ```
 
    Do not retype, shorten or reword it. `references/report-protocol.md` explains what it is for, if the user asks.
@@ -89,7 +99,7 @@ The instructions are the body of a Markdown file and `developer_instructions` in
 2. Check it:
 
    ```
-   python3 "<this skill's directory>/scripts/check_agent.py" <path of the agent file>
+   check_agent <path of the agent file>
    ```
 
    Add `--platform claude-code`, `--platform opencode` or `--platform codex` when the file is not in a location the platform's documentation gives, such as a directory the user named. The script exits 0 when nothing is wrong, 1 when it found problems, and 2 on wrong usage. Fix each problem it prints, and run it again until it exits 0.

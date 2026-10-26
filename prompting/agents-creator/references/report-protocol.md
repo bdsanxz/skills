@@ -5,7 +5,7 @@ Every agent created with this skill carries the text between the two markers bel
 When you copy it:
 
 - Replace every `{{AGENT_NAME}}` with the agent's name.
-- Copy the markers too. They let `scripts/check_agent.py` find the block.
+- Copy the markers too. They let `scripts/check_agent.js` find the block.
 - Change nothing else. The check compares the block with this file.
 - Put the task's own report sections in the agent's instructions, before the protocol, under a heading "Report sections". The protocol refers to them.
 
