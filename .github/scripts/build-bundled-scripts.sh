@@ -14,6 +14,17 @@ while IFS= read -r manifest; do
   (
     cd "$project"
     bun install --frozen-lockfile
+    # No package under the GPL family (GPL, LGPL, AGPL) may be installed, so none can be bundled.
+    copyleft=$(find node_modules -name package.json -print0 2>/dev/null |
+      xargs -0 jq -r 'select(.name and .version)
+        | [.license, (.licenses // [] | .[]? | .type? // .)] | map(select(. != null))
+        | map(if type == "object" then .type else . end) | join(" ") as $l
+        | select($l | test("GPL"; "i")) | "\(input_filename): \($l)"' 2>/dev/null || true)
+    if [ -n "$copyleft" ]; then
+      echo "::error::$project installs a package under the GPL family:"
+      echo "$copyleft"
+      exit 1
+    fi
     bun run build
     for step in typecheck test; do
       if jq -e --arg step "$step" '.scripts[$step]' package.json >/dev/null; then
