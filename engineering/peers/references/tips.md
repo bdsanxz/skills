@@ -7,7 +7,7 @@ Every tip here comes from real sessions that worked together through this skill:
 ### A new message gets a new sequence number
 
 - **Situation:** You send a notice or a new request, and you reuse the number of an earlier exchange, often `1`.
-- **Practice:** Reuse a `PEER-SEQ` only for messages in the same exchange. Every new request or notice that starts an exchange of its own gets the next unused number for that peer.
+- **Practice:** Reuse a `seq` only for messages in the same exchange. Every new request or notice that starts an exchange of its own gets the next unused number for that peer.
 - **Why:** The receiver matches each message to its exchange by that number. A reused number makes a new notice look like part of an old, closed exchange, so it is answered wrongly or not at all.
 - **Example:** Exchanges 1 and 2 are done. A notice about a changed API is `--kind notice --seq 3`, not `--seq 1`.
 
@@ -64,13 +64,13 @@ Every tip here comes from real sessions that worked together through this skill:
 ### Reply to the address the message gives
 
 - **Situation:** A message arrives and you look up its sender with `peers list` before you reply.
-- **Practice:** Reply to `PEER-REPLY-TO` when the message has one, otherwise to `PEER-FROM`, exactly as written. Look an address up only to message a peer that has not written to you.
-- **Why:** The headers already hold the right address. A lookup costs a turn, and by role or directory it can pick an older session of the same member that nobody runs any more.
+- **Practice:** Reply to the address after `answer goes to` when the message has one, otherwise to the peer's address on the `CHAT` line, exactly as written. Look an address up only to message a peer that has not written to you.
+- **Why:** The chat already holds the right address. A lookup costs a turn, and by role or directory it can pick an older session of the same member that nobody runs any more.
 
 ### Only the requester decides
 
 - **Situation:** You work on one member's request, and a question about its scope comes up. Another member, perhaps your requester's own boss, also takes an interest in it.
-- **Practice:** Send questions, `progress` and the `completion` of a request to its requester: `PEER-REPLY-TO` when the request has one, otherwise `PEER-FROM`. Tell anyone else with a `notice` only when they need to know, and do not ask them to decide.
+- **Practice:** Send questions, `progress` and the `completion` of a request to its requester: the address after `answer goes to` when the request has one, otherwise the peer's address on the `CHAT` line. Tell anyone else with a `notice` only when they need to know, and do not ask them to decide.
 - **Why:** Two members who each answer the same question can answer it differently, and you can no longer tell which answer counts. One requester means one decision.
 
 ### Ack work that will take long
