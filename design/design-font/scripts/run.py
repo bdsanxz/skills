@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Entry point for every design-font command.
+
+Uses only the standard library. On first use it creates a virtual environment
+in the user cache, installs the pinned requirements, then runs the command
+inside it. `run.py --help` lists the commands; every command takes --help.
+"""
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parent
+REQUIREMENTS = SCRIPTS / "requirements.txt"
+
+
+def log(message):
+    print("dfont: " + message, file=sys.stderr, flush=True)
+
+
+def fail(message):
+    log("error: " + message)
+    sys.exit(2)
+
+
+def cache_root():
+    override = os.environ.get("DESIGN_FONT_HOME")
+    if override:
+        return Path(override).expanduser()
+    base = os.environ.get("XDG_CACHE_HOME")
+    return (Path(base).expanduser() if base else Path.home() / ".cache") / "design-font"
+
+
+def venv_dir():
+    digest = hashlib.sha256()
+    digest.update(REQUIREMENTS.read_bytes())
+    digest.update("{}.{}".format(*sys.version_info[:2]).encode())
+    return cache_root() / ("venv-" + digest.hexdigest()[:12])
+
+
+def venv_python(venv):
+    if os.name == "nt":
+        return venv / "Scripts" / "python.exe"
+    return venv / "bin" / "python"
+
+
+def run_quiet(command):
+    """Run a setup command; show its output only when it fails."""
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+    return result.returncode == 0
+
+
+def build_venv(target):
+    uv = shutil.which("uv")
+    if uv:
+        ok = run_quiet([uv, "venv", "--python", sys.executable, str(target)]) and run_quiet(
+            [uv, "pip", "install", "--python", str(venv_python(target)), "-r", str(REQUIREMENTS)]
+        )
+        if ok:
+            return True
+        log("uv install failed, falling back to venv + pip")
+        shutil.rmtree(target, ignore_errors=True)
+    if not run_quiet([sys.executable, "-m", "venv", str(target)]):
+        return False
+    return run_quiet(
+        [str(venv_python(target)), "-m", "pip", "install", "--disable-pip-version-check", "-q", "-r", str(REQUIREMENTS)]
+    )
+
+
+def ensure_venv():
+    venv = venv_dir()
+    if (venv / ".ready").exists() and venv_python(venv).exists():
+        return venv
+    log("creating environment at {} (first run only)".format(venv))
+    venv.parent.mkdir(parents=True, exist_ok=True)
+    # Build beside the final location and rename, so a crashed or concurrent
+    # build never leaves a half-installed environment in place.
+    staging = venv.parent / "{}.tmp-{}".format(venv.name, os.getpid())
+    shutil.rmtree(staging, ignore_errors=True)
+    if not build_venv(staging):
+        shutil.rmtree(staging, ignore_errors=True)
+        fail("could not install dependencies from " + str(REQUIREMENTS))
+    (staging / ".ready").write_text("ok\n")
+    if venv.exists() and not (venv / ".ready").exists():
+        shutil.rmtree(venv, ignore_errors=True)
+    try:
+        staging.rename(venv)
+    except OSError:
+        # Another process finished the same build first.
+        shutil.rmtree(staging, ignore_errors=True)
+        if not (venv / ".ready").exists():
+            fail("could not move the environment into place at " + str(venv))
+    return venv
+
+
+def child_env():
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SCRIPTS) + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
+
+def main(argv):
+    if sys.version_info < (3, 9):
+        fail("Python 3.9 or newer is required")
+    venv = ensure_venv()
+    return subprocess.call([str(venv_python(venv)), "-m", "dfont.cli"] + argv, env=child_env())
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

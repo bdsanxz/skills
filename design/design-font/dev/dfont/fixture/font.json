@@ -1,0 +1,126 @@
+{
+  "family": "Fixture Sans",
+  "version": "0.100",
+  "designer": "",
+  "copyright": "",
+  "license": null,
+  "license_url": null,
+  "vendor": "NONE",
+  "charset": [
+    "latin-core"
+  ],
+  "metrics": {
+    "upm": 1000,
+    "ascender": 760,
+    "descender": -240,
+    "xheight": 520,
+    "cap": 700,
+    "line_gap": null
+  },
+  "shared": {
+    "overshoot": 12
+  },
+  "masters": [
+    {
+      "name": "Light",
+      "location": {
+        "wght": 300.0
+      },
+      "params": {
+        "stem": 60,
+        "stem_cap": 64,
+        "bar": 52,
+        "bar_cap": 54,
+        "round_gain": 1.05,
+        "n_width": 480,
+        "o_width": 519,
+        "H_width": 624,
+        "O_width": 730,
+        "arch_join": 122,
+        "arch_drop": 187,
+        "sb_straight": 62,
+        "sb_round": 43,
+        "sb_cap_straight": 76,
+        "sb_cap_round": 50,
+        "space": 274
+      }
+    },
+    {
+      "name": "Regular",
+      "location": {
+        "wght": 400.0
+      },
+      "params": {
+        "stem": 88,
+        "stem_cap": 94,
+        "bar": 76,
+        "bar_cap": 79,
+        "round_gain": 1.05,
+        "n_width": 496,
+        "o_width": 533,
+        "H_width": 641,
+        "O_width": 744,
+        "arch_join": 130,
+        "arch_drop": 187,
+        "sb_straight": 59,
+        "sb_round": 41,
+        "sb_cap_straight": 73,
+        "sb_cap_round": 48,
+        "space": 285
+      }
+    },
+    {
+      "name": "Bold",
+      "location": {
+        "wght": 700.0
+      },
+      "params": {
+        "stem": 151,
+        "stem_cap": 162,
+        "bar": 130,
+        "bar_cap": 136,
+        "round_gain": 1.05,
+        "n_width": 530,
+        "o_width": 564,
+        "H_width": 679,
+        "O_width": 776,
+        "arch_join": 149,
+        "arch_drop": 187,
+        "sb_straight": 53,
+        "sb_round": 36,
+        "sb_cap_straight": 68,
+        "sb_cap_round": 45,
+        "space": 310
+      }
+    }
+  ],
+  "instances": [
+    {
+      "name": "Light",
+      "location": {
+        "wght": 300.0
+      }
+    },
+    {
+      "name": "Regular",
+      "location": {
+        "wght": 400.0
+      }
+    },
+    {
+      "name": "Bold",
+      "location": {
+        "wght": 700.0
+      }
+    }
+  ],
+  "axes": [
+    {
+      "tag": "wght",
+      "name": "Weight",
+      "min": 300.0,
+      "default": 400.0,
+      "max": 700.0
+    }
+  ]
+}

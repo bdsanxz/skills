@@ -1,0 +1,14 @@
+{
+ "pairs": {
+  "T o": -70,
+  "T period": {
+   "Light": -60,
+   "Regular": -70,
+   "Bold": -80
+  },
+  "A V": -60,
+  "V A": -60,
+  "L T": -80,
+  "v period": -40
+ }
+}
