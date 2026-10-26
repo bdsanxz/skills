@@ -52,6 +52,11 @@ export function peersInstalled() {
   return isExecutable(peersCommand());
 }
 
+/** Whether the installed peers CLI serves pi members: it has the pi-extension command. */
+export function peersKnowsPi() {
+  return run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true }).code === 0;
+}
+
 export function peersInstaller() {
   return process.env.PEERS_INSTALLER_URL || PEERS_INSTALLER;
 }

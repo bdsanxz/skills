@@ -13,7 +13,7 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 ### Check that each agent can answer, not only that it is installed
 
 - **Situation:** A member's agent is installed and signed in, so the squad is built on it. At launch its model answers the first prompt with "Individual quota reached … Resets in 74h59m", and the member never takes a turn.
-- **Practice:** Before you propose an agent and model, run one short prompt on each, such as `agy --model <model> -p "Reply OK" </dev/null` or `opencode run -m <model> "Reply OK"`. Propose another model or agent for any that fails, and tell the user why.
+- **Practice:** Before you propose an agent and model, run one short prompt on each, such as `agy --model <model> -p "Reply OK" </dev/null`, `opencode run -m <model> "Reply OK"` or `pi --model <model> -p "Reply OK" </dev/null`. Propose another model or agent for any that fails, and tell the user why.
 - **Why:** A member out of quota reads no message and sends none, so nothing reports it. Its lead assigns it work and waits for an answer that never comes, until someone notices the silence.
 
 ## Step 3: design each member

@@ -18,7 +18,7 @@ import {
 import { type Member, agent } from "./agents";
 import { Herdr, herdrSession } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
-import { peersInstalled } from "./peers";
+import { peersCommand, peersInstalled, peersKnowsPi } from "./peers";
 import {
   type Overrides,
   type Roster,
@@ -81,6 +81,12 @@ export function cmdLaunch(args: LaunchArgs, defaultPeers: string) {
   let state: [string | null, Pane[]] = [null, []];
   if (!peersInstalled()) {
     problems.push(`the peers CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
+  }
+  if (members?.some((m) => m.agent === "pi") && peersInstalled() && !peersKnowsPi()) {
+    problems.push(
+      `the installed peers CLI (${peersCommand()}) has no pi support, so pi members cannot listen for ` +
+        "notifications; update it (rerun its install script), then launch again",
+    );
   }
   if (members !== null) {
     const [found, why] = herdrSession(args.session);

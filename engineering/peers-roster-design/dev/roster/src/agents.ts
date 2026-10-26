@@ -5,6 +5,8 @@ import {
   type JsonObject,
   LaunchError,
   dumps,
+  fail,
+  isFile,
   isObject,
   join,
   partition,
@@ -53,6 +55,8 @@ export type Agent = {
   modelPattern: RegExp;
   modelHint: string;
   listModels: string[] | null;
+  /** The model ids in listModels' output; by default, each line's first word. */
+  parseModels?: (output: string) => string[];
   /** Whether launch can set the agent's model and effort level. When it is false, the agent
    * manages both itself, as settingsNote says, and a model or effort set for its members is
    * ignored with a warning. */
@@ -141,6 +145,41 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
   h.firstPrompt(name, pane, dialogs);
 }
 
+/** Where the peers skill, installed in a pi member's cwd, keeps the peers extension for pi. */
+export const PI_EXTENSION = join(".agents", "skills", "peers", "scripts", "peers-pi.js");
+
+/** A pi member loads the peers extension from its installed peers skill, so notifications arrive as turns. */
+function configurePi(_workspace: string, dir: string) {
+  const extension = join(dir, PI_EXTENSION);
+  if (!isFile(extension)) {
+    fail(
+      `the peers skill installed in ${dir} has no ${PI_EXTENSION}, so a pi member cannot receive notifications; ` +
+        'install a peers skill that has it (set "peers_source" to it), then build again',
+    );
+  }
+  return `pi loads the peers extension from ${extension} at launch`;
+}
+
+/** pi --list-models prints a table: provider, model, then more columns. A member may name either form. */
+function parsePiModels(output: string) {
+  const ids: string[] = [];
+  for (const line of output.split(/\r?\n/).slice(1)) {
+    const [provider, model] = strip(line).split(/\s+/);
+    if (provider && model) ids.push(`${provider}/${model}`, model);
+  }
+  return ids;
+}
+
+function launchPi(h: Herdr, m: Member, pane: string, name: string, dir: string) {
+  // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
+  // asking. -e loads the peers extension for this session only. pi's --thinking takes every level.
+  const args = ["--approve", "-e", join(dir, PI_EXTENSION), "--name", sessionLabel(m, name)];
+  if (m.model) args.push("--model", m.model);
+  if (m.effort) args.push("--thinking", m.effort);
+  h.startAgent(name, "pi", pane, args);
+  h.firstPrompt(name, pane, AGENTS.pi!.dialogs);
+}
+
 function launchAgy(h: Herdr, m: Member, pane: string, name: string) {
   const args = ["--dangerously-skip-permissions"];
   if (m.model) args.push("--model", m.model);
@@ -201,6 +240,22 @@ export const AGENTS: Record<string, Agent> = {
     configure: configureNothing,
     launch: launchAgy,
   },
+  pi: {
+    label: "pi",
+    command: "pi",
+    instructions: "AGENTS.md",
+    imports: false,
+    skillsDir: join(".agents", "skills"),
+    skillsCli: "pi",
+    modelPattern: /^([A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/,
+    modelHint: "provider/model or model, as `pi --list-models` lists it, such as anthropic/claude-opus-4-8",
+    listModels: ["pi", "--list-models"],
+    parseModels: parsePiModels,
+    launchSettings: true,
+    dialogs: [],
+    configure: configurePi,
+    launch: launchPi,
+  },
 };
 // Older rosters name the agent in "runtime", and agy as "antigravity".
 export const LEGACY_AGENTS: Record<string, string> = { antigravity: "agy" };
@@ -237,11 +292,14 @@ export function availableModels(name: string): Listed<Set<string>> {
       modelLists.set(name, [null, `\`${cmd[0]}\` is not on PATH`]);
     } else {
       const done = run(cmd, { timeoutMs: 120000 });
+      const parse = agent(name).parseModels;
       const ids = new Set(
-        done.stdout
-          .split(/\r?\n/)
-          .filter((line) => strip(line) && !line.startsWith("Fetching"))
-          .map((line) => strip(line).split(/\s+/)[0]!),
+        parse
+          ? parse(done.stdout)
+          : done.stdout
+              .split(/\r?\n/)
+              .filter((line) => strip(line) && !line.startsWith("Fetching"))
+              .map((line) => strip(line).split(/\s+/)[0]!),
       );
       if (done.timedOut) modelLists.set(name, [null, `\`${cmd.join(" ")}\` timed out`]);
       else if (done.code === 0 && ids.size) modelLists.set(name, [ids, null]);
@@ -292,7 +350,8 @@ function parseVariants(output: string, why: string): Listed<Map<string, string[]
 
 /** [levels the member's agent and model support, null], or [null, why they cannot be known]. */
 export function effortLevels(member: { agent: string; model: string | null }): Listed<Set<string>> {
-  if (member.agent === "claude") return [new Set(LEVELS), null]; // claude --effort takes every level for every model
+  // claude --effort takes every level for every model; pi --thinking too, clamped to the model.
+  if (member.agent === "claude" || member.agent === "pi") return [new Set(LEVELS), null];
   if (!member.model) {
     return [
       null,

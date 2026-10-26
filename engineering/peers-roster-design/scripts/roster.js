@@ -734,6 +734,9 @@ function peersCommand() {
 function peersInstalled() {
   return isExecutable(peersCommand());
 }
+function peersKnowsPi() {
+  return run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true }).code === 0;
+}
 function peersInstaller() {
   return process.env.PEERS_INSTALLER_URL || PEERS_INSTALLER;
 }
@@ -850,6 +853,32 @@ function launchOpencode(h, m, pane, name, dir) {
   }
   h.firstPrompt(name, pane, dialogs);
 }
+var PI_EXTENSION = join(".agents", "skills", "peers", "scripts", "peers-pi.js");
+function configurePi(_workspace, dir) {
+  const extension = join(dir, PI_EXTENSION);
+  if (!isFile(extension)) {
+    fail(`the peers skill installed in ${dir} has no ${PI_EXTENSION}, so a pi member cannot receive notifications; ` + 'install a peers skill that has it (set "peers_source" to it), then build again');
+  }
+  return `pi loads the peers extension from ${extension} at launch`;
+}
+function parsePiModels(output) {
+  const ids = [];
+  for (const line of output.split(/\r?\n/).slice(1)) {
+    const [provider, model] = strip(line).split(/\s+/);
+    if (provider && model)
+      ids.push(`${provider}/${model}`, model);
+  }
+  return ids;
+}
+function launchPi(h, m, pane, name, dir) {
+  const args = ["--approve", "-e", join(dir, PI_EXTENSION), "--name", sessionLabel(m, name)];
+  if (m.model)
+    args.push("--model", m.model);
+  if (m.effort)
+    args.push("--thinking", m.effort);
+  h.startAgent(name, "pi", pane, args);
+  h.firstPrompt(name, pane, AGENTS.pi.dialogs);
+}
 function launchAgy(h, m, pane, name) {
   const args = ["--dangerously-skip-permissions"];
   if (m.model)
@@ -907,6 +936,22 @@ var AGENTS = {
     ],
     configure: configureNothing,
     launch: launchAgy
+  },
+  pi: {
+    label: "pi",
+    command: "pi",
+    instructions: "AGENTS.md",
+    imports: false,
+    skillsDir: join(".agents", "skills"),
+    skillsCli: "pi",
+    modelPattern: /^([A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/,
+    modelHint: "provider/model or model, as `pi --list-models` lists it, such as anthropic/claude-opus-4-8",
+    listModels: ["pi", "--list-models"],
+    parseModels: parsePiModels,
+    launchSettings: true,
+    dialogs: [],
+    configure: configurePi,
+    launch: launchPi
   }
 };
 var LEGACY_AGENTS = { antigravity: "agy" };
@@ -934,7 +979,8 @@ function availableModels(name) {
       modelLists.set(name, [null, `\`${cmd[0]}\` is not on PATH`]);
     } else {
       const done = run(cmd, { timeoutMs: 120000 });
-      const ids = new Set(done.stdout.split(/\r?\n/).filter((line) => strip(line) && !line.startsWith("Fetching")).map((line) => strip(line).split(/\s+/)[0]));
+      const parse = agent(name).parseModels;
+      const ids = new Set(parse ? parse(done.stdout) : done.stdout.split(/\r?\n/).filter((line) => strip(line) && !line.startsWith("Fetching")).map((line) => strip(line).split(/\s+/)[0]));
       if (done.timedOut)
         modelLists.set(name, [null, `\`${cmd.join(" ")}\` timed out`]);
       else if (done.code === 0 && ids.size)
@@ -987,7 +1033,7 @@ function parseVariants(output, why) {
   }
 }
 function effortLevels(member) {
-  if (member.agent === "claude")
+  if (member.agent === "claude" || member.agent === "pi")
     return [new Set(LEVELS), null];
   if (!member.model) {
     return [
@@ -1618,6 +1664,9 @@ function cmdLaunch(args, defaultPeers) {
   if (!peersInstalled()) {
     problems.push(`the peers CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
+  if (members?.some((m) => m.agent === "pi") && peersInstalled() && !peersKnowsPi()) {
+    problems.push(`the installed peers CLI (${peersCommand()}) has no pi support, so pi members cannot listen for ` + "notifications; update it (rerun its install script), then launch again");
+  }
   if (members !== null) {
     const [found, why] = herdrSession(args.session);
     session = found;
@@ -1802,8 +1851,9 @@ var CHECK = {
   description: `
 Use it after writing roster.json and the member files, and again after every fix, until it
 prints OK. Validates each member's agent (${AGENT_NAMES}), model and effort: the model must
-have the agent's form, and for opencode and agy it must be one that \`opencode models\` or
-\`agy models\` lists (a NOTE says when the CLI is missing); the effort (${LEVEL_NAMES}) must be
+have the agent's form, and for opencode, agy and pi it must be one that \`opencode models\`,
+\`agy models\` or \`pi --list-models\` lists (a NOTE says when the CLI is missing); the effort
+(${LEVEL_NAMES}) must be
 one the agent and model support (opencode: the model's variants in \`opencode api model.list\`).
 A defaults.effort a member cannot use moves to its nearest level, with a NOTE.
 
@@ -1838,7 +1888,7 @@ var ASSEMBLE = {
   description: `
 Use it after roster.json changes (a summary, reports_to, agent, model, effort or display
 name), since every member's squad directory shows them. Writes CLAUDE.md (claude) or
-AGENTS.md (opencode, agy), which references the member's four files by path and lists the
+AGENTS.md (opencode, agy, pi), which references the member's four files by path and lists the
 squad with each member's display name, agent, model and effort, and .peers.json, which
 records the member's role, display name, agent, model and effort. Installs nothing.`,
   positionals: [WORKSPACE],
@@ -1869,8 +1919,10 @@ only to raw.githubusercontent.com.
 
 For each member: writes its instruction file and .peers.json, installs peers and its roster
 skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's own
-setup: the peers channel for claude (.mcp.json, approved in .claude/settings.local.json). It
-never writes a model or effort into an opencode member's opencode.json. Needs npx (Node.js).`,
+setup: the peers channel for claude (.mcp.json, approved in .claude/settings.local.json), and
+for pi a check that the installed peers skill has the peers extension for pi
+(scripts/peers-pi.js), which launch loads. It never writes a model or effort into an opencode
+member's opencode.json. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],
   output: `
@@ -1905,7 +1957,8 @@ has a pane there is refused.
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
 dialogs are read at full size. It starts each member with its agent's own command, model and
-effort: claude --model --effort, agy --model --effort, and for opencode, whose TUI takes
+effort: claude --model --effort, agy --model --effort, pi --model --thinking (with --approve
+and the peers extension, -e), and for opencode, whose TUI takes
 neither flag, OpenCode's API: it creates the member's session, opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
 it with session.get before the first prompt (needs OpenCode's background service; an
@@ -1993,7 +2046,8 @@ files:
   reads   <workspace>/roster.json, and PROJECT.md, ROLE.md, COMMUNICATIONS.md and
           MEMORY.md in each member's <workspace>/<cwd>/
   writes  assemble, build and launch: each member's CLAUDE.md or AGENTS.md, and its
-          .peers.json. build: its skills (.claude/skills/ or .agents/skills/), for
+          .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
+          opencode, agy and pi), for
           claude its .mcp.json and .claude/settings.local.json, and the peers CLI in
           ~/.local/bin when it is missing. check writes nothing.
 
@@ -2019,6 +2073,7 @@ agent, model and effort, highest precedence first:
           default effort for the model.
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
+  pi --model and --thinking;
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
@@ -2027,7 +2082,8 @@ agent, model and effort, highest precedence first:
   opencode.json.
 
 effort levels:
-  ${LEVEL_NAMES}. claude takes every level for every model; opencode the
+  ${LEVEL_NAMES}. claude and pi take every level for every model (pi
+  clamps it to what the model supports); opencode the
   model's variants that are levels (from \`opencode api model.list\`); agy the levels
   \`agy models\` lists for the model. opencode and agy need a model for an effort level,
   to check it. A level the member's own "effort" or --effort names that its agent and
@@ -2037,8 +2093,8 @@ effort levels:
 
 a mixed team in roster.json:
   A Claude lead on opus at high effort, an OpenCode member on beam-free at low effort,
-  an OpenCode member on whatever its opencode.json or /models sets, and an agy member
-  on Gemini Flash at medium effort:
+  an OpenCode member on whatever its opencode.json or /models sets, an agy member on
+  Gemini Flash at medium effort, and a pi member on Claude Opus at high thinking:
     "members": [
       {"name": "lead", "display_name": "Lena", "agent": "claude", "model": "opus",
        "effort": "high", ...},
@@ -2046,7 +2102,9 @@ a mixed team in roster.json:
        "model": "opencode/beam-free", "effort": "low", ...},
       {"name": "docs", "agent": "opencode", ...},
       {"name": "web", "agent": "agy", "model": "gemini-3.8-flash",
-       "effort": "medium", ...}]
+       "effort": "medium", ...},
+      {"name": "review", "agent": "pi", "model": "anthropic/claude-opus-4-8",
+       "effort": "high", ...}]
 
 layout:
   The whole squad lives in one herdr workspace, squad-<squad>, with one tab per member.
