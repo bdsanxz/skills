@@ -1,9 +1,9 @@
 ---
-name: design-font
+name: font-design
 description: "Design a new typeface autonomously from a text brief (reference images optional, for style only): writes the brief's design decisions, draws every glyph as parametric strokes over per-master parameters, proofs and checks each round, has an independent critic review the proof sheets, spaces and kerns the font, and delivers a Latin family (about 240 glyphs) as OTF, TTF and WOFF2 in each weight plus a variable font with a weight axis, an HTML specimen, a QA report and a final report. Use when the user asks to design, create, draw or make a font, typeface or type family, or names this skill. Do not use to pick or pair existing fonts, to convert or subset font files, or to edit a font made with other tools."
 ---
 
-# Design font
+# Font design
 
 Design a complete type family from a brief, with no step-by-step guidance from the user. You make every design decision yourself, write it down with its reason, and judge your work on rendered proofs, the way a type designer does. The user gets a finished family and a report of every decision, so they can change any of them afterwards.
 
@@ -110,8 +110,8 @@ Draw the groups in the order of `references/type-design.md` section 4, one group
 A critic round is an independent review of the proofs. Use it where steps 4 to 8 say.
 
 1. Proof every sheet the round names, for every style, with `--out <project>/reviews/round-<N>/`, where `<N>` is the next unused number in `reviews/`.
-2. Invoke `design-font-critic` with: the scope (the phase and the glyphs it covers), the absolute paths of `brief.md`, `references/review-checklist.md` (in this skill's directory) and the round's proof directory, the previous round's report if this round follows one, and the report file `<project>/reviews/round-<N>.md`. Give it no opinion about what is wrong.
-3. Read the report file. Do not rely on the agent's reply or on your memory of it. If its `Status` is not `done`, invoke a new `design-font-critic` to continue it from the report file.
+2. Invoke `font-design-critic` with: the scope (the phase and the glyphs it covers), the absolute paths of `brief.md`, `references/review-checklist.md` (in this skill's directory) and the round's proof directory, the previous round's report if this round follows one, and the report file `<project>/reviews/round-<N>.md`. Give it no opinion about what is wrong.
+3. Read the report file. Do not rely on the agent's reply or on your memory of it. If its `Status` is not `done`, invoke a new `font-design-critic` to continue it from the report file.
 4. Fix the findings, as the step that called the round says. A finding you disagree with stays open: write in `progress.md` why you did not fix it. A finding that would change a brief decision changes `brief.md` first.
 5. After the round limit, if a blocking finding is still open, write it in `progress.md` and in the final report, and go on.
 6. After a compaction, or when resuming, list `reviews/`: the highest-numbered `round-<N>.md` is the last round, and `progress.md` says which findings were fixed.

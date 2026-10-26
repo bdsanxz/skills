@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Entry point for every design-font command.
+"""Entry point for every font-design command.
 
 Uses only the standard library. On first use it creates a virtual environment
 in the user cache, installs the pinned requirements, then runs the command
@@ -26,11 +26,11 @@ def fail(message):
 
 
 def cache_root():
-    override = os.environ.get("DESIGN_FONT_HOME")
+    override = os.environ.get("FONT_DESIGN_HOME")
     if override:
         return Path(override).expanduser()
     base = os.environ.get("XDG_CACHE_HOME")
-    return (Path(base).expanduser() if base else Path.home() / ".cache") / "design-font"
+    return (Path(base).expanduser() if base else Path.home() / ".cache") / "font-design"
 
 
 def venv_dir():
