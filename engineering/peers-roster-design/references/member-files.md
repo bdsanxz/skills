@@ -1,6 +1,6 @@
 # Member files
 
-Each member's directory holds four files that you write, and each is the only copy of what it says. `roster.js` never copies them: the member's `CLAUDE.md` (Claude Code) imports them by path with `@<path>`, and its `AGENTS.md` (OpenCode, Antigravity) lists their paths and tells the member to read them at the start of every session. Start each file with its own `# <Title>` heading (`# Project`, `# Role`, `# Communications`, `# Memory`). Write to the member in the second person ("you").
+Each member's directory holds four files that you write, and each is the only copy of what it says. `roster.js` never copies them: the member's `CLAUDE.md` (Claude Code) imports them by path with `@<path>`, and its `AGENTS.md` (OpenCode, Antigravity, pi) lists their paths and tells the member to read them at the start of every session. Start each file with its own `# <Title>` heading (`# Project`, `# Role`, `# Communications`, `# Memory`). Write to the member in the second person ("you").
 
 The member reads only its own four files. Repeat what it needs in them, even when another member's files say the same.
 

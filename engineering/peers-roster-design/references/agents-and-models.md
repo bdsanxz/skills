@@ -7,6 +7,7 @@ Each member runs one agent with one model at one effort level, set on its own, i
 | `claude` | Claude Code | an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full name such as `claude-sonnet-5-5` | no list; `check` checks the form | `claude --model <model> --effort <level>` |
 | `opencode` | OpenCode | `provider/model`, such as `opencode/beam-free` | `opencode models` | through OpenCode's API, since the TUI takes no model or effort flag (below) |
 | `agy` | Antigravity CLI | a model id, such as `gemini-3.8-flash`, or one fixed to a level, such as `gemini-3.8-flash-low` | `agy models` | `agy --model <model> --effort <level>` |
+| `pi` | pi | `provider/model` or the bare model, as `pi --list-models` lists them, such as `anthropic/claude-opus-4-8` | `pi --list-models` | `pi --model <model> --thinking <level>`, with `--approve` and the peers extension (`-e`) |
 
 ## OpenCode: model and effort through its API
 
@@ -31,12 +32,13 @@ The effort level sets how hard the member's model thinks before it answers. The 
 | `claude` | every level, for every model | `claude --effort <level>` |
 | `opencode` | the model's variants that are levels; `opencode api model.list` lists each model's `variants`. Some models have none, such as `opencode/big-pickle` | the session's model variant, set with `session.switchModel` |
 | `agy` | the levels `agy models` lists for the model: `gemini-3.8-flash-low`, `-medium` and `-high` give `gemini-3.8-flash` those three levels. A model without such ids has none. An id fixed to a level takes only that level | `agy --effort <level>` |
+| `pi` | every level, for every model; pi clamps it to what the model supports | `pi --thinking <level>` |
 
-opencode and agy need a model to take an effort level, so that `check` can confirm the level. claude needs none.
+opencode and agy need a model to take an effort level, so that `check` can confirm the level. claude and pi need none.
 
 ## Choose them
 
-1. Read what is installed: `command -v claude opencode agy`, the models each lists (`opencode models`, `agy models`), and the levels each model has (above). Propose only installed agents, listed models and levels the model has.
+1. Read what is installed: `command -v claude opencode agy pi`, the models each lists (`opencode models`, `agy models`, `pi --list-models`), and the levels each model has (above). Propose only installed agents, listed models and levels the model has.
 2. Pick by the member's work:
    - The lead plans, reviews and decides, and receives every completion: give it the strongest model the user is willing to pay for, at `high`. Default: `claude` with its default model.
    - A member that reasons through hard problems (architecture, debugging, security review, tricky algorithms): `high`, or `xhigh` or `max` when the user accepts the slower, costlier answers.
@@ -46,14 +48,15 @@ opencode and agy need a model to take an effort level, so that `check` can confi
 3. Keep repeated choices in `defaults` instead of on each member: `"defaults": {"agent": "opencode", "models": {"opencode": "opencode/beam-free"}, "effort": "low"}`.
 4. Leave a model or effort out when the agent's own default is fine. Say so in the member's summary to the user: "uses agy's default model", "uses the model's default effort", or for opencode "uses its opencode.json or /models".
 
-A mixed team: a claude lead on opus at high effort, an opencode member on beam-free at low effort, an opencode member on whatever its own `opencode.json` or `/models` sets, and an agy member on Gemini Flash at medium effort.
+A mixed team: a claude lead on opus at high effort, an opencode member on beam-free at low effort, an opencode member on whatever its own `opencode.json` or `/models` sets, an agy member on Gemini Flash at medium effort, and a pi member on Claude Opus at high effort.
 
 ```json
 "members": [
   {"name": "lead", "agent": "claude", "model": "opus", "effort": "high", ...},
   {"name": "api", "agent": "opencode", "model": "opencode/beam-free", "effort": "low", ...},
   {"name": "docs", "agent": "opencode", ...},
-  {"name": "web", "agent": "agy", "model": "gemini-3.8-flash", "effort": "medium", ...}
+  {"name": "web", "agent": "agy", "model": "gemini-3.8-flash", "effort": "medium", ...},
+  {"name": "review", "agent": "pi", "model": "anthropic/claude-opus-4-8", "effort": "high", ...}
 ]
 ```
 
@@ -71,9 +74,9 @@ The first that is set wins.
 
 `check`, `build` and `launch` refuse, with one `PROBLEM` line each:
 
-- an agent that is not `claude`, `opencode` or `agy`, in a member, in `defaults` or in `--agent`;
+- an agent that is not `claude`, `opencode`, `agy` or `pi`, in a member, in `defaults` or in `--agent`;
 - a model that does not have its agent's form, such as `haiku` for `opencode`;
-- a model that `opencode models` or `agy models` does not list;
+- a model that `opencode models`, `agy models` or `pi --list-models` does not list;
 - an effort that is not one of the five levels, in a member, in `defaults` or in `--effort`;
 - an effort, set on the member or with `--effort`, that the member's agent and model do not support. The line names the levels the model has and the nearest one; nothing is changed for you;
 - an effort for an opencode or agy member that has no model;

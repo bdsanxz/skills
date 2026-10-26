@@ -7,7 +7,8 @@ import path from "node:path";
 import { main } from "../src/commands";
 import { io } from "../src/core";
 
-/** npx (the skills CLI): installs a stub SKILL.md, fails for "broken", installs nothing for "silent". */
+/** npx (the skills CLI): installs a stub SKILL.md, fails for "broken", installs nothing for "silent".
+ * peers also gets the peers extension for pi, unless NO_PI_EXTENSION=1. */
 const NPX = `#!/bin/bash
 # npx -y skills@latest add SOURCE -a AGENT -y --copy --skill NAME...
 echo "$PWD: $*" >>"$NPX_LOG"
@@ -24,6 +25,9 @@ for s in "\${skills[@]}"; do
   [ "$s" = broken ] && { echo "No matching skills found for: broken"; exit 1; }
   [ "$s" = silent ] && continue
   mkdir -p "$dir/$s" && echo "from $src" >"$dir/$s/SKILL.md"
+  if [ "$s" = peers ] && [ "\${NO_PI_EXTENSION:-}" != 1 ]; then
+    mkdir -p "$dir/$s/scripts" && echo "// peers extension" >"$dir/$s/scripts/peers-pi.js"
+  fi
 done
 `;
 
@@ -52,6 +56,12 @@ esac
 const AGY = `#!/bin/bash
 [ "$*" = models ] && printf 'Fetching available models...\\ngem-fast\\tGem Fast\\ngem-pro\\tGem Pro\\ngem-flash-low\\tGem Flash (Low)\\ngem-flash-high\\tGem Flash (High)\\n' && exit 0
 echo "unexpected agy call: $*" >&2; exit 9
+`;
+
+/** pi: lists its models as pi --list-models does: a header, then provider and model columns. */
+const PI = `#!/bin/bash
+[ "$*" = --list-models ] && printf 'provider   model            context  max-out  thinking  images\\nanthropic  claude-opus-4-8  1M       128K     yes       yes\\nopenai     gpt-5            400K     128K     yes       yes\\n' && exit 0
+echo "unexpected pi call: $*" >&2; exit 9
 `;
 
 /** herdr: logs every call; answers like herdr does. HERDR_SESSIONS sets \`session list\`,
@@ -96,7 +106,13 @@ case "$1 $2" in
 esac
 `;
 
+/** peers: prints its version; PEERS_OLD=1 makes it a version without pi support. */
 const PEERS = `#!/bin/sh
+if [ "$1" = pi-extension ]; then
+  [ "\${PEERS_OLD:-}" = 1 ] && { echo "error: unrecognized subcommand 'pi-extension'" >&2; exit 2; }
+  [ "$2" = --help ] || echo '// peers extension: spawns peers _pi-listen'
+  exit 0
+fi
 echo peers 0.0.1
 `;
 
@@ -115,7 +131,7 @@ export type Squad = {
   opencodeLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, herdr: HERDR, peers: PEERS };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, herdr: HERDR, peers: PEERS };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
