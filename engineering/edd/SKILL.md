@@ -19,10 +19,10 @@ Four words are used throughout:
 `ledger` below stands for this shell function:
 
 ```
-ledger() { python3 "<this skill's directory>/scripts/ledger.py" "$@"; }
+ledger() { bun "<this skill's directory>/scripts/ledger.js" "$@"; }
 ```
 
-Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs Python 3 and nothing else. `ledger --help` lists its commands. `ledger check` exits 0 when every criterion is closed and backed, 1 when it found problems, 2 on wrong usage, and 3 when nothing is wrong but criteria are still open.
+Define it at the start of every shell command that uses it, because shell state does not carry over between commands. It needs [Bun](https://bun.sh) and nothing else; when `bun` is not found, tell the user to install it and stop. `ledger --help` lists its commands, and `ledger <command> --help` gives a command's options, output and examples. `ledger check` exits 0 when every criterion is closed and backed, 1 when it found problems, 2 on wrong usage, and 3 when nothing is wrong but criteria are still open.
 
 Every command ends with a disk line on standard error: what the current working directory takes on disk, and what its disk has free. A folder too large to count within a few seconds is given as "at least" what was counted. Do not hide standard error. Read the line after every command, and compare it with the one before. When the folder grew by more than the step should have added, or the free space no longer holds what the next step needs, find what grew and remove the leftovers of this run (by Phase 3, step 9) before you go on.
 
