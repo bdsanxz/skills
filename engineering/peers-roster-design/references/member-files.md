@@ -1,6 +1,6 @@
 # Member files
 
-Each member's directory holds four files that you write, and each is the only copy of what it says. `roster.py` never copies them: the member's `CLAUDE.md` (Claude Code) imports them by path with `@<path>`, and its `AGENTS.md` (OpenCode, Antigravity) lists their paths and tells the member to read them at the start of every session. Start each file with its own `# <Title>` heading (`# Project`, `# Role`, `# Communications`, `# Memory`). Write to the member in the second person ("you").
+Each member's directory holds four files that you write, and each is the only copy of what it says. `roster.js` never copies them: the member's `CLAUDE.md` (Claude Code) imports them by path with `@<path>`, and its `AGENTS.md` (OpenCode, Antigravity) lists their paths and tells the member to read them at the start of every session. Start each file with its own `# <Title>` heading (`# Project`, `# Role`, `# Communications`, `# Memory`). Write to the member in the second person ("you").
 
 The member reads only its own four files. Repeat what it needs in them, even when another member's files say the same.
 
@@ -47,7 +47,7 @@ You build and maintain the API in `api/`.
 
 ## COMMUNICATIONS.md
 
-Whom the member talks to, about what, and whom it reports to. Every member named in `talks_to` and `reports_to` in `roster.json` must be named here; `roster.py check` refuses a file that leaves one out.
+Whom the member talks to, about what, and whom it reports to. Every member named in `talks_to` and `reports_to` in `roster.json` must be named here; `roster.js check` refuses a file that leaves one out.
 
 - Whom it reports results to, and when: on completion, on a blocker, at what interval for long work. A member that reports to `user` reports to the session that gave the squad its work, whose address arrives in the first request it receives.
 - Whom it may message directly, and for what. Leave out everyone else: the member does not message them.

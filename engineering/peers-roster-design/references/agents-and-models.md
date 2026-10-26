@@ -20,11 +20,11 @@ For an opencode member with a model, `launch`:
 
 This needs OpenCode's background service; `opencode service status` shows whether it runs. `switchModel` accepts any name, so `check` validates the model against `opencode models` and the effort against the model's variants before anything starts.
 
-An opencode member with no model in the roster starts plain and uses the model and effort set in its own `opencode.json` or chosen with `/models`. `roster.py` never writes `opencode.json`.
+An opencode member with no model in the roster starts plain and uses the model and effort set in its own `opencode.json` or chosen with `/models`. `roster.js` never writes `opencode.json`.
 
 ## Effort levels
 
-The effort level sets how hard the member's model thinks before it answers. The levels, lowest first, are `low`, `medium`, `high`, `xhigh` and `max`. `roster.py` maps each level to the agent's own setting:
+The effort level sets how hard the member's model thinks before it answers. The levels, lowest first, are `low`, `medium`, `high`, `xhigh` and `max`. `roster.js` maps each level to the agent's own setting:
 
 | Agent | Levels it takes | How `launch` applies the level |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ The first that is set wins.
 - **Model:** `--model <member>=<model>` at launch; the member's `model`, but only while the member runs the agent that model was written for; `defaults.models.<agent>`; otherwise no model, and the agent starts with its own default model.
 - **Effort:** `--effort <member>=<level>` at launch; the member's `effort`; `defaults.effort`; otherwise no level, and the agent uses its own default effort for the model.
 
-`roster.py check` prints one `MEMBER` line per member with the agent, model and effort it will run and where each came from. Read those lines to confirm the fallbacks are what the user agreed to.
+`roster.js check` prints one `MEMBER` line per member with the agent, model and effort it will run and where each came from. Read those lines to confirm the fallbacks are what the user agreed to.
 
 ## Validation
 
