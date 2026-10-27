@@ -6,7 +6,6 @@ import {
   LaunchError,
   dumps,
   fail,
-  isFile,
   isObject,
   join,
   partition,
@@ -20,7 +19,7 @@ import {
   which,
 } from "./core";
 import { type Dialog, FIRST_PROMPT, Herdr, WAIT_MS, field, text } from "./herdr";
-import { mergeJson, peersCommand } from "./peers";
+import { mergeJson, peersCommand, peersKnowsPi, piExtension } from "./peers";
 
 // Effort levels, lowest first: the levels claude --effort and agy --effort take.
 export const LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -145,19 +144,17 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
   h.firstPrompt(name, pane, dialogs);
 }
 
-/** Where the peers skill, installed in a pi member's cwd, keeps the peers extension for pi. */
-export const PI_EXTENSION = join(".agents", "skills", "peers", "scripts", "peers-pi.js");
-
-/** A pi member loads the peers extension from its installed peers skill, so notifications arrive as turns. */
-function configurePi(_workspace: string, dir: string) {
-  const extension = join(dir, PI_EXTENSION);
-  if (!isFile(extension)) {
+/** A pi member loads the peers extension for pi that the peers CLI holds, so notifications arrive
+ * as turns. The extension comes from the CLI, not from a skill, so it always matches the binary. */
+function configurePi() {
+  if (!peersKnowsPi()) {
     fail(
-      `the peers skill installed in ${dir} has no ${PI_EXTENSION}, so a pi member cannot receive notifications; ` +
-        'install a peers skill that has it (set "peers_source" to it), then build again',
+      `the installed peers CLI (${peersCommand()}) cannot write the peers extension for pi ` +
+        "(`peers pi-extension --path`), so a pi member cannot receive notifications; " +
+        "update peers (rerun its install script), then build again",
     );
   }
-  return `pi loads the peers extension from ${extension} at launch`;
+  return "pi loads the peers extension from `peers pi-extension --path` at launch";
 }
 
 /** pi --list-models prints a table: provider, model, then more columns. A member may name either form. */
@@ -170,10 +167,11 @@ function parsePiModels(output: string) {
   return ids;
 }
 
-function launchPi(h: Herdr, m: Member, pane: string, name: string, dir: string) {
+function launchPi(h: Herdr, m: Member, pane: string, name: string) {
   // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
-  // asking. -e loads the peers extension for this session only. pi's --thinking takes every level.
-  const args = ["--approve", "-e", join(dir, PI_EXTENSION), "--name", sessionLabel(m, name)];
+  // asking. -e loads the peers extension for this session only, from the file the installed peers
+  // writes, so it matches that binary. pi's --thinking takes every level.
+  const args = ["--approve", "-e", piExtension(), "--name", sessionLabel(m, name)];
   if (m.model) args.push("--model", m.model);
   if (m.effort) args.push("--thinking", m.effort);
   h.startAgent(name, "pi", pane, args);

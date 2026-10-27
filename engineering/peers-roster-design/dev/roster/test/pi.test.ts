@@ -45,26 +45,25 @@ describe("pi members", () => {
     expect((await roster(["check", s.w])).out).toContain("is not a pi model; expected provider/model or model");
   });
 
-  test("build installs skills for pi and requires the peers extension in the peers skill", async () => {
+  test("build installs skills for pi and requires a peers CLI that writes the peers extension", async () => {
     team({ model: "anthropic/claude-opus-4-8", effort: "high" });
-    let done = await roster(["build", s.w], { NO_PI_EXTENSION: "1" });
+    let done = await roster(["build", s.w], { PEERS_OLD: "1" });
     expect(done.code).toBe(1);
-    expect(done.out).toContain("has no .agents/skills/peers/scripts/peers-pi.js");
+    expect(done.out).toContain("cannot write the peers extension for pi (`peers pi-extension --path`)");
     done = await roster(["build", s.w]);
     expect(done.code).toBe(0);
     expect(done.out).toContain("BUILT review");
-    expect(done.out).toContain("pi loads the peers extension from");
+    expect(done.out).toContain("pi loads the peers extension from `peers pi-extension --path` at launch");
     expect(read(s.npxLog)).toContain("-a pi -y --copy --skill peers");
     const dir = path.join(s.w, "review");
     expect(exists(path.join(dir, "AGENTS.md"))).toBe(true);
-    expect(exists(path.join(dir, ".agents", "skills", "peers", "scripts", "peers-pi.js"))).toBe(true);
     expect(JSON.parse(read(path.join(dir, ".peers.json"))).agent).toBe("pi");
   });
 
   test("launch starts pi visible in herdr with --approve, the extension, model and thinking", async () => {
     const done = await roster(["launch", s.w, "--dry-run"]);
     expect(done.code).toBe(0);
-    const ext = path.join(s.w, "review", ".agents", "skills", "peers", "scripts", "peers-pi.js");
+    const ext = path.join(s.tmp, "cache", "pi-extension", "peers.ts");
     const start = done.out.split("\n").find((line) => line.includes("agent start demo-review"));
     expect(start).toBeDefined();
     expect(start!).toContain("--kind pi");

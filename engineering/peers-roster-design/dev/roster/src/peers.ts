@@ -52,9 +52,25 @@ export function peersInstalled() {
   return isExecutable(peersCommand());
 }
 
-/** Whether the installed peers CLI serves pi members: it has the pi-extension command. */
+/** Whether the installed peers CLI serves pi members: it writes the peers extension for pi with
+ * `peers pi-extension --path`. */
 export function peersKnowsPi() {
-  return run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true }).code === 0;
+  const help = run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true });
+  return help.code === 0 && help.stdout.includes("--path");
+}
+
+/** The file that holds the peers extension for pi, written by the installed peers CLI itself, so
+ * that the extension always matches the binary it runs. */
+export function piExtension() {
+  const done = run([peersCommand(), "pi-extension", "--path"], { inheritStdin: true });
+  const file = strip(done.stdout);
+  if (done.code !== 0 || !isFile(file)) {
+    fail(
+      `\`${peersCommand()} pi-extension --path\` did not write the peers extension for pi: ` +
+        `${strip(tail(done.stdout + done.stderr, 500)) || `exit ${done.code}`}; update peers (rerun its install script), then try again`,
+    );
+  }
+  return file;
 }
 
 export function peersInstaller() {

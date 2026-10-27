@@ -189,8 +189,8 @@ only to raw.githubusercontent.com.
 For each member: writes its instruction file and .peers.json, installs peers and its roster
 skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's own
 setup: the peers channel for claude (.mcp.json, approved in .claude/settings.local.json), and
-for pi a check that the installed peers skill has the peers extension for pi
-(scripts/peers-pi.js), which launch loads. It never writes a model or effort into an opencode
+for pi a check that the installed peers CLI writes the peers extension for pi
+(peers pi-extension --path), which launch loads. It never writes a model or effort into an opencode
 member's opencode.json. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],
