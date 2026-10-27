@@ -1,6 +1,7 @@
 ---
 name: research-market
-description: Research a market from what its audience posts in public on X/Twitter and Bluesky. Collects posts by topic search and by account, codes them on pains, jobs to be done, wishes, current behaviour and workarounds, alternatives and switching, triggers, objections, price signals and the audience's own words, counts the themes, then brainstorms product opportunities, each assessed and ranked on problem relevance, innovation, technical implementation and impact. Use when the user asks for market research, audience or customer research, user pain points, or product ideas grounded in social media posts, or names this skill. Do not use for writing a product spec, building the product, or posting and replying on social media.
+description: |
+  Research a market from what its audience posts publicly on X/Twitter and Bluesky: collect posts, code them for pains, jobs, workarounds, alternatives and price signals, count the themes, then brainstorm and rank product opportunities. Use when the user asks for market, audience or customer research, user pain points, or product ideas grounded in social media posts, or names this skill. Do not use to write a product spec, build the product, or post on social media.
 ---
 
 # Research Market

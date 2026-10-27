@@ -1,6 +1,7 @@
 ---
 name: edd
-description: Implement a task with Evidence-Driven Development, in which every acceptance criterion gets a passing test and evidence gathered from the real, running product, the evidence is recorded criterion by criterion in a ledger that a script checks, and nothing is reported as done beyond what that evidence shows. Use when the user asks for EDD, evidence-driven development, evidence or proof for each acceptance criterion, a ticket or sprint to be finished "with evidence", or names this skill, for any feature, bug fix or behavior change whose result can be observed. Do not use for work that leaves nothing to observe, such as a discussion, a plan or a review, or when the user wants a change made with no verification record.
+description: |
+  Implement a task with Evidence-Driven Development: every acceptance criterion gets a passing test and evidence from the real, running product, recorded in a ledger a script checks, and nothing is reported done beyond what the evidence shows. Use when the user asks for EDD, evidence or proof per acceptance criterion, work finished "with evidence", or names this skill, for any change whose result can be observed. Do not use for work that leaves nothing to observe, such as a plan or a review.
 ---
 
 # EDD

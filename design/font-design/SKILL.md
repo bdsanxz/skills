@@ -1,6 +1,7 @@
 ---
 name: font-design
-description: "Design a new typeface autonomously from a text brief (reference images optional, for style only): writes the brief's design decisions, draws every glyph as parametric strokes over per-master parameters, proofs and checks each round, has an independent critic review the proof sheets, spaces and kerns the font, and delivers a Latin family (about 240 glyphs) as OTF, TTF and WOFF2 in each weight plus a variable font with a weight axis, an HTML specimen, a QA report and a final report. Use when the user asks to design, create, draw or make a font, typeface or type family, or names this skill. Do not use to pick or pair existing fonts, to convert or subset font files, or to edit a font made with other tools."
+description: |
+  Design a new typeface from a text brief (reference images optional): draw every glyph, proof and critique each round, space and kern, and deliver a Latin family as OTF, TTF, WOFF2 and a variable font, with a specimen and a QA report. Use when the user asks to design, create or make a font, typeface or type family, or names this skill. Do not use to pick or pair existing fonts, convert or subset font files, or edit a font made with other tools.
 ---
 
 # Font design
