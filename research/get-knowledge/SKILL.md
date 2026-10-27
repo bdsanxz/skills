@@ -1,6 +1,7 @@
 ---
 name: get-knowledge
-description: Get the knowledge a task needs from local sources first and from the web second. Looks in the reference roots the user set up and in a local wiki of every search and page fetched before, searches the web only when that is not enough, fetches the pages worth reading as markdown, and keeps each search and page in the wiki so that the next lookup is local. Use when a task needs facts you do not have or cannot be sure of, such as current documentation, an API, an error message, a version or a recent event, when the user gives a URL to read, or when the user asks to search, look up or research something, or names this skill. Do not use for a question that the files of the current project already answer.
+description: |
+  Get the knowledge a task needs from local sources first (the user's reference roots and a wiki of earlier lookups) and from the web second, keeping every search and fetched page in the wiki so the next lookup is local. Use when a task needs facts you lack or cannot be sure of, such as current documentation, an API, an error message, a version or a recent event, when the user gives a URL to read, or asks to search or research something, or names this skill. Do not use when the current project's files already answer the question.
 ---
 
 # Get Knowledge

@@ -1,6 +1,7 @@
 ---
 name: specifications
-description: Extract the requirements in a conversation into specifications, grounded in facts read from the current working directory, as concrete and verifiable statements of how the system must behave end to end from the point of view of its actors (users, external systems, operators), with every point the conversation leaves unclear flagged as an open question instead of assumed. Use when the user asks to write, extract, draft or update specs or a specification from a conversation, a discussion, a request, meeting notes or requirements, or names this skill. Do not use to design the implementation, to write code or tests, or to plan tasks.
+description: |
+  Extract the requirements in a conversation into specifications: concrete, verifiable statements of how the system must behave end to end for its actors, grounded in facts from the working directory, with every unclear point flagged as an open question instead of assumed. Use when the user asks to write, extract or update specs from a conversation, request, meeting notes or requirements, or names this skill. Do not use to design the implementation, write code or tests, or plan tasks.
 ---
 
 # Specifications

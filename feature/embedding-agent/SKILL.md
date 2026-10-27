@@ -1,6 +1,7 @@
 ---
 name: embedding-agent
-description: Build an in-app agent feature that runs a coding-agent CLI such as Claude Code, Codex, pi, omp (oh-my-pi), the Antigravity CLI (agy) or Grok Build (grok) inside a desktop or web application, so the user chats with the agent in the app's own panel instead of a separate terminal, without breaking the vendor's terms of service. Covers the compliance decision (whose account pays and who signs in), where the agent process runs, onboarding (detect, install, sign in through the vendor's own flow), the headless protocol of each CLI, giving the agent the product's rules, tools and context, turning the event stream into chat UI, getting the agent's edits into the app, approvals, cancel, undo and run records. Use when the user wants to embed, wrap, host or drive Claude Code, Codex, pi, omp, the Antigravity CLI, Grok Build or another agent CLI from their own app, add an "agent chat" or "ask the agent" panel backed by such a CLI, or asks whether doing so is allowed. Framework-agnostic; works for Electron, Tauri, native, and web apps with a local or hosted backend.
+description: |
+  Build an in-app agent feature that runs a coding-agent CLI (Claude Code, Codex, pi, omp, the Antigravity CLI, Grok Build) inside a desktop or web app, so the user chats with it in the app's own panel without breaking the vendor's terms of service. Covers compliance, onboarding, each CLI's headless protocol, chat UI, edits, approvals and undo. Use when the user wants to embed, wrap or drive an agent CLI from their app, add an "ask the agent" panel backed by one, or asks whether that is allowed.
 ---
 
 # Embedding Agent

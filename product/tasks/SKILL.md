@@ -1,6 +1,7 @@
 ---
 name: tasks
-description: Extract the context in a conversation, or the specifications in a document, into tasks grouped by feature, where each task is one end-to-end path (happy, alternative or negative) of one actor's behavior, and together the tasks of a feature cover every path the sources state or force, with nothing added that no source asks for. Each task declares the tasks it needs, and a script validates the dependency graph and reports which tasks are ready to start, which can run in parallel and which are blocked. Use when the user asks to break a conversation, a request, a spec or a specification into tasks, tickets, a backlog or work items, or names this skill. Do not use to write specifications, to design the implementation, to write code or tests, or to estimate and schedule work.
+description: |
+  Turn a conversation or a specification into tasks grouped by feature, each one end-to-end path (happy, alternative or negative) of one actor's behavior, covering every path the sources state and adding nothing they do not ask for. A script validates the task dependencies and reports which tasks are ready, parallel or blocked. Use when the user asks to break a conversation, request or spec into tasks, tickets, a backlog or work items, or names this skill. Do not use to write specifications, design the implementation, write code, or estimate and schedule work.
 ---
 
 # Tasks

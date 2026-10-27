@@ -1,6 +1,7 @@
 ---
 name: agents-creator
-description: Create a subagent definition file for Claude Code, OpenCode or Codex, in the location the platform's documentation gives or in the directory the user names. Every agent created writes a report file, and writes it while it works, one entry per step or finding, so that its results survive the compaction of its own context and of the caller's, and so that its context stays small. Covers where each platform keeps agent files, the fields and permissions of each format, the description the caller reads, the instructions the agent follows, and a check of the finished file. Use when the user asks to create, write, define or add an agent, a subagent or a custom agent, or names this skill. Do not use to run an agent, or to edit an agent that this skill did not create, unless the user asks for it to get a report file.
+description: |
+  Create a subagent definition file for Claude Code, OpenCode or Codex, where the platform expects it or in the directory the user names. Every agent it creates writes its results to a report file as it works, so they survive context compaction. Use when the user asks to create, write, define or add an agent, subagent or custom agent, or names this skill. Do not use to run an agent, or to edit one this skill did not create unless the user asks for it to get a report file.
 ---
 
 # Agents Creator
