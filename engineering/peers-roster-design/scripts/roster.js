@@ -735,7 +735,16 @@ function peersInstalled() {
   return isExecutable(peersCommand());
 }
 function peersKnowsPi() {
-  return run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true }).code === 0;
+  const help = run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true });
+  return help.code === 0 && help.stdout.includes("--path");
+}
+function piExtension() {
+  const done = run([peersCommand(), "pi-extension", "--path"], { inheritStdin: true });
+  const file = strip(done.stdout);
+  if (done.code !== 0 || !isFile(file)) {
+    fail(`\`${peersCommand()} pi-extension --path\` did not write the peers extension for pi: ` + `${strip(tail(done.stdout + done.stderr, 500)) || `exit ${done.code}`}; update peers (rerun its install script), then try again`);
+  }
+  return file;
 }
 function peersInstaller() {
   return process.env.PEERS_INSTALLER_URL || PEERS_INSTALLER;
@@ -853,13 +862,11 @@ function launchOpencode(h, m, pane, name, dir) {
   }
   h.firstPrompt(name, pane, dialogs);
 }
-var PI_EXTENSION = join(".agents", "skills", "peers", "scripts", "peers-pi.js");
-function configurePi(_workspace, dir) {
-  const extension = join(dir, PI_EXTENSION);
-  if (!isFile(extension)) {
-    fail(`the peers skill installed in ${dir} has no ${PI_EXTENSION}, so a pi member cannot receive notifications; ` + 'install a peers skill that has it (set "peers_source" to it), then build again');
+function configurePi() {
+  if (!peersKnowsPi()) {
+    fail(`the installed peers CLI (${peersCommand()}) cannot write the peers extension for pi ` + "(`peers pi-extension --path`), so a pi member cannot receive notifications; " + "update peers (rerun its install script), then build again");
   }
-  return `pi loads the peers extension from ${extension} at launch`;
+  return "pi loads the peers extension from `peers pi-extension --path` at launch";
 }
 function parsePiModels(output) {
   const ids = [];
@@ -870,8 +877,8 @@ function parsePiModels(output) {
   }
   return ids;
 }
-function launchPi(h, m, pane, name, dir) {
-  const args = ["--approve", "-e", join(dir, PI_EXTENSION), "--name", sessionLabel(m, name)];
+function launchPi(h, m, pane, name) {
+  const args = ["--approve", "-e", piExtension(), "--name", sessionLabel(m, name)];
   if (m.model)
     args.push("--model", m.model);
   if (m.effort)
@@ -1920,8 +1927,8 @@ only to raw.githubusercontent.com.
 For each member: writes its instruction file and .peers.json, installs peers and its roster
 skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's own
 setup: the peers channel for claude (.mcp.json, approved in .claude/settings.local.json), and
-for pi a check that the installed peers skill has the peers extension for pi
-(scripts/peers-pi.js), which launch loads. It never writes a model or effort into an opencode
+for pi a check that the installed peers CLI writes the peers extension for pi
+(peers pi-extension --path), which launch loads. It never writes a model or effort into an opencode
 member's opencode.json. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],

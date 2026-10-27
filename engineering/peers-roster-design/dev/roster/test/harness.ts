@@ -8,7 +8,7 @@ import { main } from "../src/commands";
 import { io } from "../src/core";
 
 /** npx (the skills CLI): installs a stub SKILL.md, fails for "broken", installs nothing for "silent".
- * peers also gets the peers extension for pi, unless NO_PI_EXTENSION=1. */
+ */
 const NPX = `#!/bin/bash
 # npx -y skills@latest add SOURCE -a AGENT -y --copy --skill NAME...
 echo "$PWD: $*" >>"$NPX_LOG"
@@ -25,9 +25,6 @@ for s in "\${skills[@]}"; do
   [ "$s" = broken ] && { echo "No matching skills found for: broken"; exit 1; }
   [ "$s" = silent ] && continue
   mkdir -p "$dir/$s" && echo "from $src" >"$dir/$s/SKILL.md"
-  if [ "$s" = peers ] && [ "\${NO_PI_EXTENSION:-}" != 1 ]; then
-    mkdir -p "$dir/$s/scripts" && echo "// peers extension" >"$dir/$s/scripts/peers-pi.js"
-  fi
 done
 `;
 
@@ -106,11 +103,17 @@ case "$1 $2" in
 esac
 `;
 
-/** peers: prints its version; PEERS_OLD=1 makes it a version without pi support. */
+/** peers: prints its version, and writes the peers extension for pi with pi-extension --path.
+ * PEERS_OLD=1 makes it a version without pi support. */
 const PEERS = `#!/bin/sh
 if [ "$1" = pi-extension ]; then
   [ "\${PEERS_OLD:-}" = 1 ] && { echo "error: unrecognized subcommand 'pi-extension'" >&2; exit 2; }
-  [ "$2" = --help ] || echo '// peers extension: spawns peers _pi-listen'
+  case "$2" in
+    --help) echo '      --path  Write the extension to the peers cache and print the file path instead' ;;
+    --path) f="$PEERS_CACHE/pi-extension/peers.ts"
+            mkdir -p "$(dirname "$f")" && echo '// peers extension: spawns peers _pi-listen' >"$f" && echo "$f" ;;
+    *) echo '// peers extension: spawns peers _pi-listen' ;;
+  esac
   exit 0
 fi
 echo peers 0.0.1
@@ -155,6 +158,7 @@ export function setUp(): Squad {
     NPX_LOG: squad.npxLog,
     HERDR_LOG: squad.herdrLog,
     OPENCODE_LOG: squad.opencodeLog,
+    PEERS_CACHE: path.join(tmp, "cache"),
   });
   return squad;
 }
