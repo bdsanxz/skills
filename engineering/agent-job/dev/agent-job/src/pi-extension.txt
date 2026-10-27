@@ -1,0 +1,104 @@
+/**
+ * agent-job: delivers scheduled crons into this pi session as user turns.
+ *
+ * `agent-job pi-extension` prints this file. Install it for every pi session with
+ * `agent-job pi-extension > ~/.pi/agent/extensions/agent-job.ts`, and again after the
+ * skill moves. In an interactive (or RPC) session it runs `agent-job watch pi:<session id>`,
+ * which holds the session's lease and prints one line per cron. Each line becomes a user turn,
+ * started at once when pi is idle and steered into the running turn otherwise. When the session
+ * shuts down, the watch is stopped, and the daemon stops sending to the session.
+ *
+ * It also serves goals: when a run has settled without being aborted, and after a compaction, it asks
+ * `agent-job goal event` what the session's active goal owes and sends the answer as a user message.
+ */
+
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import * as readline from "node:readline";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+
+const BUN = __BUN__;
+const SCRIPT = __SCRIPT__;
+const OWNER = Symbol.for("agent-job.pi-extension.owner");
+const owners = globalThis as unknown as Record<symbol, object | undefined>;
+
+export default function (pi: ExtensionAPI) {
+	let child: ChildProcess | undefined;
+	let current: string | undefined;
+	const me = {};
+
+	const stop = () => {
+		if (owners[OWNER] === me) owners[OWNER] = undefined;
+		const c = child;
+		child = undefined;
+		current = undefined;
+		if (c && c.exitCode === null) c.kill("SIGTERM");
+	};
+
+	// A new pi session has no session file until its first turn ends, so the watch also starts then.
+	const start = (ctx: ExtensionContext) => {
+		if (ctx.mode !== "tui" && ctx.mode !== "rpc") return;
+		const id = ctx.sessionManager.getSessionId();
+		if (!id || !ctx.sessionManager.getSessionFile()) return; // ephemeral sessions have no address
+		if (child && child.exitCode === null && current === id) return;
+		stop();
+		current = id;
+		if (owners[OWNER] && owners[OWNER] !== me) return;
+		owners[OWNER] = me;
+
+		const proc = spawn(BUN, [SCRIPT, "watch", `pi:${id}`], { cwd: ctx.sessionManager.getCwd(), stdio: ["ignore", "pipe", "pipe"] });
+		child = proc;
+		let stderr = "";
+		proc.stderr?.on("data", (d) => {
+			stderr = (stderr + String(d)).slice(-2000);
+		});
+		proc.on("error", (e) => {
+			if (child === proc) child = undefined;
+			if (ctx.hasUI) ctx.ui.notify(`agent-job: cannot start the watch (${e.message})`, "warning");
+		});
+		proc.on("exit", (code) => {
+			if (child !== proc) return;
+			child = undefined;
+			if (code && ctx.hasUI) ctx.ui.notify(`agent-job: the watch stopped (exit ${code}): ${stderr.trim()}`, "warning");
+		});
+		readline.createInterface({ input: proc.stdout! }).on("line", (line) => {
+			const text = line.trim();
+			if (!text || child !== proc) return;
+			if (ctx.isIdle()) pi.sendUserMessage(text);
+			else pi.sendUserMessage(text, { deliverAs: "steer" });
+		});
+	};
+
+	// What the session's active goal owes for an event: the text to send, or "" for nothing.
+	const goalText = (event: string, ctx: ExtensionContext, raw: object = {}) =>
+		new Promise<string>((resolve) => {
+			const id = ctx.sessionManager.getSessionId();
+			if (!id || ctx.mode === "print" || ctx.mode === "json") return resolve("");
+			execFile(BUN, [SCRIPT, "goal", "event", event, "--session", `pi:${id}`, "--raw", JSON.stringify(raw)], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : String(stdout).trim()));
+		});
+
+	pi.on("agent_settled", async (event, ctx) => {
+		if (event.aborted) {
+			await goalText("aborted", ctx, { piEvent: "agent_settled", aborted: true }); // the user stopped it: respect that, and say so in the trace
+			return;
+		}
+		const text = await goalText("turn-end", ctx, { piEvent: "agent_settled", aborted: event.aborted });
+		if (text) pi.sendUserMessage(text);
+	});
+
+	pi.on("session_compact", async (event, ctx) => {
+		const text = await goalText("compacted", ctx, { piEvent: "session_compact", reason: (event as { reason?: string }).reason });
+		if (!text) return;
+		// pi stays busy until this handler returns, and a steer sent meanwhile has no run to join: send once it is idle.
+		void (async () => {
+			for (let i = 0; i < 100 && !ctx.isIdle(); i++) await new Promise((r) => setTimeout(r, 200));
+			pi.sendUserMessage(text);
+		})();
+	});
+
+	pi.on("session_start", async (_event, ctx) => start(ctx));
+	pi.on("agent_end", async (_event, ctx) => start(ctx));
+
+	pi.on("session_shutdown", async () => {
+		stop();
+	});
+}
