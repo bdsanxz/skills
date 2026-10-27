@@ -16,15 +16,9 @@ Words used throughout:
 - An **address** names a session: `claude:<id>`, `opencode:<id>`, `antigravity:<id>` or `pi:<id>`.
 - A session is **open** while its runtime shows it: Claude Code through its `agent-job` channel (or, as a fallback, a running `watch`), pi through its extension's watch, and a goal through the runtime's own hook or extension, OpenCode through a running turn or a TUI that shows it, Antigravity through its TUI.
 
-## Running the script
+## The `agent-job` command
 
-`job` below stands for this shell function:
-
-```
-job() { bun "<this skill's directory>/scripts/agent-job.js" "$@"; }
-```
-
-Define it at the start of every shell command that uses it, because shell state does not carry over. It needs [Bun](https://bun.sh) and nothing else; when `bun` is not found, tell the user to install it and stop. `job --help` lists the commands and `job <command> --help` gives a command's options. Exit codes: 0 done, 1 the request failed, 2 wrong usage.
+Everything goes through the `agent-job` command, one global command on `PATH` for every agent on the machine. Before you first call it, run `command -v agent-job`. If it is not found, stop and tell the user the `agent-job` CLI is not installed: `curl -fsSL https://raw.githubusercontent.com/bdsanxz/agent-job/main/install.sh | sh` installs it at `~/.local/bin/agent-job` (see https://github.com/bdsanxz/agent-job for other options), and building a squad with the agent-roster-design skill installs it together with each member's channel, hooks and extension. Do not install it yourself. It needs [Bun](https://bun.sh); when `bun` is not found, tell the user to install it and stop. Then run `agent-job --help`, and `agent-job <command> --help` for the command you need, to learn its arguments and output. Exit codes: 0 done, 1 the request failed, 2 wrong usage.
 
 ## Rules
 
@@ -39,51 +33,53 @@ Define it at the start of every shell command that uses it, because shell state 
 ## Step 1: Know who you are
 
 ```
-job whoami
+agent-job whoami
 ```
 
 Prints your address. If it fails, you are not inside a known session; use `--session <address>` only with an address the user gave you.
 
 ## Step 2: Make sure your runtime can receive
 
-`job doctor` shows which tools this machine has.
+`agent-job doctor` shows which tools this machine has.
+
+A squad member built by the agent-roster-design skill is already set up: a Claude Code member starts with the `agent-job` channel and has the goal hooks, an Antigravity member has the goal hooks, and a pi member starts with the agent-job extension. When no `ARM:` or `SETUP:` line appears, there is nothing to do. The rest of this step is for sessions outside such a squad.
 
 **Crons**
 
 - **OpenCode, Antigravity:** nothing to arm; the daemon injects the instruction. An Antigravity session must run its `agy` TUI in herdr, where text can be typed into it. An OpenCode session counts as open while a turn runs or its TUI shows it (a process opened with its id, or a herdr pane titled `OC | <session title>`).
-- **Claude Code:** the session receives through the `agent-job` channel, an MCP server that pushes each due instruction into the session as a turn (shown as `← agent-job: ...`). The agent arms nothing. The user starts or resumes Claude Code with the channel loaded: `claude --mcp-config "$(job channel-config)" --dangerously-load-development-channels server:agent-job --` (add `--resume <id>` for an existing session, and choose "I am using this for local development" at the prompt). `cron create` prints an `ARM:` line saying so when no channel or watch is live; show it to the user and do not restart their session yourself. Fallback without the channel: run `watch` under the Monitor tool with the command from the `ARM:` line, description `agent cron`, the maximum timeout, and re-arm it when it expires while crons remain.
-- **pi:** the session needs the agent-job extension, which `job pi-extension` prints. If `cron create` prints an `ARM:` line for pi, ask the user to install it as the line says and to run `/reload`; do not install it yourself.
+- **Claude Code:** the session receives through the `agent-job` channel, an MCP server that pushes each due instruction into the session as a turn (shown as `← agent-job: ...`). The agent arms nothing. The user starts or resumes Claude Code with the channel loaded: `claude --mcp-config "$(agent-job channel-config)" --dangerously-load-development-channels server:agent-job --` (add `--resume <id>` for an existing session, and choose "I am using this for local development" at the prompt). `cron create` prints an `ARM:` line saying so when no channel or watch is live; show it to the user and do not restart their session yourself. Fallback without the channel: run `watch` under the Monitor tool with the command from the `ARM:` line, description `agent cron`, the maximum timeout, and re-arm it when it expires while crons remain.
+- **pi:** the session needs the agent-job extension, which `agent-job pi-extension` prints. If `cron create` prints an `ARM:` line for pi, ask the user to install it as the line says and to run `/reload`; do not install it yourself.
 
-**Goals** are driven by the runtime's own events, so Claude Code, Antigravity and pi need a one-time setup (Claude Code also needs the channel above, so its goal turns arrive as ordinary turns); OpenCode needs none (the daemon watches its session). `goal create` prints a `SETUP:` line when your runtime is not configured. Then run `job goal setup <provider>`: it prints the configuration and where it goes. Show it to the user and let them apply it; do not edit their settings, hooks or extensions yourself. After it is applied, Claude Code and Antigravity need a new session or reload to read it, and pi needs `/reload`.
+**Goals** are driven by the runtime's own events, so Claude Code, Antigravity and pi need a one-time setup (Claude Code also needs the channel above, so its goal turns arrive as ordinary turns); OpenCode needs none (the daemon watches its session). `goal create` prints a `SETUP:` line when your runtime is not configured. Then run `agent-job goal setup <provider>`: it prints the configuration and where it goes. Show it to the user and let them apply it; do not edit their settings, hooks or extensions yourself. After it is applied, Claude Code and Antigravity need a new session or reload to read it, and pi needs `/reload`.
 
 ## Step 3: Create a cron
 
 ```
-job cron create --every 10m --name build-check --prompt "Run the build. If it is still red, report the first failing test; if green, tell me and stop."
-job cron create --cron "0 9 * * 1-5" --prompt "..."
-job cron create --at +30m --prompt "..."
+agent-job cron create --every 10m --name build-check --prompt "Run the build. If it is still red, report the first failing test; if green, tell me and stop."
+agent-job cron create --cron "0 9 * * 1-5" --prompt "..."
+agent-job cron create --at +30m --prompt "..."
 ```
 
 A long instruction goes on stdin instead of `--prompt`. Add `--max-runs <n>` or `--expires <duration>` for a repeating cron that should end by itself. `cron create` starts the daemon when it is not running, refuses a session that does not look open (`--force` overrides, only when the user asks), and prints the first run and any `ARM:` line to act on.
 
 ## Step 4: Manage crons
 
-- `job cron list` (add `--all` for done and ended ones), `job cron show <id>` (shows the last events: sent, skipped, failed, ended).
-- `job cron pause <id>`, `job cron resume <id>`, `job cron delete <id>...`.
-- `job cron run-now <id>` sends it now to an open session without touching the schedule.
+- `agent-job cron list` (add `--all` for done and ended ones), `agent-job cron show <id>` (shows the last events: sent, skipped, failed, ended).
+- `agent-job cron pause <id>`, `agent-job cron resume <id>`, `agent-job cron delete <id>...`.
+- `agent-job cron run-now <id>` sends it now to an open session without touching the schedule.
 
-When a cron's status is `ended`, its session closed: tell the user, and offer to recreate it in a session that is open. `job cron resume <id>` brings an ended cron back only from a session that is open again. A repeating cron whose run was missed because the daemon was down is skipped, not replayed; a late one-time cron is still sent.
+When a cron's status is `ended`, its session closed: tell the user, and offer to recreate it in a session that is open. `agent-job cron resume <id>` brings an ended cron back only from a session that is open again. A repeating cron whose run was missed because the daemon was down is skipped, not replayed; a late one-time cron is still sent.
 
 ## Step 5: When a cron arrives
 
-A fired cron arrives as a plain turn holding exactly the instruction that was scheduled, the same as a `CronCreate` prompt, with no header (a Claude Code or pi session receives a multi-line instruction folded onto one line, with ` ⏎` between lines). Do what it says, then report briefly. To stop a repeating cron, `job cron list` shows its id and `job cron delete <id>` removes it.
+A fired cron arrives as a plain turn holding exactly the instruction that was scheduled, the same as a `CronCreate` prompt, with no header (a Claude Code or pi session receives a multi-line instruction folded onto one line, with ` ⏎` between lines). Do what it says, then report briefly. To stop a repeating cron, `agent-job cron list` shows its id and `agent-job cron delete <id>` removes it.
 
 ## Step 6: Create a goal
 
 Complete Step 2 for goals first. Then:
 
 ```
-job goal create --prompt "All tests under test/ pass with `bun test`, and no test is skipped or deleted to get there."
+agent-job goal create --prompt "All tests under test/ pass with `bun test`, and no test is skipped or deleted to get there."
 ```
 
 State the objective as a condition you can check, and say what counts as evidence. A session has at most one active goal; `goal create` refuses a second one (delete or finish the first). It also refuses a session that does not look open (`--force` only when the user asks). Without `--max-turns` the goal has no limit and goes on until you mark it done or blocked; `--max-turns <n>` caps the continuations, and a goal that reaches it ends after one last message telling you it stopped (report where it stands to the user).
@@ -103,33 +99,33 @@ A goal sends three kinds of turn, each as plain text that names the objective in
 Each turn, check the objective against the real state (run the tests, read the file), not against your memory of earlier turns. When the condition holds:
 
 ```
-job goal done <id> --note "<the evidence>"
+agent-job goal done <id> --note "<the evidence>"
 ```
 
 When you cannot go on without the user (a decision, a credential, a file only they can supply):
 
 ```
-job goal blocked <id> --note "<what you need>"
+agent-job goal blocked <id> --note "<what you need>"
 ```
 
 Both stop the messages. Do not keep working "just in case" after `done`.
 
 ## Step 8: Manage goals
 
-- `job goal list` (add `--all` for finished ones), `job goal show <id>` (turns used, status, note).
-- `job goal pause <id>` stops the messages without ending the goal; `job goal resume <id>` restarts them. Pause it when the user wants to talk or redirect you.
-- `job goal delete <id>` removes it.
+- `agent-job goal list` (add `--all` for finished ones), `agent-job goal show <id>` (turns used, status, note).
+- `agent-job goal pause <id>` stops the messages without ending the goal; `agent-job goal resume <id>` restarts them. Pause it when the user wants to talk or redirect you.
+- `agent-job goal delete <id>` removes it.
 
 A goal whose session closes ends by itself after a grace period; tell the user. A goal that is `done`, `blocked` or `ended` by `--max-turns` stays in `goal list --all` with its note, so report it from there.
 
 ## Step 9: Diagnose
 
-- A cron did not arrive: `job cron show <id>` (the events say sent, failed or why not), `job daemon status`, then `job doctor`. The daemon log is named by `daemon status`.
+- A cron did not arrive: `agent-job cron show <id>` (the events say sent, failed or why not), `agent-job daemon status`, then `agent-job doctor`. The daemon log is named by `daemon status`.
 - `failed: ... not in herdr` for Antigravity: the TUI must run in herdr.
 - Crons keep ending for Claude Code: neither the channel nor a watch is live and `claude agents` does not list the session; the user restarts Claude Code with the channel (Step 2) or you re-arm the watch.
 - Claude Code shows `Stop hook error` for a goal: no channel was live, so the hook fell back to blocking the stop; load the channel (Step 2).
-- A goal never continues after a turn: the runtime is not set up (`job goal create` printed `SETUP:`; run `job goal setup <provider>` and have the user apply it), or the goal is paused. For OpenCode, the daemon must run (`job daemon status`). The hooks stay silent on purpose when the database does not exist, so a missing setup shows as nothing happening.
-- To see exactly which events arrived and what was decided for each, run `job trace on`, reproduce the problem, then `job trace show --tail 50`; `job trace off` and `job trace clear` turn it off and empty it. Every hook, poll, push and send writes one line.
-- Restart the daemon with `job daemon stop` then `job daemon start`.
+- A goal never continues after a turn: the runtime is not set up (`agent-job goal create` printed `SETUP:`; run `agent-job goal setup <provider>` and have the user apply it), or the goal is paused. For OpenCode, the daemon must run (`agent-job daemon status`). The hooks stay silent on purpose when the database does not exist, so a missing setup shows as nothing happening.
+- To see exactly which events arrived and what was decided for each, run `agent-job trace on`, reproduce the problem, then `agent-job trace show --tail 50`; `agent-job trace off` and `agent-job trace clear` turn it off and empty it. Every hook, poll, push and send writes one line.
+- Restart the daemon with `agent-job daemon stop` then `agent-job daemon start`.
 
 See `references/providers.md` for how each runtime is detected, reached, judged open or gone, and how it reports turn ends and compactions.
