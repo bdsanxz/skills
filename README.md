@@ -93,7 +93,13 @@ Install the `peers` command at `~/.local/bin/peers` with:
 curl -fsSL https://raw.githubusercontent.com/bdsanxz/peers/main/install.sh | sh
 ```
 
-`get-knowledge` works without an API key. An `EXA_API_KEY` or `KEENABLE_API_KEY` raises its search limits; the skill explains how to set one.
+`get-knowledge` searches the web through three providers. When one reaches its limit, the next is tried, in the order below. Each works without an API key through its free service, which allows only a few searches in a short time. Set a provider's key in your environment to lift its limit:
+
+| Provider | Environment variable | Get a key |
+| --- | --- | --- |
+| [Exa](https://exa.ai) | `EXA_API_KEY` | [dashboard.exa.ai/api-keys](https://dashboard.exa.ai/api-keys) |
+| [Keenable](https://keenable.ai) | `KEENABLE_API_KEY` | [app.keenable.ai](https://app.keenable.ai) |
+| [Parallel](https://parallel.ai) | `PARALLEL_API_KEY` | [platform.parallel.ai](https://platform.parallel.ai) |
 
 ## How a skill is built
 
