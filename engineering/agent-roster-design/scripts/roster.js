@@ -924,6 +924,9 @@ function configureClaude(_workspace, dir) {
 function configureAgy(_workspace, dir) {
   return configureAgentJobAgy(dir);
 }
+function configureMuse() {
+  return null;
+}
 function configureNothing() {
   return null;
 }
@@ -1004,6 +1007,15 @@ function launchAgy(h, m, pane, name) {
   h.startAgent(name, "agy", pane, args, true);
   h.firstPrompt(name, pane, AGENTS.agy.dialogs);
 }
+function launchMuse(h, m, pane, name) {
+  const args = ["--yolo"];
+  if (m.model)
+    args.push("--model", m.model);
+  if (m.effort)
+    args.push("--effort", m.effort);
+  h.startAgent(name, "muse", pane, args);
+  h.firstPrompt(name, pane, AGENTS.muse.dialogs);
+}
 var AGENTS = {
   claude: {
     label: "Claude Code",
@@ -1068,6 +1080,21 @@ var AGENTS = {
     dialogs: [],
     configure: configurePi,
     launch: launchPi
+  },
+  muse: {
+    label: "Muse Code",
+    command: "muse",
+    instructions: "AGENTS.md",
+    imports: false,
+    skillsDir: join(".agents", "skills"),
+    skillsCli: "opencode",
+    modelPattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    modelHint: "a Muse Code model id such as muse-spark-1.3",
+    listModels: null,
+    launchSettings: true,
+    dialogs: [],
+    configure: configureMuse,
+    launch: launchMuse
   }
 };
 var LEGACY_AGENTS = { antigravity: "agy" };
@@ -1149,7 +1176,7 @@ function parseVariants(output, why) {
   }
 }
 function effortLevels(member) {
-  if (member.agent === "claude" || member.agent === "pi")
+  if (member.agent === "claude" || member.agent === "pi" || member.agent === "muse")
     return [new Set(LEVELS), null];
   if (!member.model) {
     return [
@@ -2213,7 +2240,7 @@ agent, model and effort, highest precedence first:
           default effort for the model.
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
-  pi --model and --thinking;
+  pi --model and --thinking; muse --model and --effort;
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
@@ -2222,8 +2249,8 @@ agent, model and effort, highest precedence first:
   opencode.json.
 
 effort levels:
-  ${LEVEL_NAMES}. claude and pi take every level for every model (pi
-  clamps it to what the model supports); opencode the
+  ${LEVEL_NAMES}. claude, pi and muse take every level for every
+  model (pi clamps it to what the model supports); opencode the
   model's variants that are levels (from \`opencode api model.list\`); agy the levels
   \`agy models\` lists for the model. opencode and agy need a model for an effort level,
   to check it. A level the member's own "effort" or --effort names that its agent and

@@ -162,10 +162,16 @@ describe("a mixed team", () => {
       "model 'gem-ultra' (defaults.models.agy) is not available to agy; `agy models` lists: gem-fast, gem-flash, gem-flash-high, gem-flash-low, gem-pro",
       ["check", W],
     );
+    await check("muse model form", "model 'muse/spark' (--model) is not a muse model", ["check", W, "--agent", "lead=muse", "--model", "lead=muse/spark"]);
     edit(s, (r) => {
       m(r, 1).model = "opencode/big-pickle";
       models(r).agy = "gem-fast";
     });
+    await check(
+      "muse model accepted",
+      "MEMBER lead: agent muse (--agent), model muse-spark-1.3 (--model)",
+      ["check", W, "--agent", "lead=muse", "--model", "lead=muse-spark-1.3"],
+    );
     const noAgy = `${partialBin(s, "noagy", ["npx", "claude", "opencode", "herdr"])}:/usr/bin:/bin`;
     const missing = await check(
       "agy missing is a note for check",
@@ -208,6 +214,11 @@ describe("a mixed team", () => {
       "agy base model takes its levels",
       "MEMBER docs: agent agy (defaults.agent), model gem-flash (--model), effort high (--effort)",
       ["check", W, "--model", "docs=gem-flash", "--effort", "docs=high"],
+    );
+    await check(
+      "muse takes every level",
+      "MEMBER lead: agent muse (--agent), model muse-spark-1.3 (--model), effort max (--effort)",
+      ["check", W, "--agent", "lead=muse", "--model", "lead=muse-spark-1.3", "--effort", "lead=max"],
     );
     const unsupported = await check(
       "explicit unsupported level is an error",
@@ -487,6 +498,38 @@ describe("launch", () => {
     const failed = await check("launch failure names the member", "FAILED opening or moving api's tab: `herdr tab create", ["launch", W], { HERDR_FAIL_TAB: "1" });
     has("launch failure lists who runs", failed.out, "Already running: lead (pane w9:p1). Not started: api, docs.");
     exits("launch failure exits 1", failed.code, 1);
+  });
+
+  test("a muse member is checked, built and launched", async () => {
+    edit(s, (r) => {
+      const d = m(r, 2);
+      d.agent = "muse";
+      d.model = "muse-spark-1.3";
+      d.effort = "high";
+    });
+    await check(
+      "muse member checked",
+      "MEMBER docs: agent muse (member), model muse-spark-1.3 (member), effort high (member)",
+      ["check", W],
+    );
+    clear(s.npxLog);
+    await check("muse member built", "BUILT docs (muse)", ["build", W, "--member", "docs"]);
+    has("muse member gets AGENTS.md", file("docs", "AGENTS.md"), "# docs: member of the demo squad");
+    has("muse member reads its files first", file("docs", "AGENTS.md"), "Read all four");
+    has("muse member records agent and model", file("docs", ".peers.json"), '"agent": "muse"');
+    has("muse skills install into the shared dir", read(s.npxLog), "-a opencode");
+    clear(s.herdrLog);
+    const dry = (await roster(["launch", W, "--dry-run", "--member", "docs"])).out;
+    has("muse starts as a herdr agent", dry, "agent start demo-docs --kind muse");
+    has("muse starts with its flags", dry, "--yolo --model muse-spark-1.3 --effort high");
+    has("muse launch reported", dry, "WOULD LAUNCH docs (muse, model muse-spark-1.3, effort high)");
+    edit(s, (r) => {
+      const d = m(r, 2);
+      delete d.agent;
+      delete d.model;
+      delete d.effort;
+    });
+    await roster(["build", W, "--member", "docs"]);
   });
 
   test("one workspace, one tab per member in hierarchy order", async () => {

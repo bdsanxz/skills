@@ -92,6 +92,12 @@ function configureAgy(_workspace: string, dir: string) {
   return configureAgentJobAgy(dir);
 }
 
+/** Muse Code needs no per-member files: its peers notifications arrive through an armed
+ * `peers watch`, and agent-job polls its session log, so there is no channel or hook to write. */
+function configureMuse() {
+  return null;
+}
+
 function configureNothing() {
   return null;
 }
@@ -198,6 +204,16 @@ function launchAgy(h: Herdr, m: Member, pane: string, name: string) {
   h.firstPrompt(name, pane, AGENTS.agy!.dialogs);
 }
 
+function launchMuse(h: Herdr, m: Member, pane: string, name: string) {
+  // Muse peers always run with --yolo: nobody answers a peer's approval prompts, and the member's
+  // cwd is trusted so its AGENTS.md and project skills load without asking.
+  const args = ["--yolo"];
+  if (m.model) args.push("--model", m.model);
+  if (m.effort) args.push("--effort", m.effort);
+  h.startAgent(name, "muse", pane, args);
+  h.firstPrompt(name, pane, AGENTS.muse!.dialogs);
+}
+
 export const AGENTS: Record<string, Agent> = {
   claude: {
     label: "Claude Code",
@@ -265,6 +281,23 @@ export const AGENTS: Record<string, Agent> = {
     dialogs: [],
     configure: configurePi,
     launch: launchPi,
+  },
+  muse: {
+    label: "Muse Code",
+    command: "muse",
+    instructions: "AGENTS.md",
+    imports: false,
+    skillsDir: join(".agents", "skills"),
+    // The skills CLI names no muse agent yet; opencode writes the same shared
+    // .agents/skills directory, which Muse Code reads as its project skills.
+    skillsCli: "opencode",
+    modelPattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    modelHint: "a Muse Code model id such as muse-spark-1.3",
+    listModels: null,
+    launchSettings: true,
+    dialogs: [],
+    configure: configureMuse,
+    launch: launchMuse,
   },
 };
 // Older rosters name the agent in "runtime", and agy as "antigravity".
@@ -360,8 +393,8 @@ function parseVariants(output: string, why: string): Listed<Map<string, string[]
 
 /** [levels the member's agent and model support, null], or [null, why they cannot be known]. */
 export function effortLevels(member: { agent: string; model: string | null }): Listed<Set<string>> {
-  // claude --effort takes every level for every model; pi --thinking too, clamped to the model.
-  if (member.agent === "claude" || member.agent === "pi") return [new Set(LEVELS), null];
+  // claude --effort takes every level for every model; pi --thinking and muse --effort too.
+  if (member.agent === "claude" || member.agent === "pi" || member.agent === "muse") return [new Set(LEVELS), null];
   if (!member.model) {
     return [
       null,

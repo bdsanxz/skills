@@ -61,6 +61,11 @@ const PI = `#!/bin/bash
 echo "unexpected pi call: $*" >&2; exit 9
 `;
 
+/** muse: present so launch finds its command; no listable models, like claude. */
+const MUSE = `#!/bin/bash
+echo "unexpected muse call: $*" >&2; exit 9
+`;
+
 /** herdr: logs every call; answers like herdr does. HERDR_SESSIONS sets \`session list\`,
  * HERDR_WORKSPACES \`workspace list\`, HERDR_PANES the panes \`pane list\` shows,
  * HERDR_TAB_BASE where the ids of new tabs and their panes start,
@@ -150,7 +155,7 @@ export type Squad = {
   opencodeLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, herdr: HERDR, peers: PEERS, "agent-job": AGENT_JOB };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, peers: PEERS, "agent-job": AGENT_JOB };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
