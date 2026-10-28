@@ -467,8 +467,9 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
     "",
     "Find a member's address with `peers contacts`, which lists every member that has used peers " +
       "in this squad, or with `peers list --all-dirs`, picking the row whose cwd is the member's " +
-      "directory below. Addresses change when a member is restarted; " +
-      "look them up again rather than reusing an old one.",
+      "directory below. Addresses change when a member is restarted, even on another agent; " +
+      "look them up again rather than reusing an old one. In `peers contacts`, use the member's " +
+      "`status=live` row; never message a `status=replaced` row, whose member now runs at its `by=` address.",
     "",
     "| Member |" + (anyNamed ? " Name |" : "") + " Agent | Model | Effort | Role | Directory | Reports to |",
     "| --- |" + (anyNamed ? " --- |" : "") + " --- | --- | --- | --- | --- | --- |",

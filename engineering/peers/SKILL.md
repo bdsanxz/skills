@@ -65,14 +65,14 @@ For a Claude target, `peers send` says which one applied: `via channel` or `via 
 ## Step 3: Find peers
 
 ```bash
-peers contacts          # every peer that has used peers in your squad database
+peers contacts          # every peer that has used peers in your squad database, with its status
 peers list              # live sessions of every runtime in your directory
 peers list --all-dirs   # every directory
 peers list --all        # also finished Claude background sessions and older pi sessions
 peers list --children   # also OpenCode child sessions
 ```
 
-`peers contacts` reads the squad database: each row shows the address, name, role, runtime and directory of a session that has run `peers`, or that someone messaged. `peers list` asks the runtimes instead: each row shows the address, kind, status and name of a live or recent session, including ones that never used `peers`. Consider sessions in your own directory or squad first.
+`peers contacts` reads the squad database: each row shows the address, status, name, role, runtime and directory of a session that has run `peers`, or that someone messaged. Its `status` says which session to use: `live` runs now; `offline` does not run, and no other session holds its role, so a message waits for it; `replaced` does not run, and the session after `by=` holds its role now, for example a member restarted on another runtime after it hit a limit. Never message a `replaced` session: it will not answer; message the `by=` address. When you message one anyway, `peers send` prints a `REPLACED:` line naming the session to send to instead. `peers list` asks the runtimes instead: each row shows the address, kind, status and name of a live or recent session, including ones that never used `peers`. Consider sessions in your own directory or squad first.
 
 OpenCode top-level sessions are the user's main conversations and the usual targets for reporting back; child sessions are work sessions and are often the ones to resume. Claude sessions of kind `interactive` belong to a person at a terminal or in the desktop app; kind `background` are peers started with `--bg`. Antigravity rows are conversations; their status is the conversation's last run status, and the directory is its first workspace. pi rows are saved sessions, by default only those that listen or whose file changed in the last 24 hours: `status=listening` means the peers extension runs in a live pi session, `status=saved` means its notifications wait until it starts with the extension.
 
@@ -84,7 +84,7 @@ Start the peer in the directory it should work in. Its squad directory, and so t
 
 **Start every peer visible, in herdr, unless the user asked for a headless one.** A peer in a herdr pane is a live session that you and the user can watch, and `peers send` notifies it as a turn. A headless peer (a background run with no window) is started only when the user asks for one; the same holds for `peers send --headless` (Step 6). Without herdr (`herdr session list` fails or shows no running session), do not fall back to a headless peer on your own: tell the user, and ask whether to start herdr or to run the peer headless.
 
-Every peer's task starts with: run `peers whoami`, then end your turn if there is nothing else to do. That records its address in the squad database, so you read the address from `peers contacts` (the newest row of that runtime in that directory) instead of from its screen.
+Every peer's task starts with: run `peers whoami`, then end your turn if there is nothing else to do. That records its address in the squad database, so you read the address from `peers contacts` (the `live` row of that role, else the newest row of that runtime in that directory) instead of from its screen.
 
 **Permissions.** Every Claude Code and Antigravity peer runs with `--dangerously-skip-permissions`, and every OpenCode peer with `--auto`: nobody answers a peer's permission prompts. pi asks none. Never pass `--standalone` or `--server` to an OpenCode peer: every peer must share the default background service.
 
