@@ -106,21 +106,20 @@ function launchClaude(h: Herdr, m: Member, pane: string, name: string) {
   const cmd = ["claude", "--dangerously-skip-permissions", "-n", sessionLabel(m, name)];
   if (m.model) cmd.push("--model", m.model);
   if (m.effort) cmd.push("--effort", m.effort);
-  // Keep the "--": the channels flag takes several values and would swallow the prompt.
-  cmd.push("--dangerously-load-development-channels", "server:peers", "server:agent-job", "--", FIRST_PROMPT);
+  // Keep the "--" so a prompt starting with a dash is not parsed as a flag.
+  // Both channels come from the member's .mcp.json; no extra flag loads them.
+  cmd.push("--", FIRST_PROMPT);
   h.run(["pane", "run", pane, shlexJoin(cmd)]);
-  // Claude asks to trust a new folder, then to confirm the development channel.
-  h.run(["pane", "wait-output", pane, "--regex", "Yes, I trust this folder|local development", "--timeout", WAIT_MS]);
+  // Claude asks to trust a new folder before the channel banner appears.
+  h.run(["pane", "wait-output", pane, "--regex", "Yes, I trust this folder|inject directly", "--timeout", WAIT_MS]);
   if (h.dryRun || h.text(["pane", "read", pane, "--source", "visible"]).includes("Yes, I trust this folder")) {
     // "No, exit" is preselected; the member cwd is one the roster names.
     h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
     h.run(
-      ["pane", "wait-output", pane, "--match", "local development", "--timeout", WAIT_MS],
+      ["pane", "wait-output", pane, "--match", "inject directly", "--timeout", WAIT_MS],
       "only when Claude asked to trust the folder",
     );
   }
-  h.run(["pane", "send-keys", pane, "enter"]);
-  h.run(["pane", "wait-output", pane, "--match", "inject directly", "--timeout", WAIT_MS]);
 }
 
 function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: string) {

@@ -35,9 +35,9 @@ One principle: use the runtime's native command whenever it has one; use the `ag
 | OpenCode, running turn or TUI | daemon cron, nothing to arm | daemon goal, nothing to arm | daemon events (`cron show`, trace) |
 | pi with extension | daemon cron (needs extension) | daemon goal (needs extension) | `ARM:` line guides install, then `/reload` |
 | Claude with channel | daemon cron via channel | daemon goal via channel + hooks | `ARM:`/`SETUP:` lines guide loading |
-| Muse outside herdr | each firing fails fast (move it to herdr) | daemon goal via log poll | move the TUI to herdr, or send a native `/loop` or `/goal` |
+| Muse outside herdr | each firing fails fast (move it to herdr) | unreachable: every start and continuation fails the same way | move the TUI to herdr, or send a native `/loop` or `/goal` |
 
-Daemon setup, only when an `ARM:` or `SETUP:` line says so: Claude Code loads the channel with `claude --mcp-config "$(agent-job channel-config)" --dangerously-load-development-channels server:agent-job --` (choose "I am using this for local development" at the prompt). Antigravity daemon goals need its hooks file (`agent-job goal setup agy` prints where). pi installs the extension the `ARM:` line names, then `/reload`. A muse TUI outside herdr cannot receive daemon lines; move it to herdr instead.
+Daemon setup, only when an `ARM:` or `SETUP:` line says so: Claude Code loads the channel with `claude --mcp-config "$(agent-job channel-config)" --` (approve the MCP server if asked). Antigravity daemon goals need its hooks file (`agent-job goal setup antigravity` prints where). pi installs the extension the `ARM:` line names, then `/reload`. A muse TUI outside herdr cannot receive daemon lines; move it to herdr instead.
 
 ## Step 1: Know who you are
 
@@ -83,7 +83,7 @@ A session holds at most one daemon goal; `create` refuses a second one. Without 
 
 ## Step 4: When it arrives, and closing it
 
-A fired repeat arrives as a plain turn holding exactly the scheduled message — a multi-line instruction folded onto one line, with ` ⏎` between lines. Do what it says, then report briefly.
+A fired repeat arrives as a plain turn holding exactly the scheduled message. A collecting listener (channel, pi holder) folds a multi-line instruction onto one line, with ` ⏎` between lines; a push delivery (OpenCode steer, Antigravity or Muse paste) arrives with its lines intact. Do what it says, then report briefly.
 
 A daemon goal arrives as plain text naming the objective in brackets with its two closing commands: at creation (acknowledge briefly, start working), at a turn end (the condition is unmet; keep working; counts as one continuation — a user-interrupted turn does not), after a compaction (carry on; not a continuation). Each turn, check the objective against the real state, not your memory. When the condition holds, run `agent-job goal done <id> --note "<the evidence>"`; when only the user can unblock you, run `agent-job goal blocked <id> --note "<what you need>"`. Both end the messages. A native goal is restated and closed by the runtime itself.
 
@@ -97,7 +97,7 @@ Daemon goals: `agent-job goal list` (`--all`), `goal show <id>` (turns used, sta
 
 - No `Scheduled ...` or `Goal set — ...` after a native send: the runtime did not take it. Re-send it exactly; if it still does not confirm, fall back to the daemon path for that runtime.
 - No daemon cron arrived: `agent-job cron show <id>`, then `daemon status`, then `doctor`; the log is named by `daemon status`. A goal that never continues: no `SETUP:` applied, goal paused, daemon down, or (muse) the session log unreadable — `session_log_path` in Muse Code's session index.
-- Crons keep ending for Claude Code: no channel is live and `claude agents` does not list the session; restart with the channel (Routes). Each firing fails fast instead of waiting.
+- Crons keep ending for Claude Code: no channel is live and `claude agents` does not list the session; restart with the channel (Routes). Due crons of a dead session wait out the grace period and then end; fail-fast applies to `run-now` and to goal start and continuation delivery, whose failures `cron show` and `goal show` record.
 - Claude Code shows a `Stop hook error` for a daemon goal: no channel was live, so the hook fell back to blocking the stop; load the channel (Routes).
 - Every hook, poll, push and send is traceable: `agent-job trace on`, reproduce, `agent-job trace show --tail 50`, then `trace off` and `trace clear`. Restart the daemon with `daemon stop` then `daemon start`.
 
