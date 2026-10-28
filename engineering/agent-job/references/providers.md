@@ -1,6 +1,6 @@
 # Providers: reaching a session and knowing it is gone
 
-Verified on this machine (Claude Code 2.1.311, OpenCode 2.0.29, agy 1.4.7, pi 1.4.0, herdr 0.9.1).
+Verified on this machine (Claude Code 2.1.311, OpenCode 2.0.29, agy 1.4.7, pi 1.4.0, herdr 0.9.1, Muse Code 1.4.14).
 
 | Provider | Address from | Reached by | Open while | Gone when |
 | --- | --- | --- | --- | --- |
@@ -8,6 +8,7 @@ Verified on this machine (Claude Code 2.1.311, OpenCode 2.0.29, agy 1.4.7, pi 1.
 | opencode | `OPENCODE_SESSION_ID` | `opencode api post /api/session/<id>/prompt` with `delivery: steer`, `resume: true` | `/api/session/active` has it, a process `opencode ... <id>` exists, a herdr pane is titled `OC \| <title>` with a unique title, or (a new session with no title) it is the only untitled session of its directory and a herdr pane there is titled `OpenCode` | none of those |
 | antigravity | `ANTIGRAVITY_CONVERSATION_ID` | `herdr --session <s> agent prompt <pane> <text>` (typed into the TUI) | `~/.gemini/antigravity-cli/presence/<id>.lock` is held by a process on a tty | nobody holds the lock |
 | pi | `PI_SESSION_ID` | the extension runs `watch pi:<id>` as a child and turns each line into a user message | the extension's watch lease is fresh | `session_shutdown` stops the watch |
+| muse | `MUSE_SESSION_ID` | the daemon queues it in the outbox; the line a running `watch` prints under the Monitor tool | the watch's lease is fresh, or the socket lease pid in `runtime/muse/sessions/<id>.json` still runs | neither, and the session index has no such session |
 
 ## What the experiments showed
 
@@ -20,8 +21,11 @@ Each provider was tested with a real TUI in herdr: a cron is delivered, the mode
 | antigravity | text typed into the TUI, the model replied | about 117 s, reason "no agy TUI holds the session's presence lock" |
 | pi | a user message, the model replied | about 125 s, reason "no pi extension listener" |
 
+(Muse Code is not in this table: its watch delivery and poll continuation are covered by unit tests, not yet by a live TUI experiment. The mechanism is the same one the table shows for the Claude fallback: one line per row under the Monitor tool.)
+
 - **Delivered text:** exactly the cron's prompt, as `CronCreate` delivers it: no header. A watch folds newlines into ` ⏎` because it delivers one line per cron.
 - **pi:** a new session has no session file, and so no address, until its first turn ends. The extension therefore also starts its watch on `agent_end`; a pi session receives crons after its first turn.
+- **Muse Code:** a session is indexed in `session-index.db` (sid, title, `workspace_root` for its directory, `session_log_path`) once it has run, and counts as live while the pid holding its socket lease (from `runtime/muse/sessions/<id>.json` `endpoint_hint`) still runs. `muse session-message` is not used: external agent ingress is unavailable in current builds, so crons never steer the session from outside; they wait for an armed `watch`. `peers` reaches a live muse TUI in herdr by typing into it, but `agent-job` has no such path: its outbox is watch-only.
 
 - **Claude channel:** `agent-job channel` is an MCP stdio server that declares the `claude/channel` capability, takes the session's lease, and pushes each outbox row; the lease ends when its parent process dies. The session id comes from `CLAUDE_CODE_SESSION_ID`, else from `claude agents --json` by parent pid. It is loaded with `--mcp-config` and `--dangerously-load-development-channels server:agent-job`.
 - **Claude Code:** when a session is terminated, its `SessionEnd` hook runs and the child processes it started (a background command, a Monitor) receive SIGTERM. `watch` catches it, drops its lease and exits, so the daemon learns the session is gone without any hook.
@@ -39,6 +43,7 @@ A goal is sent at creation, at each turn end and after a compaction. Each runtim
 | opencode | the daemon polls `GET /api/session/<id>/message?limit=30&order=desc` every 3 s; an `idle` message with `outcome: succeeded` continues, `interrupted` and `failed` do not | a `compaction` message in the same poll | none |
 | antigravity | `Stop` hook (`terminationReason` in its input); reply `{"decision":"continue","reason":text}`; a user cancel does not continue | every compaction adds a `"type":"CHECKPOINT"` step to the transcript. `/compact` ends with a `Stop` of `TERMINAL_CUSTOM_HOOK`; the hook sees the count rise and restates at once. A compaction in the middle of a turn is caught by a `PreInvocation` hook, which injects the text as a system message | `hooks.json` (`~/.gemini/config/` or `<workspace>/.agents/`); the event name is passed as a command argument because stdin does not carry it |
 | pi | the extension's `agent_settled` event (`aborted` is skipped) runs `goal event turn-end` and sends the output as a user message | `session_compact` runs `goal event compacted` | the agent-job extension in `~/.pi/agent/extensions/` |
+| muse | the daemon polls the session log every 3 s; each `assistant_message_committed` record since the goal (cursor: the envelope `sequence`) continues, a user interrupt does not | `CompactionInstalled`, `preCompact` or `postCompact` run events in the same poll | none |
 
 Verified live with a real session of each (a goal set from outside, the model working until it ran `goal done`):
 
@@ -49,13 +54,15 @@ Verified live with a real session of each (a goal set from outside, the model wo
 | antigravity | 2 continuations through `Stop`, then `goal done` | text restated right after `/compact` (checkpoints 2 to 3) and the agent continued |
 | pi | 2 continuations (goal done at 2/8) | text arrived after `/compact` and the agent resumed work |
 
+(Muse Code is not in this table either: its poll counts `assistant_message_committed` records and watches for the compaction run events above, covered by unit tests. The compaction event shape is the schema's hook vocabulary; if a future build records compactions differently, the poll still continues at every turn end and only misses the compaction text.)
+
 - **Native format:** the creation text follows Claude Code's own `/goal` message (`A ... Stop hook is now active with condition: "<cond>"`), and a continuation follows its `Stop hook feedback:` form (`[<cond>]: <why it is not met>`), with the `goal done` / `goal blocked` commands appended.
 - **Limits:** one active goal per session. `turns` counts continuations, not compactions; `max_turns` 0 (no `--max-turns`) is unlimited; at a set `max_turns` the goal ends after one last text (`limit-text`) saying it stopped, and sends nothing more.
 - **Hooks never fail the runtime:** they exit 0, and stay silent when the database does not exist.
 - **pi compaction:** pi stays busy until the `session_compact` handler returns, and a message sent while it is busy has no run to join and is dropped. The extension therefore returns at once and sends from a separate task once the session is idle.
 - **Goal ends with the session:** the daemon's sweep ends an active or paused goal whose session stays gone for the grace period, as it does for crons.
-- **Paused goals:** the daemon still polls OpenCode for a paused goal and advances its cursor without acting, so `goal resume` on an idle session sends nothing until the next turn end.
-- **Compaction across polls:** an OpenCode compaction message and the `idle` that follows may be read in different polls; the daemon remembers the compaction and sends the compacted text at the turn end.
+- **Paused goals:** the daemon still polls OpenCode and muse for a paused goal and advances its cursor without acting, so `goal resume` on an idle session sends nothing until the next turn end.
+- **Compaction across polls:** an OpenCode compaction message and the `idle` that follows may be read in different polls; the daemon remembers the compaction and sends the compacted text at the turn end. A muse compaction record and a later assistant message behave the same way through the same cursor.
 - **Trace:** `agent-job trace on` (or `AGENT_JOB_TRACE=1`) writes one JSON line per hook, poll, push and decision to `trace.log` in the data directory; `trace show --tail n` reads it.
 
 ## Data

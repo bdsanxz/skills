@@ -360,7 +360,7 @@ agent, model and effort, highest precedence first:
           default effort for the model.
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
-  pi --model and --thinking;
+  pi --model and --thinking; muse --model and --effort;
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
@@ -369,8 +369,8 @@ agent, model and effort, highest precedence first:
   opencode.json.
 
 effort levels:
-  ${LEVEL_NAMES}. claude and pi take every level for every model (pi
-  clamps it to what the model supports); opencode the
+  ${LEVEL_NAMES}. claude, pi and muse take every level for every
+  model (pi clamps it to what the model supports); opencode the
   model's variants that are levels (from \`opencode api model.list\`); agy the levels
   \`agy models\` lists for the model. opencode and agy need a model for an effort level,
   to check it. A level the member's own "effort" or --effort names that its agent and

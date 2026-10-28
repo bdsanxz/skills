@@ -72,7 +72,7 @@ Install (in web's cwd): npx -y skills@latest add vercel-labs/agent-skills --skil
 Learn more: https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices
 ```
 
-Then ask which of them the member gets, with your recommendation first. A skill the user accepts goes into the member's roster entry as `{"source": "<owner/repo>", "skill": "<skill>"}`. `build` installs it in the member's cwd with `npx -y skills@latest add <owner/repo> --skill <skill> -a <agent> -y --copy`, where `<agent>` is the skills CLI's name for the member's agent: `claude-code` for claude, `opencode` for opencode, `antigravity` for agy, `pi` for pi. Do not run the install yourself.
+Then ask which of them the member gets, with your recommendation first. A skill the user accepts goes into the member's roster entry as `{"source": "<owner/repo>", "skill": "<skill>"}`. `build` installs it in the member's cwd with `npx -y skills@latest add <owner/repo> --skill <skill> -a <agent> -y --copy`, where `<agent>` is the skills CLI's name for the member's agent: `claude-code` for claude, `opencode` for opencode, `antigravity` for agy, `pi` for pi. The skills CLI names no muse agent yet, so a muse member installs with `-a opencode`, which writes the same shared `.agents/skills/` directory Muse Code reads. Do not run the install yourself.
 
 ## 6. When nothing fits
 
