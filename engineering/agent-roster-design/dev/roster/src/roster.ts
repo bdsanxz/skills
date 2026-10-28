@@ -41,6 +41,7 @@ import {
 } from "./agents";
 import { layoutProblems, planLayout } from "./layout";
 import { mergeJson } from "./peers";
+import { sessionLive, validSession } from "./sessions";
 
 export const PARTS: [string, string][] = [
   ["PROJECT.md", "Project"],
@@ -199,6 +200,17 @@ export function structureProblems(roster: Json, overrides: Overrides) {
       problems.push(
         `${where}: "effort" ${repr(m.effort)} is not an effort level; use one of ${levels}, or leave it out to use the default`,
       );
+    }
+    // The runtime session launch records, so rebuild and launch know which session is
+    // the member's. peers send/open never read it: they address members by herdr name.
+    if ("session" in m) {
+      if (!validSession(m.session)) {
+        problems.push(
+          `${where}: "session" must be {"runtime": <agent>, "id": <session id>}, as launch records it; or leave it out`,
+        );
+      } else if (!isAgent(m.session.runtime)) {
+        problems.push(`${where}: "session".runtime ${repr(m.session.runtime)} is not an agent; use one of ${agents}`);
+      }
     }
     const cwd = m.cwd;
     if (!isPlainCwd(cwd)) problems.push(`${where}: "cwd" must be one directory name inside the workspace`);
@@ -380,6 +392,22 @@ export function rosterProblems(
   }
   const [agentProblems, notes] = modelProblems(members, strict);
   problems.push(...agentProblems);
+  for (const m of members) {
+    // A malformed session is already a problem above; only a sound one is checked here.
+    if (!validSession(m.session) || !isAgent(m.session.runtime)) continue;
+    const where = `member ${repr(m.name)}`;
+    if (m.session.runtime !== m.agent) {
+      notes.push(
+        `${where}: session records runtime ${repr(m.session.runtime)} but the member runs on ${repr(m.agent)}; ` +
+          "launch records a fresh session when it starts",
+      );
+    } else if (sessionLive(m.session.runtime, m.session.id) === false) {
+      notes.push(
+        `${where}: session ${m.session.runtime}:${m.session.id} is not live; ` +
+          `relaunch it with \`bun ${SCRIPT} launch ${workspace} --member ${m.name}\``,
+      );
+    }
+  }
   for (const m of members) {
     const dir = join(workspace, m.cwd);
     for (const [name, title] of PARTS) {

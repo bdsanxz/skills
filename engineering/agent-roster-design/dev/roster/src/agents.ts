@@ -33,6 +33,8 @@ export type Member = {
   talks_to?: string[];
   skills?: { source: string; skill: string }[];
   display_name?: unknown;
+  /** The runtime session launch recorded, as {runtime, id}; peers send/open never read it. */
+  session?: { runtime: string; id: string } | null;
   agent: string;
   agent_from: string;
   model: string | null;
@@ -62,7 +64,8 @@ export type Agent = {
   settingsNote?: string;
   dialogs: Dialog[];
   configure: (workspace: string, dir: string, member: Member) => string | null;
-  launch: (h: Herdr, member: Member, pane: string, name: string, dir: string) => void;
+  /** Start the member; returns the runtime session id when the launch establishes one, else null. */
+  launch: (h: Herdr, member: Member, pane: string, name: string, dir: string) => string | null;
 };
 
 /** Load the agent-job channel at project scope, approved so it starts without a prompt, and
@@ -86,7 +89,7 @@ function configureNothing() {
   return null;
 }
 
-function launchClaude(h: Herdr, m: Member, pane: string, name: string) {
+function launchClaude(h: Herdr, m: Member, pane: string, name: string): string | null {
   const cmd = ["claude", "--dangerously-skip-permissions", "-n", sessionLabel(m, name)];
   if (m.model) cmd.push("--model", m.model);
   if (m.effort) cmd.push("--effort", m.effort);
@@ -101,18 +104,21 @@ function launchClaude(h: Herdr, m: Member, pane: string, name: string) {
     h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
   }
   h.settle(name, pane);
+  // Claude's session id is known only to its runtime; launch records it by lookup instead.
+  return null;
 }
 
-function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: string) {
+function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: string): string | null {
   // The OpenCode TUI takes no model or effort flag. With a model in the roster, launch
   // creates the member's session, opens the TUI on it, and sets the model, with the
   // effort as its variant, through OpenCode's API before the first prompt. Without
   // one, OpenCode uses its own opencode.json or /models.
   const dialogs = AGENTS.opencode!.dialogs;
   if (!m.model) {
+    // A plain TUI names its own session; launch records it by lookup instead.
     h.startAgent(name, "opencode", pane, []);
     h.firstPrompt(name, pane, dialogs);
-    return;
+    return null;
   }
   const created = h.opencodeApi(dir, "session.create", {}, {
     title: `${sessionLabel(m, name)} (peers squad member)`,
@@ -137,6 +143,8 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
     );
   }
   h.firstPrompt(name, pane, dialogs);
+  // The session this launch created, for roster.json.
+  return session || null;
 }
 
 /** A pi member is notified through one `herdr agent prompt` typed into its session, like every
@@ -155,7 +163,7 @@ function parsePiModels(output: string) {
   return ids;
 }
 
-function launchPi(h: Herdr, m: Member, pane: string, name: string) {
+function launchPi(h: Herdr, m: Member, pane: string, name: string): string | null {
   // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
   // asking. -e loads the agent-job extension for this session only, from the file the installed
   // CLI writes, so it matches its binary. pi's --thinking takes every level.
@@ -164,17 +172,21 @@ function launchPi(h: Herdr, m: Member, pane: string, name: string) {
   if (m.effort) args.push("--thinking", m.effort);
   h.startAgent(name, "pi", pane, args);
   h.firstPrompt(name, pane, AGENTS.pi!.dialogs);
+  // pi's session id is known only to its runtime; launch records it by lookup instead.
+  return null;
 }
 
-function launchAgy(h: Herdr, m: Member, pane: string, name: string) {
+function launchAgy(h: Herdr, m: Member, pane: string, name: string): string | null {
   const args = ["--dangerously-skip-permissions"];
   if (m.model) args.push("--model", m.model);
   if (m.effort) args.push("--effort", m.effort);
   h.startAgent(name, "agy", pane, args, true);
   h.firstPrompt(name, pane, AGENTS.agy!.dialogs);
+  // The conversation id is known only to its runtime; launch records it by lookup instead.
+  return null;
 }
 
-function launchMuse(h: Herdr, m: Member, pane: string, name: string) {
+function launchMuse(h: Herdr, m: Member, pane: string, name: string): string | null {
   // Muse peers always run with --yolo: nobody answers a peer's approval prompts, and the member's
   // cwd is trusted so its AGENTS.md and project skills load without asking.
   const args = ["--yolo"];
@@ -182,6 +194,8 @@ function launchMuse(h: Herdr, m: Member, pane: string, name: string) {
   if (m.effort) args.push("--effort", m.effort);
   h.startAgent(name, "muse", pane, args);
   h.firstPrompt(name, pane, AGENTS.muse!.dialogs);
+  // Muse's session id is known only to its runtime; launch records it by lookup instead.
+  return null;
 }
 
 export const AGENTS: Record<string, Agent> = {
