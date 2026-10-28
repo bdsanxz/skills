@@ -43,34 +43,13 @@ export function peersDir() {
   return process.env.PEERS_INSTALL_DIR || expandUser("~/.local/bin");
 }
 
-/** The global peers binary, by absolute path so Claude Code starts the channel without a PATH lookup. */
+/** The global peers binary: one bundled file that runs with Bun, installed by its install script. */
 export function peersCommand() {
   return which("peers") ?? join(peersDir(), "peers");
 }
 
 export function peersInstalled() {
   return isExecutable(peersCommand());
-}
-
-/** Whether the installed peers CLI serves pi members: it writes the peers extension for pi with
- * `peers pi-extension --path`. */
-export function peersKnowsPi() {
-  const help = run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true });
-  return help.code === 0 && help.stdout.includes("--path");
-}
-
-/** The file that holds the peers extension for pi, written by the installed peers CLI itself, so
- * that the extension always matches the binary it runs. */
-export function piExtension() {
-  const done = run([peersCommand(), "pi-extension", "--path"], { inheritStdin: true });
-  const file = strip(done.stdout);
-  if (done.code !== 0 || !isFile(file)) {
-    fail(
-      `\`${peersCommand()} pi-extension --path\` did not write the peers extension for pi: ` +
-        `${strip(tail(done.stdout + done.stderr, 500)) || `exit ${done.code}`}; update peers (rerun its install script), then try again`,
-    );
-  }
-  return file;
 }
 
 export function peersInstaller() {

@@ -44,7 +44,8 @@ var SKILL_DIR = path.basename(HERE) === "scripts" ? path.dirname(HERE) : path.re
 var SCRIPT = path.join(SKILL_DIR, "scripts", "roster.js");
 var DEFAULT_PEERS = path.resolve(SKILL_DIR, "..", "peers");
 var DEFAULT_AGENT_JOB = path.resolve(SKILL_DIR, "..", "agent-job");
-var DEFAULT_SOURCES = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB };
+var DEFAULT_AGENT_SHELL = path.resolve(SKILL_DIR, "..", "agent-shell");
+var DEFAULT_SOURCES = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB, agentShell: DEFAULT_AGENT_SHELL };
 function join(first, ...rest) {
   let joined = first;
   for (const part of rest) {
@@ -529,7 +530,6 @@ function parseCommand(prog, command, argv) {
 
 // src/herdr.ts
 var FIRST_PROMPT = "Read your instructions, then wait for messages from your squad.";
-var WAIT_MS = "60000";
 var TIMEOUT_MS = 120000;
 function field(value, key) {
   const found = isObject(value) ? value[key] : undefined;
@@ -736,18 +736,6 @@ function peersCommand() {
 function peersInstalled() {
   return isExecutable(peersCommand());
 }
-function peersKnowsPi() {
-  const help = run([peersCommand(), "pi-extension", "--help"], { inheritStdin: true });
-  return help.code === 0 && help.stdout.includes("--path");
-}
-function piExtension() {
-  const done = run([peersCommand(), "pi-extension", "--path"], { inheritStdin: true });
-  const file = strip(done.stdout);
-  if (done.code !== 0 || !isFile(file)) {
-    fail(`\`${peersCommand()} pi-extension --path\` did not write the peers extension for pi: ` + `${strip(tail(done.stdout + done.stderr, 500)) || `exit ${done.code}`}; update peers (rerun its install script), then try again`);
-  }
-  return file;
-}
 function peersInstaller() {
   return process.env.PEERS_INSTALLER_URL || PEERS_INSTALLER;
 }
@@ -904,22 +892,7 @@ function agentJobPiExtension() {
 var LEVELS = ["low", "medium", "high", "xhigh", "max"];
 var DEFAULT_AGENT = "claude";
 function configureClaude(_workspace, dir) {
-  const peers = peersCommand();
-  mergeJson(join(dir, ".mcp.json"), (data) => {
-    if (!isObject(data.mcpServers))
-      data.mcpServers = {};
-    data.mcpServers.peers = { type: "stdio", command: peers, args: ["channel"], env: {} };
-  });
-  mergeJson(join(dir, ".claude", "settings.local.json"), (data) => {
-    if (!Array.isArray(data.enabledMcpjsonServers))
-      data.enabledMcpjsonServers = [];
-    if (!data.enabledMcpjsonServers.includes("peers"))
-      data.enabledMcpjsonServers.push("peers");
-    const disabled = data.disabledMcpjsonServers;
-    if (Array.isArray(disabled) && disabled.includes("peers"))
-      disabled.splice(disabled.indexOf("peers"), 1);
-  });
-  return `configured the peers channel in ${join(dir, ".mcp.json")} (approved in .claude/settings.local.json); ` + configureAgentJobClaude(dir);
+  return configureAgentJobClaude(dir);
 }
 function configureAgy(_workspace, dir) {
   return configureAgentJobAgy(dir);
@@ -938,11 +911,10 @@ function launchClaude(h, m, pane, name) {
     cmd.push("--effort", m.effort);
   cmd.push("--", FIRST_PROMPT);
   h.run(["pane", "run", pane, shlexJoin(cmd)]);
-  h.run(["pane", "wait-output", pane, "--regex", "Yes, I trust this folder|inject directly", "--timeout", WAIT_MS]);
   if (h.dryRun || h.text(["pane", "read", pane, "--source", "visible"]).includes("Yes, I trust this folder")) {
     h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
-    h.run(["pane", "wait-output", pane, "--match", "inject directly", "--timeout", WAIT_MS], "only when Claude asked to trust the folder");
   }
+  h.settle(name, pane);
 }
 function launchOpencode(h, m, pane, name, dir) {
   const dialogs = AGENTS.opencode.dialogs;
@@ -973,10 +945,7 @@ function launchOpencode(h, m, pane, name, dir) {
   h.firstPrompt(name, pane, dialogs);
 }
 function configurePi() {
-  if (!peersKnowsPi()) {
-    fail(`the installed peers CLI (${peersCommand()}) cannot write the peers extension for pi ` + "(`peers pi-extension --path`), so a pi member cannot receive notifications; " + "update peers (rerun its install script), then build again");
-  }
-  return "pi loads the peers extension from `peers pi-extension --path` and the agent-job extension from " + "`agent-job pi-extension --path` at launch";
+  return "pi loads the agent-job extension from `agent-job pi-extension --path` at launch";
 }
 function parsePiModels(output) {
   const ids = [];
@@ -988,7 +957,7 @@ function parsePiModels(output) {
   return ids;
 }
 function launchPi(h, m, pane, name) {
-  const args = ["--approve", "-e", piExtension(), "-e", agentJobPiExtension(), "--name", sessionLabel(m, name)];
+  const args = ["--approve", "-e", agentJobPiExtension(), "--name", sessionLabel(m, name)];
   if (m.model)
     args.push("--model", m.model);
   if (m.effort)
@@ -1311,6 +1280,51 @@ function moveToEnd(h, member, pane) {
   h.run(["tab", "rename", tab, display(member)]);
 }
 
+// src/agentshell.ts
+var AGENT_SHELL_INSTALLER = "https://raw.githubusercontent.com/bdsanxz/agent-shell/main/install.sh";
+function agentShellDir() {
+  return process.env.AGENT_SHELL_INSTALL_DIR || expandUser("~/.local/bin");
+}
+function agentShellCommand() {
+  return which("agent-shell") ?? join(agentShellDir(), "agent-shell");
+}
+function agentShellInstalled() {
+  return isExecutable(agentShellCommand());
+}
+function agentShellInstaller() {
+  return process.env.AGENT_SHELL_INSTALLER_URL || AGENT_SHELL_INSTALLER;
+}
+async function installAgentShell() {
+  if (agentShellInstalled())
+    return null;
+  const url = agentShellInstaller();
+  const byHand = `\`curl -fsSL ${url} | sh\``;
+  if (!which("bun")) {
+    fail(`the agent-shell CLI is not installed, and it needs bun on PATH to run; install Bun (https://bun.sh), then run build again`);
+  }
+  const token = githubToken();
+  let script;
+  try {
+    script = await fetchInstaller(url, token);
+  } catch (error) {
+    fail(`the agent-shell CLI is not installed, and its install script could not be fetched from ${url}: ${reason(error)}. ` + "A private repository needs GITHUB_TOKEN or a signed-in GitHub CLI (`gh auth login`). " + `Install it by hand with ${byHand}, then run build again`);
+  }
+  const env = { ...process.env, ...token ? { GITHUB_TOKEN: token } : {} };
+  const done = run(["sh", "-s"], { input: script, env });
+  const log = strip(done.stdout + done.stderr);
+  if (done.code !== 0 || !agentShellInstalled()) {
+    fail(`the agent-shell CLI did not install: the install script from ${url} exited ${done.code} and ` + `${agentShellCommand()} is not there. Its output:
+${tail(log, 1500)}
+` + `Fix the cause, or install it by hand with ${byHand}, then run build again`);
+  }
+  const version = strip(run([agentShellCommand(), "--version"], { inheritStdin: true }).stdout);
+  let line = `INSTALLED ${version || "agent-shell"} at ${agentShellCommand()}`;
+  if (!which("agent-shell")) {
+    line += `; WARNING ${agentShellDir()} is not on PATH, so members cannot run \`agent-shell\`: add it to PATH in the ` + "shell profile, then restart herdr so the members inherit it";
+  }
+  return line;
+}
+
 // src/roster.ts
 import fs3 from "fs";
 var PARTS = [
@@ -1489,6 +1503,8 @@ function structureProblems(roster, overrides) {
         problems.push(`${where}: skills[${j}] lists peers, which every member gets; set "peers_source" instead`);
       } else if (skill.skill === "agent-job") {
         problems.push(`${where}: skills[${j}] lists agent-job, which every member gets; set "agent_job_source" instead`);
+      } else if (skill.skill === "agent-shell") {
+        problems.push(`${where}: skills[${j}] lists agent-shell, which every member gets; set "agent_shell_source" instead`);
       }
     });
   });
@@ -1497,6 +1513,9 @@ function structureProblems(roster, overrides) {
   }
   if ("agent_job_source" in roster && !isFilled(roster.agent_job_source)) {
     problems.push('roster.json: "agent_job_source" must be a package, URL or path of the agent-job skill');
+  }
+  if ("agent_shell_source" in roster && !isFilled(roster.agent_shell_source)) {
+    problems.push('roster.json: "agent_shell_source" must be a package, URL or path of the agent-shell skill');
   }
   for (const flag of ["agent", "model", "effort"]) {
     for (const [name, value] of overrides[flag]) {
@@ -1675,7 +1694,7 @@ function assemble(workspace, roster, members, m) {
   if (anyNamed) {
     lines.push("", "Each member has a member name (in backticks below), which `roster.json`, `reports_to`, " + "`talks_to` and peers use as its role, and a human-readable name, which peers shows with the " + "role, as in `Rina (api)`. Call members by their human-readable name when you write to or " + "about them; use the member name wherever a file or command asks for one.");
   }
-  lines.push("", "## Squad directory", "", "Find a member's address with `peers contacts`, which lists every member that has used peers " + "in this squad, or with `peers list --all-dirs`, picking the row whose cwd is the member's " + "directory below. Addresses change when a member is restarted, even on another agent; " + "look them up again rather than reusing an old one. In `peers contacts`, use the member's " + "`status=live` row; never message a `status=replaced` row, whose member now runs at its `by=` address.", "", "| Member |" + (anyNamed ? " Name |" : "") + " Agent | Model | Effort | Role | Directory | Reports to |", "| --- |" + (anyNamed ? " --- |" : "") + " --- | --- | --- | --- | --- | --- |");
+  lines.push("", "## Squad directory", "", "Find a member's address with `peers contacts`, which lists every member that has used peers " + "in this squad, or with `peers list`, picking the row whose cwd is the member's " + "directory below. Addresses change when a member is restarted, even on another agent; " + "look them up again rather than reusing an old one. In `peers contacts`, use the member's " + "`status=live` row; never message a `status=replaced` row, whose member now runs at its `by=` address.", "", "| Member |" + (anyNamed ? " Name |" : "") + " Agent | Model | Effort | Role | Directory | Reports to |", "| --- |" + (anyNamed ? " --- |" : "") + " --- | --- | --- | --- | --- | --- |");
   for (const o of members) {
     const me = o.name === m.name ? " (you)" : "";
     const spec = agent(o.agent);
@@ -1688,7 +1707,7 @@ function assemble(workspace, roster, members, m) {
 }
 function installSkills(dir, m, sources) {
   const spec = agent(m.agent);
-  const wanted = [[sources.peers, "peers"], [sources.agentJob, "agent-job"], ...(m.skills ?? []).map((s) => [s.source, s.skill])];
+  const wanted = [[sources.peers, "peers"], [sources.agentJob, "agent-job"], [sources.agentShell, "agent-shell"], ...(m.skills ?? []).map((s) => [s.source, s.skill])];
   const bySource = new Map;
   for (const [source, skill] of wanted) {
     if (!bySource.has(source))
@@ -1778,14 +1797,15 @@ function report(notes, problems) {
 function skillSourcesOf(roster, fallback) {
   const peers = "peers_source" in roster ? roster.peers_source : fallback.peers;
   const agentJob = "agent_job_source" in roster ? roster.agent_job_source : fallback.agentJob;
-  for (const [skill, source, key] of [["peers", peers, "peers_source"], ["agent-job", agentJob, "agent_job_source"]]) {
+  const agentShell = "agent_shell_source" in roster ? roster.agent_shell_source : fallback.agentShell;
+  for (const [skill, source, key] of [["peers", peers, "peers_source"], ["agent-job", agentJob, "agent_job_source"], ["agent-shell", agentShell, "agent_shell_source"]]) {
     if (source.startsWith("/") && !isFile(join(source, "SKILL.md"))) {
       fail(`no ${skill} skill at ${source}; set "${key}" in roster.json to its directory, package or URL`);
     }
   }
   if (!which("npx"))
     fail("npx is not on PATH; install Node.js, which the skills CLI needs");
-  return { peers, agentJob };
+  return { peers, agentJob, agentShell };
 }
 function settingsChange(m) {
   const spec = agent(m.agent);
@@ -1816,8 +1836,8 @@ function cmdLaunch(args, defaultSources) {
   if (!agentJobInstalled()) {
     problems.push(`the agent-job CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
-  if (members?.some((m) => m.agent === "pi") && peersInstalled() && !peersKnowsPi()) {
-    problems.push(`the installed peers CLI (${peersCommand()}) has no pi support, so pi members cannot listen for ` + "notifications; update it (rerun its install script), then launch again");
+  if (!agentShellInstalled()) {
+    problems.push(`the agent-shell CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
   if (members !== null) {
     const [found, why] = herdrSession(args.session);
@@ -1924,7 +1944,7 @@ function cmdLaunch(args, defaultSources) {
     throw new Exit(1);
   }
   if (!args.dryRun) {
-    print("Find each member's address with `peers list --all-dirs`, " + "by its directory. The squad starts working when the lead receives a request through peers.");
+    print("Find each member's address with `peers list`, " + "by its directory. The squad starts working when the lead receives a request through peers.");
   }
 }
 
@@ -1992,6 +2012,8 @@ function checked(args) {
     print(`NOTE the peers CLI is not installed; build installs it with ${peersInstaller()}`);
   if (!agentJobInstalled())
     print(`NOTE the agent-job CLI is not installed; build installs it with ${agentJobInstaller()}`);
+  if (!agentShellInstalled())
+    print(`NOTE the agent-shell CLI is not installed; build installs it with ${agentShellInstaller()}`);
   print(`OK ${members.length} members in ${workspace}`);
   for (const e of members)
     print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
@@ -2060,7 +2082,7 @@ records the member's role, display name, agent, model and effort. Installs nothi
 };
 var BUILD = {
   name: "build",
-  summary: "Check and assemble, install the peers and agent-job CLIs when missing, then install skills and configure each member.",
+  summary: "Check and assemble, install the peers, agent-job and agent-shell CLIs when missing, then install skills and configure each member.",
   description: `
 Use it once check prints OK, and again after a member's skills, agent, model or effort
 change (with --member). Safe to run again: it rewrites the generated files and reinstalls
@@ -2075,19 +2097,25 @@ Then installs the agent-job CLI the same way when no agent-job command is on PAT
 ~/.local/bin (or AGENT_JOB_INSTALL_DIR), with its install script, ${AGENT_JOB_INSTALLER};
 AGENT_JOB_INSTALLER_URL names another script. It needs bun.
 
-For each member: writes its instruction file and .peers.json, installs peers, agent-job and its
-roster skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's
-own setup: for claude the peers and agent-job channels (.mcp.json, approved in
+Then installs the agent-shell CLI the same way when no agent-shell command is on PATH or in
+~/.local/bin (or AGENT_SHELL_INSTALL_DIR), with its install script, ${AGENT_SHELL_INSTALLER};
+AGENT_SHELL_INSTALLER_URL names another script. It needs bun, like agent-job. Members need no
+per-agent setup for it: a finished job notifies through one \`herdr agent prompt\` turn.
+
+For each member: writes its instruction file and .peers.json, installs peers, agent-job,
+agent-shell and its roster skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's
+own setup: for claude the agent-job channel (.mcp.json, approved in
 .claude/settings.local.json) and the agent-job goal hooks (.claude/settings.local.json); for agy
-the agent-job goal hooks (.agents/hooks.json); for pi a check that the installed peers CLI writes
-the peers extension for pi (peers pi-extension --path), which launch loads with the agent-job
-extension. opencode needs no setup. It never writes a model or effort into an opencode member's
+the agent-job goal hooks (.agents/hooks.json); for pi the agent-job extension, which launch loads.
+Peers needs no per-agent setup: every notification arrives through one herdr agent prompt.
+opencode needs no setup. It never writes a model or effort into an opencode member's
 opencode.json. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],
   output: `
 The check's lines, an \`INSTALLED peers <version> at <path>\` line when it installed the CLI
 (ending in a WARNING when that directory is not on PATH), an \`INSTALLED agent-job <version> at <path>\`
+line when it installed that CLI (with the same WARNING), an \`INSTALLED agent-shell <version> at <path>\`
 line when it installed that CLI (with the same WARNING), then one \`BUILT <member> (<agent>):
 ...\` line per member. A failed install prints the exact command and its output.`,
   exitCodes: "0 when every member was built; 1 when the roster has problems or an install failed (the output gives the command and its output); 2 on wrong usage.",
@@ -2101,6 +2129,9 @@ line when it installed that CLI (with the same WARNING), then one \`BUILT <membe
     const agentJob = await installAgentJob();
     if (agentJob)
       print(agentJob);
+    const agentShell = await installAgentShell();
+    if (agentShell)
+      print(agentShell);
     for (const m of selected(members, args.member)) {
       print(`BUILT ${m.name} (${m.agent}): ` + buildMember(workspace, roster, members, m, sources).join("; "));
     }
@@ -2114,15 +2145,15 @@ var LAUNCH = {
 Use it only when the user asks to start the squad: run it with --dry-run first, then
 without. Validates everything first and launches nothing on a problem: the roster, every
 member's agent, model and effort, each agent's command on PATH, a running herdr session,
-that each member is built, that the peers and agent-job CLIs are installed, and the layout (see \`${PROG} --help\`). A full launch also refuses
+that each member is built, that the peers, agent-job and agent-shell CLIs are installed, and the layout (see \`${PROG} --help\`). A full launch also refuses
 when the session already holds the squad's workspace; with --member, a member that still
 has a pane there is refused.
 
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
 dialogs are read at full size. It starts each member with its agent's own command, model and
-effort: claude --model --effort (loading the peers and agent-job channels), agy --model --effort,
-pi --model --thinking (with --approve and the peers and agent-job extensions, -e), and for opencode, whose TUI takes
+effort: claude --model --effort (loading the agent-job channel), agy --model --effort,
+pi --model --thinking (with --approve and the agent-job extension, -e), and for opencode, whose TUI takes
 neither flag, OpenCode's API: it creates the member's session, opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
 it with session.get before the first prompt (needs OpenCode's background service; an
@@ -2213,8 +2244,8 @@ files:
           .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
           opencode, agy and pi), for
           claude its .mcp.json and .claude/settings.local.json, for agy its
-          .agents/hooks.json, and the peers and agent-job CLIs in ~/.local/bin when
-          they are missing. check writes nothing.
+          .agents/hooks.json, and the peers, agent-job and agent-shell CLIs in
+          ~/.local/bin when they are missing. check writes nothing.
 
 member names:
   Each member has a member name ("name": kebab-case, also its cwd, and what reports_to,

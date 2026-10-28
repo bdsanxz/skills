@@ -12,6 +12,7 @@ import path from "node:path";
 import { AGENTS } from "../src/agents";
 import {
   AGENT_JOB_INSTALLER,
+  AGENT_SHELL_INSTALLER,
   INSTALLER,
   type MemberData,
   type RosterData,
@@ -345,10 +346,10 @@ describe("build", () => {
     has("peers installed for agy", String(exists(path.join(W, "docs/.agents/skills/peers/SKILL.md"))), "true");
     has("extra skills in one call", read(s.npxLog), "add acme/skills -a opencode -y --copy --skill go-testing --skill sql");
     has("agy skills agent name", read(s.npxLog), "-a antigravity");
-    const server = JSON.parse(file("lead", ".mcp.json")).mcpServers.peers;
-    has("channel in .mcp.json", `${path.basename(server.command)} ${JSON.stringify(server.args)}`, 'peers ["channel"]');
+    const servers = JSON.parse(file("lead", ".mcp.json")).mcpServers;
+    lacks("no peers channel in .mcp.json", JSON.stringify(Object.keys(servers)), '"peers"');
     const settings = JSON.parse(file("lead", ".claude", "settings.local.json"));
-    has("channels approved", JSON.stringify(settings.enabledMcpjsonServers), '["peers","agent-job"]');
+    has("agent-job channel approved", JSON.stringify(settings.enabledMcpjsonServers), '["agent-job"]');
     const agentJob = path.join(s.bin, "agent-job");
     const job = JSON.parse(file("lead", ".mcp.json")).mcpServers["agent-job"];
     has("agent-job channel in .mcp.json", JSON.stringify(job.args), JSON.stringify([agentJob, "channel"]));
@@ -359,6 +360,8 @@ describe("build", () => {
     lacks("no agy hooks for opencode", String(exists(path.join(W, "api", ".agents", "hooks.json"))), "true");
     has("agent-job skill installed for claude", String(exists(path.join(W, "lead/.claude/skills/agent-job/SKILL.md"))), "true");
     has("agent-job skill installed for opencode", String(exists(path.join(W, "api/.agents/skills/agent-job/SKILL.md"))), "true");
+    has("agent-shell skill installed for claude", String(exists(path.join(W, "lead/.claude/skills/agent-shell/SKILL.md"))), "true");
+    has("agent-shell skill installed for opencode", String(exists(path.join(W, "api/.agents/skills/agent-shell/SKILL.md"))), "true");
     lacks("build writes no opencode.json", String(exists(path.join(W, "api", "opencode.json"))), "true");
     has("opencode records its model", file("api", ".peers.json"), '"model": "opencode/big-pickle"');
     has("squad directory shows the opencode model", file("lead", "CLAUDE.md"), "`api` | opencode | opencode/big-pickle | agent default |");
@@ -380,7 +383,7 @@ describe("build", () => {
     lacks("rebuild replaces an old agent-job hook", read(local), "/old/path/agent-job");
     has("existing .mcp.json kept", file("lead", ".mcp.json"), '"other"');
     const enabled = JSON.parse(file("lead", ".claude", "settings.local.json")).enabledMcpjsonServers as string[];
-    has("rebuild keeps one approval", String(enabled.filter((x) => x === "peers").length), "1");
+    lacks("rebuild keeps no peers approval", JSON.stringify(enabled), '"peers"');
     has("rebuild keeps one agent-job approval", String(enabled.filter((x) => x === "agent-job").length), "1");
     const hooks = JSON.parse(file("lead", ".claude", "settings.local.json")).hooks;
     has("rebuild keeps one agent-job Stop hook", String(JSON.stringify(hooks.Stop).split("goal hook claude").length - 1), "1");
@@ -440,7 +443,7 @@ describe("launch", () => {
     const log = read(s.herdrLog);
     has("claude started with its model", log, "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5");
     has("claude trust prompt answered", log, "pane send-keys w9:p1 down enter");
-    has("claude channel confirmed", log, "pane wait-output w9:p1 --match inject directly");
+    has("claude settles before first prompt", log, "agent wait demo-lead --until idle --until blocked");
     has("opencode retried a busy pane", log, "busy-once");
     has("opencode got its first prompt", log, "agent prompt demo-api Read your instructions");
     has("agy trust prompt answered", log, "agent send-keys demo-docs enter");
@@ -643,13 +646,15 @@ describe("build failures", () => {
     await check("peers is not listed by hand", "which every member gets", ["check", W]);
     edit(s, (r) => (m(r, 2).skills = [{ source: "acme/skills", skill: "agent-job" }]));
     await check("agent-job is not listed by hand", 'lists agent-job, which every member gets; set "agent_job_source" instead', ["check", W]);
+    edit(s, (r) => (m(r, 2).skills = [{ source: "acme/skills", skill: "agent-shell" }]));
+    await check("agent-shell is not listed by hand", 'lists agent-shell, which every member gets; set "agent_shell_source" instead', ["check", W]);
   });
 });
 
 describe("the peers CLI", () => {
   test("build installs it when it is missing", async () => {
     edit(s, (r) => delete m(r, 2).skills);
-    const noPeers = `${partialBin(s, "nopeers", ["npx", "claude", "opencode", "agy", "herdr", "agent-job"])}:/usr/bin:/bin`;
+    const noPeers = `${partialBin(s, "nopeers", ["npx", "claude", "opencode", "agy", "herdr", "agent-job", "agent-shell"])}:/usr/bin:/bin`;
     const home = path.join(s.tmp, "home");
     const installer = path.join(s.tmp, "installer.sh");
     write(installer, INSTALLER);
@@ -673,7 +678,8 @@ describe("the peers CLI", () => {
     const installed = (await roster(["build", W, "--member", "lead"], env())).out;
     has("build installs a missing peers CLI", installed, `INSTALLED peers 0.0.1 at ${home}/.local/bin/peers`);
     has("the install warns when its directory is not on PATH", installed, "is not on PATH, so members cannot run `peers`");
-    has("the channel runs the installed peers", file("lead", ".mcp.json"), `"command": "${home}/.local/bin/peers"`);
+    has("no peers channel in .mcp.json", file("lead", ".mcp.json"), '"agent-job"');
+    lacks("no peers server in .mcp.json", file("lead", ".mcp.json"), '"peers"');
     lacks("an installed peers CLI is not installed again", (await roster(["build", W, "--member", "lead"], env())).out, "INSTALLED");
     await check(
       "PEERS_INSTALL_DIR picks the directory",
@@ -687,7 +693,7 @@ describe("the peers CLI", () => {
 
 describe("the agent-job CLI", () => {
   test("build installs it when it is missing, and launch needs it", async () => {
-    const noJob = `${partialBin(s, "nojob", ["npx", "claude", "opencode", "agy", "herdr", "peers"])}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
+    const noJob = `${partialBin(s, "nojob", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-shell"])}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     const home = path.join(s.tmp, "jobhome");
     const installer = path.join(s.tmp, "agent-job-installer.sh");
     write(installer, AGENT_JOB_INSTALLER);
@@ -706,13 +712,46 @@ describe("the agent-job CLI", () => {
       "agent-job needs bun",
       "it needs bun on PATH to run",
       ["build", W, "--member", "lead"],
-      env({ PATH: `${partialBin(s, "nojobnobun", ["npx", "claude", "opencode", "agy", "herdr", "peers"])}:/usr/bin:/bin` }),
+      env({ PATH: `${partialBin(s, "nojobnobun", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-shell"])}:/usr/bin:/bin` }),
     );
     const installed = (await roster(["build", W, "--member", "lead"], env())).out;
     has("build installs a missing agent-job CLI", installed, `INSTALLED agent-job 0.0.1 at ${home}/.local/bin/agent-job`);
     has("the install warns when its directory is not on PATH", installed, "is not on PATH, so members cannot run `agent-job`");
     has("the hooks run the installed agent-job", file("lead", ".claude", "settings.local.json"), `${home}/.local/bin/agent-job goal hook claude`);
     lacks("an installed agent-job CLI is not installed again", (await roster(["build", W, "--member", "lead"], env())).out, "INSTALLED agent-job");
+    await roster(["build", W, "--member", "lead"]);
+  });
+});
+
+describe("the agent-shell CLI", () => {
+  test("build installs it when it is missing, and launch needs it", async () => {
+    edit(s, (r) => delete m(r, 2).skills);
+    const noShell = `${partialBin(s, "noshell", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-job"])}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
+    const home = path.join(s.tmp, "shellhome");
+    const installer = path.join(s.tmp, "agent-shell-installer.sh");
+    write(installer, AGENT_SHELL_INSTALLER);
+    const env = (more: Record<string, string> = {}) => ({
+      PATH: noShell,
+      HOME: home,
+      GITHUB_TOKEN: "",
+      AGENT_SHELL_INSTALL_DIR: "",
+      AGENT_SHELL_INSTALLER_URL: `file://${installer}`,
+      ...more,
+    });
+    await check("check notes a missing agent-shell CLI", `NOTE the agent-shell CLI is not installed; build installs it with file://${installer}`, ["check", W], env());
+    await check("launch needs the agent-shell CLI", "the agent-shell CLI is not installed; run", ["launch", W, "--dry-run"], env());
+    await check("a failed agent-shell install shows its output", "agent-shell-install: error: no release", ["build", W, "--member", "lead"], env({ INSTALLER_FAIL: "1" }));
+    await check(
+      "agent-shell needs bun",
+      "it needs bun on PATH to run",
+      ["build", W, "--member", "lead"],
+      env({ PATH: `${partialBin(s, "noshellnobun", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-job"])}:/usr/bin:/bin` }),
+    );
+    const installed = (await roster(["build", W, "--member", "lead"], env())).out;
+    has("build installs a missing agent-shell CLI", installed, `INSTALLED agent-shell 0.0.1 at ${home}/.local/bin/agent-shell`);
+    has("the install warns when its directory is not on PATH", installed, "is not on PATH, so members cannot run `agent-shell`");
+    has("agent-shell skill installed for the rebuilt member", String(exists(path.join(W, "lead/.claude/skills/agent-shell/SKILL.md"))), "true");
+    lacks("an installed agent-shell CLI is not installed again", (await roster(["build", W, "--member", "lead"], env())).out, "INSTALLED agent-shell");
     await roster(["build", W, "--member", "lead"]);
   });
 });

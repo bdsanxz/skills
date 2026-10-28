@@ -5,7 +5,6 @@ import {
   type JsonObject,
   LaunchError,
   dumps,
-  fail,
   isObject,
   join,
   partition,
@@ -18,8 +17,7 @@ import {
   tail,
   which,
 } from "./core";
-import { type Dialog, FIRST_PROMPT, Herdr, WAIT_MS, field, text } from "./herdr";
-import { mergeJson, peersCommand, peersKnowsPi, piExtension } from "./peers";
+import { type Dialog, FIRST_PROMPT, Herdr, field, text } from "./herdr";
 import { agentJobPiExtension, configureAgentJobAgy, configureAgentJobClaude } from "./agentjob";
 
 // Effort levels, lowest first: the levels claude --effort and agy --effort take.
@@ -67,33 +65,19 @@ export type Agent = {
   launch: (h: Herdr, member: Member, pane: string, name: string, dir: string) => void;
 };
 
-/** Load the peers and agent-job channels at project scope, approved so they start without a prompt,
- * and the agent-job goal hooks. */
+/** Load the agent-job channel at project scope, approved so it starts without a prompt, and
+ * the agent-job goal hooks. Peers needs no channel: every notification arrives through one
+ * `herdr agent prompt` into the member's input. */
 function configureClaude(_workspace: string, dir: string) {
-  const peers = peersCommand();
-  mergeJson(join(dir, ".mcp.json"), (data) => {
-    if (!isObject(data.mcpServers)) data.mcpServers = {};
-    data.mcpServers.peers = { type: "stdio", command: peers, args: ["channel"], env: {} };
-  });
-  // Project servers wait for approval unless the project settings enable them.
-  mergeJson(join(dir, ".claude", "settings.local.json"), (data) => {
-    if (!Array.isArray(data.enabledMcpjsonServers)) data.enabledMcpjsonServers = [];
-    if (!data.enabledMcpjsonServers.includes("peers")) data.enabledMcpjsonServers.push("peers");
-    const disabled = data.disabledMcpjsonServers;
-    if (Array.isArray(disabled) && disabled.includes("peers")) disabled.splice(disabled.indexOf("peers"), 1);
-  });
-  return (
-    `configured the peers channel in ${join(dir, ".mcp.json")} (approved in .claude/settings.local.json); ` +
-    configureAgentJobClaude(dir)
-  );
+  return configureAgentJobClaude(dir);
 }
 
 function configureAgy(_workspace: string, dir: string) {
   return configureAgentJobAgy(dir);
 }
 
-/** Muse Code needs no per-member files: its peers notifications arrive through an armed
- * `peers watch`, and agent-job polls its session log, so there is no channel or hook to write. */
+/** Muse Code needs no per-member peers files: its notifications arrive through one
+ * `herdr agent prompt` typed into its TUI, and agent-job polls its session log. */
 function configureMuse() {
   return null;
 }
@@ -107,19 +91,16 @@ function launchClaude(h: Herdr, m: Member, pane: string, name: string) {
   if (m.model) cmd.push("--model", m.model);
   if (m.effort) cmd.push("--effort", m.effort);
   // Keep the "--" so a prompt starting with a dash is not parsed as a flag.
-  // Both channels come from the member's .mcp.json; no extra flag loads them.
+  // The agent-job channel comes from the member's .mcp.json; no extra flag loads it.
   cmd.push("--", FIRST_PROMPT);
   h.run(["pane", "run", pane, shlexJoin(cmd)]);
-  // Claude asks to trust a new folder before the channel banner appears.
-  h.run(["pane", "wait-output", pane, "--regex", "Yes, I trust this folder|inject directly", "--timeout", WAIT_MS]);
+  // Claude asks to trust a new folder before it starts; "No, exit" is preselected, and the
+  // member cwd is one the roster names. No channel banner is matched: readiness is the
+  // agent settling, whatever it loads.
   if (h.dryRun || h.text(["pane", "read", pane, "--source", "visible"]).includes("Yes, I trust this folder")) {
-    // "No, exit" is preselected; the member cwd is one the roster names.
     h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
-    h.run(
-      ["pane", "wait-output", pane, "--match", "inject directly", "--timeout", WAIT_MS],
-      "only when Claude asked to trust the folder",
-    );
   }
+  h.settle(name, pane);
 }
 
 function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: string) {
@@ -158,20 +139,10 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
   h.firstPrompt(name, pane, dialogs);
 }
 
-/** A pi member loads the peers extension for pi that the peers CLI holds, so notifications arrive
- * as turns. The extension comes from the CLI, not from a skill, so it always matches the binary. */
+/** A pi member is notified through one `herdr agent prompt` typed into its session, like every
+ * member. It still loads the agent-job extension for crons and goals at launch. */
 function configurePi() {
-  if (!peersKnowsPi()) {
-    fail(
-      `the installed peers CLI (${peersCommand()}) cannot write the peers extension for pi ` +
-        "(`peers pi-extension --path`), so a pi member cannot receive notifications; " +
-        "update peers (rerun its install script), then build again",
-    );
-  }
-  return (
-    "pi loads the peers extension from `peers pi-extension --path` and the agent-job extension from " +
-    "`agent-job pi-extension --path` at launch"
-  );
+  return "pi loads the agent-job extension from `agent-job pi-extension --path` at launch";
 }
 
 /** pi --list-models prints a table: provider, model, then more columns. A member may name either form. */
@@ -186,9 +157,9 @@ function parsePiModels(output: string) {
 
 function launchPi(h: Herdr, m: Member, pane: string, name: string) {
   // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
-  // asking. -e loads the peers and agent-job extensions for this session only, from the files the
-  // installed CLIs write, so each matches its binary. pi's --thinking takes every level.
-  const args = ["--approve", "-e", piExtension(), "-e", agentJobPiExtension(), "--name", sessionLabel(m, name)];
+  // asking. -e loads the agent-job extension for this session only, from the file the installed
+  // CLI writes, so it matches its binary. pi's --thinking takes every level.
+  const args = ["--approve", "-e", agentJobPiExtension(), "--name", sessionLabel(m, name)];
   if (m.model) args.push("--model", m.model);
   if (m.effort) args.push("--thinking", m.effort);
   h.startAgent(name, "pi", pane, args);

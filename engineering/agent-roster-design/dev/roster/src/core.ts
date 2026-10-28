@@ -48,9 +48,12 @@ export const SCRIPT = path.join(SKILL_DIR, "scripts", "roster.js");
 export const DEFAULT_PEERS = path.resolve(SKILL_DIR, "..", "peers");
 // So does the agent-job skill, which tells members how to use the agent-job CLI this skill installs.
 export const DEFAULT_AGENT_JOB = path.resolve(SKILL_DIR, "..", "agent-job");
+// So does the agent-shell skill, which tells members how to run background shell jobs with the
+// agent-shell CLI this skill installs.
+export const DEFAULT_AGENT_SHELL = path.resolve(SKILL_DIR, "..", "agent-shell");
 /** Where each skill every member gets is installed from. */
-export type SkillSources = { peers: string; agentJob: string };
-export const DEFAULT_SOURCES: SkillSources = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB };
+export type SkillSources = { peers: string; agentJob: string; agentShell: string };
+export const DEFAULT_SOURCES: SkillSources = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB, agentShell: DEFAULT_AGENT_SHELL };
 
 /** os.path.join: an absolute part starts over, and nothing is normalized. */
 export function join(first: string, ...rest: string[]) {
