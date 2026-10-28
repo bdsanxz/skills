@@ -7,9 +7,11 @@
 // builds on the files and logs the steps before it left.
 
 import { afterAll, beforeAll, describe, setDefaultTimeout, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { AGENTS } from "../src/agents";
+import { findSession, sessionLive } from "../src/sessions";
 import {
   AGENT_JOB_INSTALLER,
   AGENT_SHELL_INSTALLER,
@@ -753,5 +755,170 @@ describe("the agent-shell CLI", () => {
     has("agent-shell skill installed for the rebuilt member", String(exists(path.join(W, "lead/.claude/skills/agent-shell/SKILL.md"))), "true");
     lacks("an installed agent-shell CLI is not installed again", (await roster(["build", W, "--member", "lead"], env())).out, "INSTALLED agent-shell");
     await roster(["build", W, "--member", "lead"]);
+  });
+});
+
+describe("member sessions", () => {
+  const sessHome = () => path.join(s.tmp, "sesshome");
+  const sessEnv = (more: Record<string, string | undefined> = {}) => ({ HOME: sessHome(), ...more });
+
+  function fixtureSessions(opencode: unknown, claude: unknown) {
+    fs.mkdirSync(sessHome(), { recursive: true });
+    write(path.join(sessHome(), "opencode-sessions.json"), JSON.stringify(opencode));
+    write(path.join(sessHome(), "claude-agents.json"), JSON.stringify(claude));
+  }
+
+  function fixtureAgy(dir: string, id: string, cwd: string) {
+    const db = path.join(dir, "conversation_summaries.db");
+    const conn = new Database(db, { create: true });
+    conn.exec("CREATE TABLE conversation_summaries (conversation_id TEXT, workspace_uris TEXT)");
+    conn.query("INSERT INTO conversation_summaries (conversation_id, workspace_uris) VALUES (?, ?)").run(id, JSON.stringify([`file://${cwd}`]));
+    conn.close();
+  }
+
+  function team() {
+    setRoster(s, {
+      squad: "demo",
+      goal: "Ship it.",
+      members: [
+        { name: "lead", agent: "claude", model: "haiku", cwd: "lead", summary: "Leads", reports_to: "user", talks_to: ["api", "docs"] },
+        { name: "api", agent: "opencode", model: "opencode/big-pickle", cwd: "api", summary: "Builds the API", reports_to: "lead" },
+        { name: "docs", agent: "agy", cwd: "docs", summary: "Writes docs", reports_to: "lead" },
+      ],
+    });
+    member(s, "lead", "Assign work to api and docs. Report to the user.");
+    member(s, "api", "Report to lead.");
+    member(s, "docs", "Report to lead.");
+  }
+
+  test("check validates the session shape", async () => {
+    team();
+    edit(s, (r) => { m(r, 1).session = "ses_old"; });
+    await check("session must be an object", '"session" must be {"runtime": <agent>, "id": <session id>}', ["check", W]);
+    edit(s, (r) => { m(r, 1).session = { runtime: "opencode" }; });
+    await check("session needs an id", '"session" must be {"runtime": <agent>, "id": <session id>}', ["check", W]);
+    edit(s, (r) => { m(r, 1).session = { runtime: "nope", id: "ses_old" }; });
+    await check("session runtime must be an agent", '"session".runtime \'nope\' is not an agent', ["check", W]);
+    edit(s, (r) => { delete m(r, 1).session; });
+    await check("valid team again", "OK 3 members", ["check", W]);
+  });
+
+  test("check warns on a runtime mismatch and a dead session", async () => {
+    edit(s, (r) => { m(r, 1).session = { runtime: "claude", id: "zzz" }; });
+    const mismatched = (await roster(["check", W], sessEnv())).out;
+    has("runtime mismatch warns", mismatched, "member 'api': session records runtime 'claude' but the member runs on 'opencode'");
+    fixtureSessions([], []);
+    edit(s, (r) => { m(r, 1).session = { runtime: "opencode", id: "ses_old" }; });
+    const dead = (await roster(["check", W], sessEnv())).out;
+    has("dead session warns", dead, "member 'api': session opencode:ses_old is not live");
+    edit(s, (r) => { delete m(r, 1).session; });
+  });
+
+  test("launch records each member's session in roster.json", async () => {
+    await roster(["build", W]);
+    fixtureSessions([], [{ sessionId: "claude-1", cwd: path.join(W, "lead") }]);
+    const agyHome = path.join(s.tmp, "agyhome");
+    fs.mkdirSync(agyHome, { recursive: true });
+    fixtureAgy(agyHome, "agy-1", path.join(W, "docs"));
+    const done = await roster(["launch", W], { ...sessEnv(), AGY_HOME: agyHome });
+    exits("launch records sessions", done.code, 0);
+    has("opencode session recorded", done.out, "RECORDED api: session opencode:ses_test1 in roster.json");
+    has("claude session recorded", done.out, "RECORDED lead: session claude:claude-1 in roster.json");
+    has("agy session recorded", done.out, "RECORDED docs: session agy:agy-1 in roster.json");
+    const saved = JSON.parse(read(path.join(W, "roster.json"))) as { members: { name: string; session?: unknown }[] };
+    const at = (name: string) => saved.members.find((mm) => mm.name === name)?.session;
+    has("api session saved", JSON.stringify(at("api")), '{"runtime":"opencode","id":"ses_test1"}');
+    has("lead session saved", JSON.stringify(at("lead")), '{"runtime":"claude","id":"claude-1"}');
+    has("docs session saved", JSON.stringify(at("docs")), '{"runtime":"agy","id":"agy-1"}');
+  });
+
+  test("launch notes sessions that are already live", async () => {
+    fixtureSessions(
+      [{ id: "ses_test1", directory: path.join(W, "api") }],
+      [{ sessionId: "claude-1", cwd: path.join(W, "lead") }],
+    );
+    const agyEmpty = path.join(s.tmp, "agyempty");
+    fs.mkdirSync(agyEmpty, { recursive: true });
+    const done = await roster(["launch", W, "--dry-run"], { ...sessEnv(), AGY_HOME: agyEmpty });
+    exits("dry run passes", done.code, 0);
+    has("opencode already live", done.out, "member 'api': session opencode:ses_test1 is already live");
+    has("claude already live", done.out, "member 'lead': session claude:claude-1 is already live");
+  });
+});
+
+describe("runtime session lookup", () => {
+  function withEnv(env: Record<string, string | undefined>, fn: () => void) {
+    const before: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(env)) {
+      before[key] = process.env[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    try {
+      fn();
+    } finally {
+      for (const [key, value] of Object.entries(before)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+
+  test("pi sessions come from their session files; liveness is unknown", () => {
+    const root = path.join(s.tmp, "pisess");
+    const cwd = path.join(s.tmp, "squad", "w");
+    withEnv({ PI_CODING_AGENT_SESSION_DIR: root }, () => {
+      if (findSession("pi", cwd) !== null) throw new Error("no pi session yet");
+      fs.mkdirSync(root, { recursive: true });
+      const head = JSON.stringify({ type: "session", id: "pi-9", cwd }) + "\n";
+      fs.writeFileSync(path.join(root, "20240101-000000_pi-9.jsonl"), `${head}{"type":"message"}\n`);
+      if (findSession("pi", cwd) !== "pi-9") throw new Error("wanted pi-9");
+      if (findSession("pi", path.join(s.tmp, "elsewhere")) !== null) throw new Error("wrong cwd must not match");
+      if (sessionLive("pi", "pi-9") !== null) throw new Error("pi liveness is unknown");
+    });
+  });
+
+  test("agy conversations resolve by workspace; liveness is unknown", () => {
+    const agyHome = path.join(s.tmp, "agyunit");
+    fs.mkdirSync(agyHome, { recursive: true });
+    const cwd = path.join(s.tmp, "squad", "w");
+    const conn = new Database(path.join(agyHome, "conversation_summaries.db"), { create: true });
+    conn.exec("CREATE TABLE conversation_summaries (conversation_id TEXT, title TEXT, preview TEXT, last_modified_time TEXT, workspace_uris TEXT, status TEXT)");
+    conn.query("INSERT INTO conversation_summaries (conversation_id, workspace_uris, status) VALUES (?, ?, ?)").run("agy-7", JSON.stringify([`file://${cwd}`]), "SUCCESS");
+    conn.close();
+    withEnv({ AGY_HOME: agyHome }, () => {
+      if (findSession("agy", cwd) !== "agy-7") throw new Error("wanted agy-7");
+      if (sessionLive("agy", "agy-7") !== null) throw new Error("agy liveness is unknown");
+    });
+  });
+
+  test("muse sessions resolve by workspace and lease", () => {
+    const xdg = path.join(s.tmp, "xdg");
+    const cwd = path.join(s.tmp, "squad", "w");
+    const db = path.join(xdg, "muse", "session-index.db");
+    fs.mkdirSync(path.dirname(db), { recursive: true });
+    const conn = new Database(db, { create: true });
+    conn.exec("CREATE TABLE sessions (session_id TEXT, title TEXT, workspace_root TEXT, session_log_path TEXT, updated_at_us INTEGER)");
+    conn.query("INSERT INTO sessions (session_id, workspace_root) VALUES (?, ?)").run("mus-1", cwd);
+    conn.close();
+    const rt = path.join(xdg, "muse", "runtime", "muse");
+    fs.mkdirSync(path.join(rt, "sessions"), { recursive: true });
+    fs.writeFileSync(path.join(rt, "sessions", "mus-1.json"), JSON.stringify({ endpoint_hint: "h1" }));
+    withEnv({ XDG_DATA_HOME: xdg }, () => {
+      if (findSession("muse", cwd) !== "mus-1") throw new Error("wanted mus-1");
+      fs.writeFileSync(path.join(rt, "h1.lease"), JSON.stringify({ pid: process.pid }));
+      if (sessionLive("muse", "mus-1") !== true) throw new Error("own process lease is live");
+      fs.writeFileSync(path.join(rt, "h1.lease"), JSON.stringify({ pid: 2147483647 }));
+      if (sessionLive("muse", "mus-1") !== false) throw new Error("dead lease is not live");
+      if (sessionLive("muse", "mus-x") !== false) throw new Error("unknown session is not live");
+    });
+    withEnv({ XDG_DATA_HOME: path.join(s.tmp, "xdg-missing") }, () => {
+      if (sessionLive("muse", "mus-1") !== null) throw new Error("missing index is unknown");
+    });
+  });
+
+  test("unknown runtimes resolve to nothing", () => {
+    if (findSession("nope", s.tmp) !== null) throw new Error("unknown runtime has no sessions");
+    if (sessionLive("nope", "x") !== null) throw new Error("unknown runtime liveness is unknown");
   });
 });

@@ -3,7 +3,7 @@
 // @bun
 
 // src/commands.ts
-import path3 from "path";
+import path4 from "path";
 
 // src/core.ts
 import fs from "fs";
@@ -915,13 +915,14 @@ function launchClaude(h, m, pane, name) {
     h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
   }
   h.settle(name, pane);
+  return null;
 }
 function launchOpencode(h, m, pane, name, dir) {
   const dialogs = AGENTS.opencode.dialogs;
   if (!m.model) {
     h.startAgent(name, "opencode", pane, []);
     h.firstPrompt(name, pane, dialogs);
-    return;
+    return null;
   }
   const created = h.opencodeApi(dir, "session.create", {}, {
     title: `${sessionLabel(m, name)} (peers squad member)`,
@@ -943,6 +944,7 @@ function launchOpencode(h, m, pane, name, dir) {
     throw new LaunchError(`OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`);
   }
   h.firstPrompt(name, pane, dialogs);
+  return session || null;
 }
 function configurePi() {
   return "pi loads the agent-job extension from `agent-job pi-extension --path` at launch";
@@ -964,6 +966,7 @@ function launchPi(h, m, pane, name) {
     args.push("--thinking", m.effort);
   h.startAgent(name, "pi", pane, args);
   h.firstPrompt(name, pane, AGENTS.pi.dialogs);
+  return null;
 }
 function launchAgy(h, m, pane, name) {
   const args = ["--dangerously-skip-permissions"];
@@ -973,6 +976,7 @@ function launchAgy(h, m, pane, name) {
     args.push("--effort", m.effort);
   h.startAgent(name, "agy", pane, args, true);
   h.firstPrompt(name, pane, AGENTS.agy.dialogs);
+  return null;
 }
 function launchMuse(h, m, pane, name) {
   const args = ["--yolo"];
@@ -982,6 +986,7 @@ function launchMuse(h, m, pane, name) {
     args.push("--effort", m.effort);
   h.startAgent(name, "muse", pane, args);
   h.firstPrompt(name, pane, AGENTS.muse.dialogs);
+  return null;
 }
 var AGENTS = {
   claude: {
@@ -1179,6 +1184,9 @@ function nearest(level, supported) {
   return [...LEVELS].filter((candidate) => supported.has(candidate)).sort((a, b) => Math.abs(LEVELS.indexOf(a) - at) - Math.abs(LEVELS.indexOf(b) - at) || LEVELS.indexOf(a) - LEVELS.indexOf(b))[0];
 }
 
+// src/launch.ts
+import fs5 from "fs";
+
 // src/layout.ts
 function workspaceLabel(roster) {
   return `squad-${roster.squad}`;
@@ -1326,7 +1334,300 @@ ${tail(log, 1500)}
 }
 
 // src/roster.ts
+import fs4 from "fs";
+
+// src/sessions.ts
+import { Database } from "bun:sqlite";
 import fs3 from "fs";
+import os2 from "os";
+import path3 from "path";
+function validSession(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false;
+  const runtime = value.runtime;
+  const id = value.id;
+  return typeof runtime === "string" && runtime.trim() !== "" && typeof id === "string" && id.trim() !== "";
+}
+function home2() {
+  return os2.homedir();
+}
+function envNonempty(key) {
+  const v = process.env[key];
+  return v !== undefined && v.trim() !== "" ? v : null;
+}
+function canonical(p) {
+  try {
+    return fs3.realpathSync(p);
+  } catch {
+    return path3.resolve(p);
+  }
+}
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+function opencodeSessions() {
+  if (!which("opencode"))
+    return [];
+  const done = run(["opencode", "api", "get", "/api/session"], { timeoutMs: 60000 });
+  if (done.code !== 0)
+    return [];
+  const v = parseJson(done.stdout);
+  const items = Array.isArray(v) ? v : v?.data;
+  if (!Array.isArray(items))
+    return [];
+  const out = [];
+  for (const s of items) {
+    if (typeof s !== "object" || s === null)
+      continue;
+    const id = s.id;
+    const rec = s;
+    const loc = rec.location;
+    const dir = (typeof loc === "object" && loc !== null ? loc.directory : undefined) ?? rec.directory ?? rec.cwd;
+    if (typeof id === "string" && id !== "" && typeof dir === "string" && dir !== "") {
+      out.push({ id, dir });
+    }
+  }
+  return out;
+}
+function claudeSessions() {
+  if (!which("claude"))
+    return [];
+  const done = run(["claude", "agents", "--json"], { timeoutMs: 60000 });
+  if (done.code !== 0)
+    return [];
+  const v = parseJson(done.stdout);
+  if (!Array.isArray(v))
+    return [];
+  const out = [];
+  for (const s of v) {
+    if (typeof s !== "object" || s === null)
+      continue;
+    const rec = s;
+    const id = rec.sessionId ?? rec.id;
+    const dir = rec.cwd ?? rec.directory;
+    if (typeof id === "string" && id !== "" && typeof dir === "string" && dir !== "") {
+      out.push({ id, dir });
+    }
+  }
+  return out;
+}
+function agyHome() {
+  return envNonempty("AGY_HOME") ?? path3.join(home2(), ".gemini", "antigravity-cli");
+}
+function agyConversations() {
+  const db = path3.join(agyHome(), "conversation_summaries.db");
+  if (!fs3.existsSync(db))
+    return [];
+  let conn;
+  try {
+    conn = new Database(`file:${db}?mode=ro`, { readonly: true });
+  } catch {
+    return [];
+  }
+  try {
+    const rows = conn.query("select conversation_id, workspace_uris from conversation_summaries").all();
+    const out = [];
+    for (const r of rows) {
+      let dirs = [];
+      try {
+        dirs = JSON.parse(r.workspace_uris || "[]");
+      } catch {
+        dirs = [];
+      }
+      const first = Array.isArray(dirs) && typeof dirs[0] === "string" && dirs[0].startsWith("file://") ? dirs[0].slice("file://".length) : "";
+      if (r.conversation_id && first)
+        out.push({ id: r.conversation_id, dir: first });
+    }
+    return out;
+  } catch {
+    return [];
+  } finally {
+    conn.close();
+  }
+}
+function piSessionsDir() {
+  return envNonempty("PI_CODING_AGENT_SESSION_DIR") ?? (envNonempty("PI_CODING_AGENT_DIR") ? path3.join(envNonempty("PI_CODING_AGENT_DIR"), "sessions") : path3.join(home2(), ".pi", "agent", "sessions"));
+}
+function piSessions() {
+  const root = piSessionsDir();
+  let entries = [];
+  try {
+    entries = fs3.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const e of entries) {
+    const p = path3.join(root, e.name);
+    if (e.isDirectory()) {
+      let inner = [];
+      try {
+        inner = fs3.readdirSync(p, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const f of inner) {
+        if (!f.isDirectory() && f.name.endsWith(".jsonl"))
+          files.push(path3.join(p, f.name));
+      }
+    } else if (e.name.endsWith(".jsonl")) {
+      files.push(p);
+    }
+  }
+  const out = [];
+  for (const file of files) {
+    let head = "";
+    try {
+      const fd = fs3.openSync(file, "r");
+      const buf = Buffer.alloc(4096);
+      const n = fs3.readSync(fd, buf, 0, buf.length, 0);
+      fs3.closeSync(fd);
+      head = buf.subarray(0, n).toString("utf8").split(`
+`)[0] ?? "";
+    } catch {
+      continue;
+    }
+    const v = parseJson(head);
+    if (!v || v.type !== "session" || typeof v.id !== "string" || v.id === "")
+      continue;
+    let modified = 0;
+    try {
+      modified = fs3.statSync(file).mtimeMs;
+    } catch {
+      continue;
+    }
+    out.push({ id: v.id, dir: typeof v.cwd === "string" ? v.cwd : "", modified });
+  }
+  out.sort((a, b) => a.modified - b.modified);
+  return out;
+}
+function museHome() {
+  return path3.join(envNonempty("XDG_DATA_HOME") ?? path3.join(home2(), ".local", "share"), "muse");
+}
+function museSessions() {
+  const db = path3.join(museHome(), "session-index.db");
+  if (!fs3.existsSync(db))
+    return [];
+  let conn;
+  try {
+    conn = new Database(`file:${db}?mode=ro`, { readonly: true });
+  } catch {
+    return [];
+  }
+  try {
+    const rows = conn.query("select session_id, workspace_root from sessions").all();
+    return rows.filter((r) => r.session_id && r.workspace_root).map((r) => ({ id: r.session_id, dir: r.workspace_root }));
+  } catch {
+    return [];
+  } finally {
+    conn.close();
+  }
+}
+function museLive(id) {
+  const rec = path3.join(museHome(), "runtime", "muse", "sessions", `${id}.json`);
+  let hint = "";
+  try {
+    hint = parseJson(fs3.readFileSync(rec, "utf8"))?.endpoint_hint;
+  } catch {
+    return null;
+  }
+  if (typeof hint !== "string" || hint === "")
+    return null;
+  let pid = 0;
+  try {
+    pid = parseJson(fs3.readFileSync(path3.join(museHome(), "runtime", "muse", `${hint}.lease`), "utf8"))?.pid;
+  } catch {
+    return null;
+  }
+  if (typeof pid !== "number" || pid <= 0)
+    return null;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function findSession(runtime, cwd) {
+  try {
+    const want = canonical(cwd);
+    const match = (dir) => dir !== "" && canonical(dir) === want;
+    switch (runtime) {
+      case "opencode": {
+        let found = null;
+        for (const s of opencodeSessions())
+          if (match(s.dir))
+            found = s.id;
+        return found;
+      }
+      case "claude": {
+        let found = null;
+        for (const s of claudeSessions())
+          if (match(s.dir))
+            found = s.id;
+        return found;
+      }
+      case "antigravity":
+      case "agy": {
+        let found = null;
+        for (const s of agyConversations())
+          if (match(s.dir))
+            found = s.id;
+        return found;
+      }
+      case "pi": {
+        const mine = piSessions().filter((s) => match(s.dir));
+        return mine.length ? mine[mine.length - 1].id : null;
+      }
+      case "muse": {
+        let found = null;
+        for (const s of museSessions())
+          if (match(s.dir))
+            found = s.id;
+        return found;
+      }
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+function sessionLive(runtime, id) {
+  try {
+    switch (runtime) {
+      case "opencode":
+        if (!which("opencode"))
+          return null;
+        return opencodeSessions().some((s) => s.id === id);
+      case "claude":
+        if (!which("claude"))
+          return null;
+        return claudeSessions().some((s) => s.id === id);
+      case "antigravity":
+      case "agy":
+        return null;
+      case "pi":
+        return null;
+      case "muse": {
+        if (!museSessions().some((s) => s.id === id)) {
+          return fs3.existsSync(path3.join(museHome(), "session-index.db")) ? false : null;
+        }
+        return museLive(id);
+      }
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+// src/roster.ts
 var PARTS = [
   ["PROJECT.md", "Project"],
   ["ROLE.md", "Role"],
@@ -1482,6 +1783,13 @@ function structureProblems(roster, overrides) {
     }
     if ("effort" in m && !isLevel(m.effort)) {
       problems.push(`${where}: "effort" ${repr(m.effort)} is not an effort level; use one of ${levels}, or leave it out to use the default`);
+    }
+    if ("session" in m) {
+      if (!validSession(m.session)) {
+        problems.push(`${where}: "session" must be {"runtime": <agent>, "id": <session id>}, as launch records it; or leave it out`);
+      } else if (!isAgent(m.session.runtime)) {
+        problems.push(`${where}: "session".runtime ${repr(m.session.runtime)} is not an agent; use one of ${agents}`);
+      }
     }
     const cwd = m.cwd;
     if (!isPlainCwd(cwd))
@@ -1643,6 +1951,16 @@ function rosterProblems(workspace, roster, overrides = noOverrides(), strict = f
   const [agentProblems, notes] = modelProblems(members, strict);
   problems.push(...agentProblems);
   for (const m of members) {
+    if (!validSession(m.session) || !isAgent(m.session.runtime))
+      continue;
+    const where = `member ${repr(m.name)}`;
+    if (m.session.runtime !== m.agent) {
+      notes.push(`${where}: session records runtime ${repr(m.session.runtime)} but the member runs on ${repr(m.agent)}; ` + "launch records a fresh session when it starts");
+    } else if (sessionLive(m.session.runtime, m.session.id) === false) {
+      notes.push(`${where}: session ${m.session.runtime}:${m.session.id} is not live; ` + `relaunch it with \`bun ${SCRIPT} launch ${workspace} --member ${m.name}\``);
+    }
+  }
+  for (const m of members) {
     const dir = join(workspace, m.cwd);
     for (const [name, title] of PARTS) {
       const file = join(dir, name);
@@ -1737,12 +2055,12 @@ ${log}`);
 function writeInstructions(workspace, roster, members, m) {
   const dir = join(workspace, m.cwd);
   const target = join(dir, agent(m.agent).instructions);
-  fs3.writeFileSync(target + ".tmp", assemble(workspace, roster, members, m));
-  fs3.renameSync(target + ".tmp", target);
+  fs4.writeFileSync(target + ".tmp", assemble(workspace, roster, members, m));
+  fs4.renameSync(target + ".tmp", target);
   for (const name of new Set(Object.values(AGENTS).map((spec) => spec.instructions))) {
     const stale = join(dir, name);
     if (stale !== target && isFile(stale) && readText(stale).includes(MARKER))
-      fs3.rmSync(stale);
+      fs4.rmSync(stale);
   }
   return target;
 }
@@ -1823,6 +2141,27 @@ function builtFor(workspace, m) {
   }
   return built;
 }
+function recordSession(args, roster, m, dir, established) {
+  if (args.dryRun)
+    return;
+  const id = established ?? findSession(m.agent, dir);
+  if (!id)
+    return;
+  const raw = roster.members.find((r) => r.name === m.name);
+  if (!isObject(raw))
+    return;
+  const cur = validSession(raw.session) ? raw.session : null;
+  if (cur && cur.runtime === m.agent && cur.id === id)
+    return;
+  raw.session = { runtime: m.agent, id };
+  try {
+    fs5.writeFileSync(join(args.workspace, "roster.json"), JSON.stringify(roster, null, 2) + `
+`);
+  } catch (error) {
+    fail(`cannot record ${m.name}'s session in roster.json: ${reason(error)}`);
+  }
+  print(`RECORDED ${m.name}: session ${m.agent}:${id} in roster.json`);
+}
 function cmdLaunch(args, defaultSources) {
   const workspace = args.workspace;
   const roster = loadRoster(workspace);
@@ -1866,6 +2205,11 @@ function cmdLaunch(args, defaultSources) {
   }
   if (ws && !args.member) {
     problems.push(`herdr session ${session} already holds the squad's workspace ${workspaceLabel(roster)} (${ws}); ` + `close it (\`herdr --session ${session} workspace close ${ws}\`) to start the whole squad again, ` + "or start single members into it with --member");
+  }
+  for (const m of members ?? []) {
+    if (validSession(m.session) && sessionLive(m.session.runtime, m.session.id)) {
+      notes.push(`member ${repr(m.name)}: session ${m.session.runtime}:${m.session.id} is already live`);
+    }
   }
   report(notes, problems);
   if (problems.length || !members || !session) {
@@ -1925,11 +2269,13 @@ function cmdLaunch(args, defaultSources) {
       waiting.set(n, pane);
       failed = [m, pane];
       const spec = agent(m.agent);
-      spec.launch(h, m, pane, `${roster.squad}-${n}`, join(workspace, m.cwd));
+      const dir = join(workspace, m.cwd);
+      const established = spec.launch(h, m, pane, `${roster.squad}-${n}`, dir);
       waiting.delete(n);
       launched.push([m, pane]);
       const settings = spec.launchSettings ? `model ${m.model || "the agent's own default"}, effort ${m.effort || "the agent's own default"}` : `model and effort managed by ${spec.label}`;
       print(`${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${n}${shown(m)} (${m.agent}, ${settings}) ` + `in herdr session ${session}, tab ${tab.number} ${repr(display(m))}, pane ${pane}`);
+      recordSession(args, roster, m, dir, established);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed)
@@ -2002,7 +2348,7 @@ var MEMBER = {
 var WORKSPACE = { dest: "workspace", metavar: "WORKSPACE", help: "the squad's root directory, which holds roster.json" };
 var DEFAULT_EXITS = "0 when it did what was asked; 1 when the roster has problems or a step failed (the output says why); 2 on wrong usage.";
 function checked(args) {
-  const workspace = path3.resolve(args.workspace);
+  const workspace = path4.resolve(args.workspace);
   const roster = loadRoster(workspace);
   const [problems, notes, members] = rosterProblems(workspace, roster, overridesOf(args));
   report(notes, problems);
@@ -2211,7 +2557,7 @@ that did not start, whose tabs to close before launching each with --member.`,
   ],
   run: (args) => {
     cmdLaunch({
-      workspace: path3.resolve(args.workspace),
+      workspace: path4.resolve(args.workspace),
       member: args.member,
       session: args.session,
       dryRun: Boolean(args.dryRun),

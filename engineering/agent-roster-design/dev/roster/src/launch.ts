@@ -1,9 +1,11 @@
 // Launch: start the built squad in herdr, one workspace with a tab per member.
 
+import fs from "node:fs";
 import {
   Exit,
   LaunchError,
   SCRIPT,
+  type JsonObject,
   type SkillSources,
   display,
   fail,
@@ -12,6 +14,7 @@ import {
   join,
   parseJsonFile,
   print,
+  reason,
   repr,
   shown,
   which,
@@ -34,6 +37,7 @@ import {
   writeIdentity,
   writeInstructions,
 } from "./roster";
+import { findSession, sessionLive, validSession } from "./sessions";
 
 export type LaunchArgs = {
   workspace: string;
@@ -79,6 +83,32 @@ function builtFor(workspace: string, m: Member) {
     built.agent = m.agent; // built before .peers.json recorded the agent
   }
   return built;
+}
+
+/** Record the member's runtime session in roster.json, so rebuild and a later launch
+ * know which session is the member's. The id is what the launch established, else the
+ * runtime's newest session in the member's directory. peers send/open never read it. */
+function recordSession(
+  args: LaunchArgs,
+  roster: Roster,
+  m: Member,
+  dir: string,
+  established: string | null,
+): void {
+  if (args.dryRun) return;
+  const id = established ?? findSession(m.agent, dir);
+  if (!id) return;
+  const raw = (roster.members as JsonObject[]).find((r) => r.name === m.name);
+  if (!isObject(raw)) return;
+  const cur = validSession(raw.session) ? raw.session : null;
+  if (cur && cur.runtime === m.agent && cur.id === id) return;
+  raw.session = { runtime: m.agent, id };
+  try {
+    fs.writeFileSync(join(args.workspace, "roster.json"), JSON.stringify(roster, null, 2) + "\n");
+  } catch (error) {
+    fail(`cannot record ${m.name}'s session in roster.json: ${reason(error)}`);
+  }
+  print(`RECORDED ${m.name}: session ${m.agent}:${id} in roster.json`);
 }
 
 export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
@@ -127,6 +157,11 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
         `close it (\`herdr --session ${session} workspace close ${ws}\`) to start the whole squad again, ` +
         "or start single members into it with --member",
     );
+  }
+  for (const m of members ?? []) {
+    if (validSession(m.session) && sessionLive(m.session.runtime, m.session.id)) {
+      notes.push(`member ${repr(m.name)}: session ${m.session.runtime}:${m.session.id} is already live`);
+    }
   }
   report(notes, problems);
   if (problems.length || !members || !session) {
@@ -187,7 +222,8 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
       waiting.set(n, pane);
       failed = [m, pane];
       const spec = agent(m.agent);
-      spec.launch(h, m, pane, `${roster.squad}-${n}`, join(workspace, m.cwd));
+      const dir = join(workspace, m.cwd);
+      const established = spec.launch(h, m, pane, `${roster.squad}-${n}`, dir);
       waiting.delete(n);
       launched.push([m, pane]);
       const settings = spec.launchSettings
@@ -197,6 +233,7 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
         `${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${n}${shown(m)} (${m.agent}, ${settings}) ` +
           `in herdr session ${session}, tab ${tab.number} ${repr(display(m))}, pane ${pane}`,
       );
+      recordSession(args, roster, m, dir, established);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed) throw error;

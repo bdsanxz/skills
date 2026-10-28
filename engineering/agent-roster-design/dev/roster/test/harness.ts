@@ -29,6 +29,7 @@ done
 `;
 
 const CLAUDE = `#!/bin/bash
+if [ "$1 $2" = "agents --json" ]; then cat "$HOME/claude-agents.json" 2>/dev/null || echo '[]'; exit 0; fi
 echo "unexpected claude call: $*" >&2; exit 9
 `;
 
@@ -46,6 +47,7 @@ case "$*" in
   "api session.get"*)
     [ "\${OC_WRONG_MODEL:-}" = 1 ] && { echo '{"data":{"model":{"providerID":"opencode","id":"other"}}}'; exit 0; }
     echo "{\\"data\\":{\\"id\\":\\"ses_test1\\",\\"model\\":$(cat "$OPENCODE_LOG.model")}}" ;;
+  "api get /api/session") cat "$HOME/opencode-sessions.json" 2>/dev/null || echo '{"data":[]}' ;;
   *) echo "unexpected opencode call: $*" >&2; exit 9 ;;
 esac
 `;
