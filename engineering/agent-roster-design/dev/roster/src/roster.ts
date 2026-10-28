@@ -216,6 +216,8 @@ export function structureProblems(roster: Json, overrides: Overrides) {
         problems.push(`${where}: skills[${j}] lists peers, which every member gets; set "peers_source" instead`);
       } else if (skill.skill === "agent-job") {
         problems.push(`${where}: skills[${j}] lists agent-job, which every member gets; set "agent_job_source" instead`);
+      } else if (skill.skill === "agent-shell") {
+        problems.push(`${where}: skills[${j}] lists agent-shell, which every member gets; set "agent_shell_source" instead`);
       }
     });
   });
@@ -224,6 +226,9 @@ export function structureProblems(roster: Json, overrides: Overrides) {
   }
   if ("agent_job_source" in roster && !isFilled(roster.agent_job_source)) {
     problems.push('roster.json: "agent_job_source" must be a package, URL or path of the agent-job skill');
+  }
+  if ("agent_shell_source" in roster && !isFilled(roster.agent_shell_source)) {
+    problems.push('roster.json: "agent_shell_source" must be a package, URL or path of the agent-shell skill');
   }
   for (const flag of ["agent", "model", "effort"] as const) {
     for (const [name, value] of overrides[flag]) {
@@ -466,7 +471,7 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
     "## Squad directory",
     "",
     "Find a member's address with `peers contacts`, which lists every member that has used peers " +
-      "in this squad, or with `peers list --all-dirs`, picking the row whose cwd is the member's " +
+      "in this squad, or with `peers list`, picking the row whose cwd is the member's " +
       "directory below. Addresses change when a member is restarted, even on another agent; " +
       "look them up again rather than reusing an old one. In `peers contacts`, use the member's " +
       "`status=live` row; never message a `status=replaced` row, whose member now runs at its `by=` address.",
@@ -489,10 +494,10 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
   return lines.join("\n") + "\n";
 }
 
-/** Install peers, agent-job and the member's other skills into its cwd, for its agent. */
+/** Install peers, agent-job, agent-shell and the member's other skills into its cwd, for its agent. */
 export function installSkills(dir: string, m: Member, sources: SkillSources) {
   const spec = agent(m.agent);
-  const wanted: [string, string][] = [[sources.peers, "peers"], [sources.agentJob, "agent-job"], ...(m.skills ?? []).map((s): [string, string] => [s.source, s.skill])];
+  const wanted: [string, string][] = [[sources.peers, "peers"], [sources.agentJob, "agent-job"], [sources.agentShell, "agent-shell"], ...(m.skills ?? []).map((s): [string, string] => [s.source, s.skill])];
   const bySource = new Map<string, string[]>();
   for (const [source, skill] of wanted) {
     if (!bySource.has(source)) bySource.set(source, []);

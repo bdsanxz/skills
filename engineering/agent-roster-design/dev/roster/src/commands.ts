@@ -17,6 +17,7 @@ import { AGENTS, LEVELS, forgetLists } from "./agents";
 import { DEFAULT_SOURCES, Exit, PROG, Problem, io, partition, print, reason, repr, shown, strip } from "./core";
 import { cmdLaunch, report, skillSourcesOf } from "./launch";
 import { AGENT_JOB_INSTALLER, agentJobInstalled, agentJobInstaller, installAgentJob } from "./agentjob";
+import { AGENT_SHELL_INSTALLER, agentShellInstalled, agentShellInstaller, installAgentShell } from "./agentshell";
 import { layoutLines, planLayout } from "./layout";
 import { PEERS_INSTALLER, installPeers, peersInstalled, peersInstaller } from "./peers";
 import {
@@ -105,6 +106,7 @@ function checked(args: Values) {
   if (problems.length || !members) throw new Exit(1);
   if (!peersInstalled()) print(`NOTE the peers CLI is not installed; build installs it with ${peersInstaller()}`);
   if (!agentJobInstalled()) print(`NOTE the agent-job CLI is not installed; build installs it with ${agentJobInstaller()}`);
+  if (!agentShellInstalled()) print(`NOTE the agent-shell CLI is not installed; build installs it with ${agentShellInstaller()}`);
   print(`OK ${members.length} members in ${workspace}`);
   for (const e of members) print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
   for (const line of layoutLines(planLayout(members), new Map(members.map((m) => [m.name, m])))) print(line);
@@ -177,7 +179,7 @@ records the member's role, display name, agent, model and effort. Installs nothi
 
 const BUILD: Command = {
   name: "build",
-  summary: "Check and assemble, install the peers and agent-job CLIs when missing, then install skills and configure each member.",
+  summary: "Check and assemble, install the peers, agent-job and agent-shell CLIs when missing, then install skills and configure each member.",
   description: `
 Use it once check prints OK, and again after a member's skills, agent, model or effort
 change (with --member). Safe to run again: it rewrites the generated files and reinstalls
@@ -192,19 +194,25 @@ Then installs the agent-job CLI the same way when no agent-job command is on PAT
 ~/.local/bin (or AGENT_JOB_INSTALL_DIR), with its install script, ${AGENT_JOB_INSTALLER};
 AGENT_JOB_INSTALLER_URL names another script. It needs bun.
 
-For each member: writes its instruction file and .peers.json, installs peers, agent-job and its
-roster skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's
-own setup: for claude the peers and agent-job channels (.mcp.json, approved in
+Then installs the agent-shell CLI the same way when no agent-shell command is on PATH or in
+~/.local/bin (or AGENT_SHELL_INSTALL_DIR), with its install script, ${AGENT_SHELL_INSTALLER};
+AGENT_SHELL_INSTALLER_URL names another script. It needs bun, like agent-job. Members need no
+per-agent setup for it: a finished job notifies through one \`herdr agent prompt\` turn.
+
+For each member: writes its instruction file and .peers.json, installs peers, agent-job,
+agent-shell and its roster skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's
+own setup: for claude the agent-job channel (.mcp.json, approved in
 .claude/settings.local.json) and the agent-job goal hooks (.claude/settings.local.json); for agy
-the agent-job goal hooks (.agents/hooks.json); for pi a check that the installed peers CLI writes
-the peers extension for pi (peers pi-extension --path), which launch loads with the agent-job
-extension. opencode needs no setup. It never writes a model or effort into an opencode member's
+the agent-job goal hooks (.agents/hooks.json); for pi the agent-job extension, which launch loads.
+Peers needs no per-agent setup: every notification arrives through one herdr agent prompt.
+opencode needs no setup. It never writes a model or effort into an opencode member's
 opencode.json. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],
   output: `
 The check's lines, an \`INSTALLED peers <version> at <path>\` line when it installed the CLI
 (ending in a WARNING when that directory is not on PATH), an \`INSTALLED agent-job <version> at <path>\`
+line when it installed that CLI (with the same WARNING), an \`INSTALLED agent-shell <version> at <path>\`
 line when it installed that CLI (with the same WARNING), then one \`BUILT <member> (<agent>):
 ...\` line per member. A failed install prints the exact command and its output.`,
   exitCodes: "0 when every member was built; 1 when the roster has problems or an install failed (the output gives the command and its output); 2 on wrong usage.",
@@ -216,6 +224,8 @@ line when it installed that CLI (with the same WARNING), then one \`BUILT <membe
     if (installed) print(installed);
     const agentJob = await installAgentJob();
     if (agentJob) print(agentJob);
+    const agentShell = await installAgentShell();
+    if (agentShell) print(agentShell);
     for (const m of selected(members, args.member as string | null)) {
       print(`BUILT ${m.name} (${m.agent}): ` + buildMember(workspace, roster, members, m, sources).join("; "));
     }
@@ -230,15 +240,15 @@ const LAUNCH: Command = {
 Use it only when the user asks to start the squad: run it with --dry-run first, then
 without. Validates everything first and launches nothing on a problem: the roster, every
 member's agent, model and effort, each agent's command on PATH, a running herdr session,
-that each member is built, that the peers and agent-job CLIs are installed, and the layout (see \`${PROG} --help\`). A full launch also refuses
+that each member is built, that the peers, agent-job and agent-shell CLIs are installed, and the layout (see \`${PROG} --help\`). A full launch also refuses
 when the session already holds the squad's workspace; with --member, a member that still
 has a pane there is refused.
 
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
 dialogs are read at full size. It starts each member with its agent's own command, model and
-effort: claude --model --effort (loading the peers and agent-job channels), agy --model --effort,
-pi --model --thinking (with --approve and the peers and agent-job extensions, -e), and for opencode, whose TUI takes
+effort: claude --model --effort (loading the agent-job channel), agy --model --effort,
+pi --model --thinking (with --approve and the agent-job extension, -e), and for opencode, whose TUI takes
 neither flag, OpenCode's API: it creates the member's session, opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
 it with session.get before the first prompt (needs OpenCode's background service; an
@@ -335,8 +345,8 @@ files:
           .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
           opencode, agy and pi), for
           claude its .mcp.json and .claude/settings.local.json, for agy its
-          .agents/hooks.json, and the peers and agent-job CLIs in ~/.local/bin when
-          they are missing. check writes nothing.
+          .agents/hooks.json, and the peers, agent-job and agent-shell CLIs in
+          ~/.local/bin when they are missing. check writes nothing.
 
 member names:
   Each member has a member name ("name": kebab-case, also its cwd, and what reports_to,

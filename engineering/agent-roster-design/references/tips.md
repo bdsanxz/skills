@@ -60,7 +60,7 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 
 ### A relaunched member has a new address
 
-- **Situation:** A member is relaunched, and its old session still shows in `peers list --all-dirs` next to the new one.
+- **Situation:** A member is relaunched, and its old session still shows in `peers list` next to the new one.
 - **Practice:** After a relaunch, take the newest session in the member's cwd as its address. Give that address to the members that message it, and stop the old session.
 - **Why:** A message sent to the old session goes to a conversation nobody runs. Its sender then waits for a reply that never comes.
 

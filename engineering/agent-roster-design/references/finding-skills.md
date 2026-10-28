@@ -1,6 +1,6 @@
 # Finding skills for a member
 
-Use this to choose a member's skills besides `peers`, which every member gets without asking. You only find and propose skills here. What the user agrees to goes into the member's `skills` in the roster, and `roster.js build` installs it into the member's cwd. Never install a skill globally (`-g`), and never install one the user has not agreed to.
+Use this to choose a member's skills besides `peers`, `agent-job` and `agent-shell`, which every member gets without asking. You only find and propose skills here. What the user agrees to goes into the member's `skills` in the roster, and `roster.js build` installs it into the member's cwd. Never install a skill globally (`-g`), and never install one the user has not agreed to.
 
 ## 1. Work out what the member needs
 

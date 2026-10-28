@@ -19,8 +19,9 @@ import {
 import { type Member, agent } from "./agents";
 import { Herdr, herdrSession } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
-import { peersCommand, peersInstalled, peersKnowsPi } from "./peers";
+import { peersInstalled } from "./peers";
 import { agentJobInstalled } from "./agentjob";
+import { agentShellInstalled } from "./agentshell";
 import {
   type Overrides,
   type Roster,
@@ -48,18 +49,19 @@ export function report(notes: string[], problems: string[]) {
   for (const problem of problems) print(`PROBLEM ${problem}`);
 }
 
-/** Where the skills every member gets come from: roster.json's peers_source and agent_job_source, else
- * the copies next to this skill. */
+/** Where the skills every member gets come from: roster.json's peers_source, agent_job_source and
+ * agent_shell_source, else the copies next to this skill. */
 export function skillSourcesOf(roster: Roster, fallback: SkillSources): SkillSources {
   const peers = "peers_source" in roster ? (roster.peers_source as string) : fallback.peers;
   const agentJob = "agent_job_source" in roster ? (roster.agent_job_source as string) : fallback.agentJob;
-  for (const [skill, source, key] of [["peers", peers, "peers_source"], ["agent-job", agentJob, "agent_job_source"]]) {
+  const agentShell = "agent_shell_source" in roster ? (roster.agent_shell_source as string) : fallback.agentShell;
+  for (const [skill, source, key] of [["peers", peers, "peers_source"], ["agent-job", agentJob, "agent_job_source"], ["agent-shell", agentShell, "agent_shell_source"]]) {
     if (source!.startsWith("/") && !isFile(join(source!, "SKILL.md"))) {
       fail(`no ${skill} skill at ${source}; set "${key}" in roster.json to its directory, package or URL`);
     }
   }
   if (!which("npx")) fail("npx is not on PATH; install Node.js, which the skills CLI needs");
-  return { peers, agentJob };
+  return { peers, agentJob, agentShell };
 }
 
 function settingsChange(m: Member) {
@@ -92,11 +94,8 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
   if (!agentJobInstalled()) {
     problems.push(`the agent-job CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
-  if (members?.some((m) => m.agent === "pi") && peersInstalled() && !peersKnowsPi()) {
-    problems.push(
-      `the installed peers CLI (${peersCommand()}) has no pi support, so pi members cannot listen for ` +
-        "notifications; update it (rerun its install script), then launch again",
-    );
+  if (!agentShellInstalled()) {
+    problems.push(`the agent-shell CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
   if (members !== null) {
     const [found, why] = herdrSession(args.session);
@@ -222,7 +221,7 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
   }
   if (!args.dryRun) {
     print(
-      "Find each member's address with `peers list --all-dirs`, " +
+      "Find each member's address with `peers list`, " +
         "by its directory. The squad starts working when the lead receives a request through peers.",
     );
   }

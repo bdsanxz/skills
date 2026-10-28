@@ -45,15 +45,12 @@ describe("pi members", () => {
     expect((await roster(["check", s.w])).out).toContain("is not a pi model; expected provider/model or model");
   });
 
-  test("build installs skills for pi and requires a peers CLI that writes the peers extension", async () => {
+  test("build installs skills for pi with no peers extension needed", async () => {
     team({ model: "anthropic/claude-opus-4-8", effort: "high" });
     let done = await roster(["build", s.w], { PEERS_OLD: "1" });
-    expect(done.code).toBe(1);
-    expect(done.out).toContain("cannot write the peers extension for pi (`peers pi-extension --path`)");
-    done = await roster(["build", s.w]);
     expect(done.code).toBe(0);
     expect(done.out).toContain("BUILT review");
-    expect(done.out).toContain("pi loads the peers extension from `peers pi-extension --path` and the agent-job extension");
+    expect(done.out).toContain("pi loads the agent-job extension from `agent-job pi-extension --path` at launch");
     expect(read(s.npxLog)).toContain("--skill agent-job");
     expect(read(s.npxLog)).toContain("-a pi -y --copy --skill peers");
     const dir = path.join(s.w, "review");
@@ -64,21 +61,19 @@ describe("pi members", () => {
   test("launch starts pi visible in herdr with --approve, the extension, model and thinking", async () => {
     const done = await roster(["launch", s.w, "--dry-run"]);
     expect(done.code).toBe(0);
-    const ext = path.join(s.tmp, "cache", "pi-extension", "peers.ts");
     const start = done.out.split("\n").find((line) => line.includes("agent start demo-review"));
     expect(start).toBeDefined();
     expect(start!).toContain("--kind pi");
     const jobExt = path.join(s.tmp, "agent-job-home", "pi-extension.ts");
-    expect(start!).toContain(`-- --approve -e ${ext} -e ${jobExt} --name`);
+    expect(start!).toContain(`-- --approve -e ${jobExt} --name`);
     expect(read(jobExt)).toContain("agent-job extension");
     expect(start!).toContain("--model anthropic/claude-opus-4-8 --thinking high");
     expect(done.out).toContain("WOULD LAUNCH review (pi, model anthropic/claude-opus-4-8, effort high)");
   });
 
-  test("launch refuses a peers CLI without pi support", async () => {
+  test("launch starts pi even with an old peers CLI", async () => {
     const done = await roster(["launch", s.w, "--dry-run"], { PEERS_OLD: "1" });
-    expect(done.code).toBe(1);
-    expect(done.out).toContain("has no pi support, so pi members cannot listen");
-    expect(done.out).toContain("Nothing was launched.");
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("WOULD LAUNCH review (pi, model anthropic/claude-opus-4-8, effort high)");
   });
 });

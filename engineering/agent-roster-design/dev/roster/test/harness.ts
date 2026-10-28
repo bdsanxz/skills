@@ -134,10 +134,24 @@ case "$1" in
 esac
 `;
 
+/** agent-shell: prints its version. */
+const AGENT_SHELL = `#!/bin/sh
+case "$1" in
+  --version) echo "agent-shell 0.0.1" ;;
+  *) echo "unexpected agent-shell call: $*" >&2; exit 9 ;;
+esac
+`;
+
 /** The agent-job install script build fetches; INSTALLER_FAIL=1 makes it fail. */
 export const AGENT_JOB_INSTALLER = `[ "\${INSTALLER_FAIL:-}" = 1 ] && { echo "agent-job-install: error: no release" >&2; exit 1; }
 dir="\${AGENT_JOB_INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$dir" && printf '#!/bin/sh\\necho agent-job 0.0.1\\n' >"$dir/agent-job" && chmod +x "$dir/agent-job"
+`;
+
+/** The agent-shell install script build fetches; INSTALLER_FAIL=1 makes it fail. */
+export const AGENT_SHELL_INSTALLER = `[ "\${INSTALLER_FAIL:-}" = 1 ] && { echo "agent-shell-install: error: no release" >&2; exit 1; }
+dir="\${AGENT_SHELL_INSTALL_DIR:-$HOME/.local/bin}"
+mkdir -p "$dir" && printf '#!/bin/sh\\necho agent-shell 0.0.1\\n' >"$dir/agent-shell" && chmod +x "$dir/agent-shell"
 `;
 
 /** The peers install script build fetches; INSTALLER_FAIL=1 makes it fail. */
@@ -155,7 +169,7 @@ export type Squad = {
   opencodeLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, peers: PEERS, "agent-job": AGENT_JOB };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
