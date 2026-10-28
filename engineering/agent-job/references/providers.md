@@ -4,11 +4,11 @@ Verified on this machine (Claude Code 2.1.311, OpenCode 2.0.29, agy 1.4.7, pi 1.
 
 | Provider | Address from | Reached by | Open while | Gone when |
 | --- | --- | --- | --- | --- |
-| claude | `CLAUDE_CODE_SESSION_ID` | the daemon queues it in the outbox; the `agent-job channel` MCP server pushes it as a `notifications/claude/channel` turn (fallback: the line a running `watch` prints under the Monitor tool) | the channel's or watch's lease is fresh, or `claude agents --json` lists the session | neither is running and `claude agents` does not list the session |
+| claude | `CLAUDE_CODE_SESSION_ID` | the daemon queues it in the outbox; the `agent-job channel` MCP server pushes it as a `notifications/claude/channel` turn | the channel's lease is fresh, or `claude agents --json` lists the session | no channel runs and `claude agents` does not list the session |
 | opencode | `OPENCODE_SESSION_ID` | `opencode api post /api/session/<id>/prompt` with `delivery: steer`, `resume: true` | `/api/session/active` has it, a process `opencode ... <id>` exists, a herdr pane is titled `OC \| <title>` with a unique title, or (a new session with no title) it is the only untitled session of its directory and a herdr pane there is titled `OpenCode` | none of those |
-| antigravity | `ANTIGRAVITY_CONVERSATION_ID` | `herdr --session <s> agent prompt <pane> <text>` (typed into the TUI) | `~/.gemini/antigravity-cli/presence/<id>.lock` is held by a process on a tty | nobody holds the lock |
-| pi | `PI_SESSION_ID` | the extension runs `watch pi:<id>` as a child and turns each line into a user message | the extension's watch lease is fresh | `session_shutdown` stops the watch |
-| muse | `MUSE_SESSION_ID` | the daemon queues it in the outbox; the line a running `watch` prints under the Monitor tool | the watch's lease is fresh, or the socket lease pid in `runtime/muse/sessions/<id>.json` still runs | neither, and the session index has no such session |
+| antigravity | `ANTIGRAVITY_CONVERSATION_ID` | `herdr agent prompt <pane> <text>` (typed into the TUI) | `~/.gemini/antigravity-cli/presence/<id>.lock` is held by a process on a tty | nobody holds the lock |
+| pi | `PI_SESSION_ID` | the extension runs `_pi-hold pi:<id>` as a child and turns each line into a user message | the extension holder's lease is fresh | `session_shutdown` stops the holder |
+| muse | `MUSE_SESSION_ID` | natively: `/loop` and `/goal` typed into the herdr TUI with `herdr agent prompt` (preferred, verified live on Muse Code 1.4.14: `Scheduled ...` and `Goal set — ...` acknowledgements); the daemon fails a firing fast when the TUI is not in herdr | the TUI shows it in herdr; otherwise the socket lease pid in `runtime/muse/sessions/<id>.json` still runs | neither, and the session index has no such session |
 
 ## What the experiments showed
 
@@ -16,21 +16,21 @@ Each provider was tested with a real TUI in herdr: a cron is delivered, the mode
 
 | Provider | Delivered as | Ended after the TUI closed |
 | --- | --- | --- |
-| claude | a channel push, shown as `← agent-job: ...` (a Monitor event from `watch` as fallback) | 83 s after the tab closed, reason "no watch and not listed by `claude agents`" |
+| claude | a channel push, shown as `← agent-job: ...` | 83 s after the tab closed, reason "no channel and not listed by `claude agents`" |
 | opencode | a user turn in the TUI, the model replied | about 100 s, reason "no TUI shows the session" |
 | antigravity | text typed into the TUI, the model replied | about 117 s, reason "no agy TUI holds the session's presence lock" |
 | pi | a user message, the model replied | about 125 s, reason "no pi extension listener" |
 
-(Muse Code is not in this table: its watch delivery and poll continuation are covered by unit tests, not yet by a live TUI experiment. The mechanism is the same one the table shows for the Claude fallback: one line per row under the Monitor tool.)
+(Muse Code is not in this table: its daemon delivery is push-only (paste into the herdr TUI, covered by unit tests) and its poll continuation is covered by unit tests, not yet by a live TUI experiment. Its native `/loop` and `/goal` were verified live instead: a herdr prompt of `/loop every 60s ...` answers `Scheduled * * * * *: ...` with an id, and `/goal ...` answers `Goal set — ...` with a status-bar goal.)
 
-- **Delivered text:** exactly the cron's prompt, as `CronCreate` delivers it: no header. A watch folds newlines into ` ⏎` because it delivers one line per cron.
-- **pi:** a new session has no session file, and so no address, until its first turn ends. The extension therefore also starts its watch on `agent_end`; a pi session receives crons after its first turn.
-- **Muse Code:** a session is indexed in `session-index.db` (sid, title, `workspace_root` for its directory, `session_log_path`) once it has run, and counts as live while the pid holding its socket lease (from `runtime/muse/sessions/<id>.json` `endpoint_hint`) still runs. `muse session-message` is not used: external agent ingress is unavailable in current builds, so crons never steer the session from outside; they wait for an armed `watch`. `peers` reaches a live muse TUI in herdr by typing into it, but `agent-job` has no such path: its outbox is watch-only.
+- **Delivered text:** exactly the cron's prompt, as `CronCreate` delivers it: no header. A collecting listener (channel, pi holder) folds newlines into ` ⏎` because it delivers one line per cron.
+- **pi:** a new session has no session file, and so no address, until its first turn ends. The extension therefore also starts its holder on `agent_end`; a pi session receives crons after its first turn.
+- **Muse Code:** a session is indexed in `session-index.db` (sid, title, `workspace_root` for its directory, `session_log_path`) once it has run, and counts as live while the pid holding its socket lease (from `runtime/muse/sessions/<id>.json` `endpoint_hint`) still runs. `muse session-message` is not used: external agent ingress is unavailable in current builds, so a daemon firing never steers a muse session from outside; it fails fast. The skill's preferred path does not go through the daemon at all: like `peers`, it reaches a live muse TUI in herdr by typing the native `/loop` or `/goal` into it with `herdr agent prompt`. A muse TUI outside herdr cannot receive daemon lines at all.
 
 - **Claude channel:** `agent-job channel` is an MCP stdio server that declares the `claude/channel` capability, takes the session's lease, and pushes each outbox row; the lease ends when its parent process dies. The session id comes from `CLAUDE_CODE_SESSION_ID`, else from `claude agents --json` by parent pid. It is loaded with `--mcp-config` and `--dangerously-load-development-channels server:agent-job`.
-- **Claude Code:** when a session is terminated, its `SessionEnd` hook runs and the child processes it started (a background command, a Monitor) receive SIGTERM. `watch` catches it, drops its lease and exits, so the daemon learns the session is gone without any hook.
+- **Claude Code:** when a session is terminated, Claude Code closes the channel's stdin and stops it; the channel drops its lease on exit, so the daemon learns the session is gone without any hook.
 - **OpenCode:** sessions live in the background service (`opencode serve --service`), not in a process of their own, so no event says a session ended. "Open" therefore means a TUI shows it.
-- **Grace period:** a session must stay gone for 30 seconds (`AGENT_JOB_GRACE_MS`) before its crons end, so a restarted watch or a `/reload` does not end them. A due cron waits during the grace period instead of being sent.
+- **Grace period:** a session must stay gone for 30 seconds (`AGENT_JOB_GRACE_MS`) before its crons end, so a restarted channel or a `/reload` does not end them. A due cron waits during the grace period instead of being sent.
 - **Unknown:** when a tool is missing or does not answer, the session's state is unknown; nothing is sent and nothing ends.
 
 ## Goals: reporting turn ends and compactions
@@ -39,11 +39,11 @@ A goal is sent at creation, at each turn end and after a compaction. Each runtim
 
 | Provider | Turn end | Compaction | Needs setup |
 | --- | --- | --- | --- |
-| claude | `Stop` hook; with a live channel or watch the hook queues the text and replies nothing, so it arrives as a channel turn; otherwise the reply `{"decision":"block","reason":text}` keeps the agent going (shown as "Stop hook error", with a duplicated reminder to the model). No `Stop` fires on a user interrupt | `SessionStart` hook with `source:"compact"` (and `resume`); queued for the channel the same way, else `additionalContext` (seen only at the next turn) | hooks in a Claude settings file, found by the string `goal hook claude` |
+| claude | `Stop` hook; with a live channel the hook queues the text and replies nothing, so it arrives as a channel turn; otherwise the reply `{"decision":"block","reason":text}` keeps the agent going (shown as "Stop hook error", with a duplicated reminder to the model). No `Stop` fires on a user interrupt | `SessionStart` hook with `source:"compact"` (and `resume`); queued for the channel the same way, else `additionalContext` (seen only at the next turn) | hooks in a Claude settings file, found by the string `goal hook claude` |
 | opencode | the daemon polls `GET /api/session/<id>/message?limit=30&order=desc` every 3 s; an `idle` message with `outcome: succeeded` continues, `interrupted` and `failed` do not | a `compaction` message in the same poll | none |
 | antigravity | `Stop` hook (`terminationReason` in its input); reply `{"decision":"continue","reason":text}`; a user cancel does not continue | every compaction adds a `"type":"CHECKPOINT"` step to the transcript. `/compact` ends with a `Stop` of `TERMINAL_CUSTOM_HOOK`; the hook sees the count rise and restates at once. A compaction in the middle of a turn is caught by a `PreInvocation` hook, which injects the text as a system message | `hooks.json` (`~/.gemini/config/` or `<workspace>/.agents/`); the event name is passed as a command argument because stdin does not carry it |
 | pi | the extension's `agent_settled` event (`aborted` is skipped) runs `goal event turn-end` and sends the output as a user message | `session_compact` runs `goal event compacted` | the agent-job extension in `~/.pi/agent/extensions/` |
-| muse | the daemon polls the session log every 3 s; each `assistant_message_committed` record since the goal (cursor: the envelope `sequence`) continues, a user interrupt does not | `CompactionInstalled`, `preCompact` or `postCompact` run events in the same poll | none |
+| muse | natively: the runtime restates its own `/goal` every turn (preferred, verified live; no daemon involved). Daemon fallback: the daemon polls the session log every 3 s; each `assistant_message_committed` record since the goal (cursor: the envelope `sequence`) continues, a user interrupt does not | native: the runtime carries the goal itself. Daemon fallback: `CompactionInstalled`, `preCompact` or `postCompact` run events in the same poll | none |
 
 Verified live with a real session of each (a goal set from outside, the model working until it ran `goal done`):
 
@@ -54,7 +54,7 @@ Verified live with a real session of each (a goal set from outside, the model wo
 | antigravity | 2 continuations through `Stop`, then `goal done` | text restated right after `/compact` (checkpoints 2 to 3) and the agent continued |
 | pi | 2 continuations (goal done at 2/8) | text arrived after `/compact` and the agent resumed work |
 
-(Muse Code is not in this table either: its poll counts `assistant_message_committed` records and watches for the compaction run events above, covered by unit tests. The compaction event shape is the schema's hook vocabulary; if a future build records compactions differently, the poll still continues at every turn end and only misses the compaction text.)
+(Muse Code is not in this table either: its poll counts `assistant_message_committed` records and looks for the compaction run events above, covered by unit tests. The compaction event shape is the schema's hook vocabulary; if a future build records compactions differently, the poll still continues at every turn end and only misses the compaction text. Its native `/goal` was verified live instead and needs no row here: set with `herdr agent prompt <member> "/goal ..."`, acknowledged with `Goal set — ...`, restated by the runtime itself.)
 
 - **Native format:** the creation text follows Claude Code's own `/goal` message (`A ... Stop hook is now active with condition: "<cond>"`), and a continuation follows its `Stop hook feedback:` form (`[<cond>]: <why it is not met>`), with the `goal done` / `goal blocked` commands appended.
 - **Limits:** one active goal per session. `turns` counts continuations, not compactions; `max_turns` 0 (no `--max-turns`) is unlimited; at a set `max_turns` the goal ends after one last text (`limit-text`) saying it stopped, and sends nothing more.
