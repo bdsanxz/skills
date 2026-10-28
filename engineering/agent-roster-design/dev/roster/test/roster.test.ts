@@ -413,7 +413,7 @@ describe("launch", () => {
     has(
       "dry run claude with --model and --effort",
       dry,
-      "claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5 --effort high --dangerously-load-development-channels server:peers server:agent-job --",
+      "claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5 --effort high --",
     );
     has("dry run opencode starts as a herdr agent", dry, "agent start demo-api --kind opencode --pane '<pane-2>'");
     has("dry run agy with --model", dry, "agent start demo-docs --kind agy --pane '<pane-3>' -- --dangerously-skip-permissions --model gem-fast");

@@ -1,6 +1,6 @@
 # Providers: reaching a session and knowing it is gone
 
-Verified on this machine (Claude Code 2.1.311, OpenCode 2.0.29, agy 1.4.7, pi 1.4.0, herdr 0.9.1, Muse Code 1.4.14).
+Verified on this machine (Claude Code 2.1.312, OpenCode 2.0.29, agy 1.4.9, pi 1.4.0, herdr 0.9.5, Muse Code 1.4.14).
 
 | Provider | Address from | Reached by | Open while | Gone when |
 | --- | --- | --- | --- | --- |
@@ -23,11 +23,11 @@ Each provider was tested with a real TUI in herdr: a cron is delivered, the mode
 
 (Muse Code is not in this table: its daemon delivery is push-only (paste into the herdr TUI, covered by unit tests) and its poll continuation is covered by unit tests, not yet by a live TUI experiment. Its native `/loop` and `/goal` were verified live instead: a herdr prompt of `/loop every 60s ...` answers `Scheduled * * * * *: ...` with an id, and `/goal ...` answers `Goal set — ...` with a status-bar goal.)
 
-- **Delivered text:** exactly the cron's prompt, as `CronCreate` delivers it: no header. A collecting listener (channel, pi holder) folds newlines into ` ⏎` because it delivers one line per cron.
+- **Delivered text:** exactly the cron's prompt, as `CronCreate` delivers it: no header. The daemon folds newlines into ` ⏎` for collecting listeners, because they deliver one line per cron; the channel unfolds back to newlines before pushing the turn, so only the pi holder's lines stay folded. Push deliveries (OpenCode steer, Antigravity or Muse paste) keep the prompt's lines.
 - **pi:** a new session has no session file, and so no address, until its first turn ends. The extension therefore also starts its holder on `agent_end`; a pi session receives crons after its first turn.
-- **Muse Code:** a session is indexed in `session-index.db` (sid, title, `workspace_root` for its directory, `session_log_path`) once it has run, and counts as live while the pid holding its socket lease (from `runtime/muse/sessions/<id>.json` `endpoint_hint`) still runs. `muse session-message` is not used: external agent ingress is unavailable in current builds, so a daemon firing never steers a muse session from outside; it fails fast. The skill's preferred path does not go through the daemon at all: like `peers`, it reaches a live muse TUI in herdr by typing the native `/loop` or `/goal` into it with `herdr agent prompt`. A muse TUI outside herdr cannot receive daemon lines at all.
+- **Muse Code:** a session is indexed in `session-index.db` (sid, `workspace_root` for its directory, `session_log_path`) once it has run, and counts as live while the pid holding its socket lease (from `runtime/muse/sessions/<id>.json` `endpoint_hint`) still runs. `muse session-message` is not used: external agent ingress is unavailable in current builds, so a daemon firing never steers a muse session from outside; it fails fast. The skill's preferred path does not go through the daemon at all: like `peers`, it reaches a live muse TUI in herdr by typing the native `/loop` or `/goal` into it with `herdr agent prompt`. A muse TUI outside herdr cannot receive daemon lines at all.
 
-- **Claude channel:** `agent-job channel` is an MCP stdio server that declares the `claude/channel` capability, takes the session's lease, and pushes each outbox row; the lease ends when its parent process dies. The session id comes from `CLAUDE_CODE_SESSION_ID`, else from `claude agents --json` by parent pid. It is loaded with `--mcp-config` and `--dangerously-load-development-channels server:agent-job`.
+- **Claude channel:** `agent-job channel` is an MCP stdio server that declares the `claude/channel` capability, takes the session's lease, and pushes each outbox row; the lease ends when its parent process dies. The session id comes from `CLAUDE_CODE_SESSION_ID`, else from `claude agents --json` by parent pid. It is loaded with `--mcp-config` (the JSON `agent-job channel-config` prints).
 - **Claude Code:** when a session is terminated, Claude Code closes the channel's stdin and stops it; the channel drops its lease on exit, so the daemon learns the session is gone without any hook.
 - **OpenCode:** sessions live in the background service (`opencode serve --service`), not in a process of their own, so no event says a session ended. "Open" therefore means a TUI shows it.
 - **Grace period:** a session must stay gone for 30 seconds (`AGENT_JOB_GRACE_MS`) before its crons end, so a restarted channel or a `/reload` does not end them. A due cron waits during the grace period instead of being sent.
@@ -56,7 +56,7 @@ Verified live with a real session of each (a goal set from outside, the model wo
 
 (Muse Code is not in this table either: its poll counts `assistant_message_committed` records and looks for the compaction run events above, covered by unit tests. The compaction event shape is the schema's hook vocabulary; if a future build records compactions differently, the poll still continues at every turn end and only misses the compaction text. Its native `/goal` was verified live instead and needs no row here: set with `herdr agent prompt <member> "/goal ..."`, acknowledged with `Goal set — ...`, restated by the runtime itself.)
 
-- **Native format:** the creation text follows Claude Code's own `/goal` message (`A ... Stop hook is now active with condition: "<cond>"`), and a continuation follows its `Stop hook feedback:` form (`[<cond>]: <why it is not met>`), with the `goal done` / `goal blocked` commands appended.
+- **Native format:** the creation text is `A goal is now active with condition: "<cond>". ... Stopping is blocked until the condition holds.`, and a continuation follows the form `[<cond>]: <why it is not met>`, with the `goal done` / `goal blocked` commands appended.
 - **Limits:** one active goal per session. `turns` counts continuations, not compactions; `max_turns` 0 (no `--max-turns`) is unlimited; at a set `max_turns` the goal ends after one last text (`limit-text`) saying it stopped, and sends nothing more.
 - **Hooks never fail the runtime:** they exit 0, and stay silent when the database does not exist.
 - **pi compaction:** pi stays busy until the `session_compact` handler returns, and a message sent while it is busy has no run to join and is dropped. The extension therefore returns at once and sends from a separate task once the session is idle.

@@ -20,7 +20,7 @@ Everything goes through the `peers` command, one global binary on `PATH` for eve
 ## Operating rules (must follow)
 
 1. **Separate configuration from the task.** Put persona, model, effort or variant, permissions and standing duties in the agent definition or the launch flags. A peer message carries only the one-shot task, per-request context and the expected output.
-2. **Never wait by sleeping or polling.** After you start a peer or send a message, end your response normally. Notifications arrive as ordinary turns (or, in Claude Code without the channel, as Monitor events). Do not call `sleep`, loop over `peers chats` or `peers open`, or hold a blocking shell.
+2. **Never wait by sleeping or polling.** After you start a peer or send a message, end your response normally. Notifications arrive as ordinary turns; a message to a session that is not live waits in its inbox, which is not a failure. Do not call `sleep`, loop over `peers chats` or `peers open`, or hold a blocking shell.
 3. **Design for clean handoffs.** Each exchange has one requester, one worker, one artifact and one completion. End the exchange instead of extending it.
 4. **Never headless unless the user asks.** Start peers visible in herdr (Step 4), and never pass `--headless` to `peers send` or start a headless peer unless the user asked for a headless run. A message to a session that is not live is stored and its notification waits; that is not a failure.
 5. **Keep the squad flag.** When a notification's read command ends with `--squad <dir>`, the chat lives in that squad's database: pass the same `--squad <dir>` to every `peers open` and `peers send` of that exchange. Without it you read and write your own squad's database, where that chat does not exist.
@@ -112,19 +112,16 @@ herdr pane run <pane_id> /tmp/peer-<name>.sh
 
 ```bash
 claude --dangerously-skip-permissions -n "peer-<purpose>" \\
-  --mcp-config '$(peers channel-config)' \\
-  --dangerously-load-development-channels server:peers -- "<task>"
+  --mcp-config '$(peers channel-config)' -- "<task>"
 ```
 
-Keep the `--` before the task: `--dangerously-load-development-channels` takes several values and otherwise swallows the task, failing with "entries must be tagged". On start, Claude Code shows a warning about development channels and waits for confirmation. It is the peers channel you configured, so wait for it, confirm option 1 ("I am using this for local development") with Enter, and wait for the banner:
+The `--mcp-config` file loads the `peers channel` MCP server. Keep the `--` before the task so a task starting with a dash is not parsed as a flag. On start, wait for the channel banner, which says channel messages "inject directly in this session":
 
 ```bash
-herdr pane wait-output <pane_id> --match "local development" --timeout 30000
-herdr pane send-keys <pane_id> enter
-herdr pane wait-output <pane_id> --match "inject directly" --timeout 30000
+herdr pane wait-output <pane_id> --match "inject directly" --timeout 60000
 ```
 
-The banner says channel messages "inject directly in this session"; the line "server:peers · no MCP server configured with that name" that follows is expected and harmless. The workspace must be trusted: if it refuses with "Workspace not trusted", ask the user to open `claude` there once and accept the trust prompt.
+The workspace must be trusted: if it refuses with "Workspace not trusted", ask the user to open `claude` there once and accept the trust prompt.
 
 **Antigravity peer.** Start the `agy` TUI as a herdr agent with a unique name, then type the task into it:
 
@@ -154,7 +151,7 @@ herdr agent prompt <pane_id> "<task>"
 | Claude Code | `claude -p --session-id "$PEER_ID" --output-format json --dangerously-skip-permissions <<'EOF' >/tmp/peer-<name>.json 2>&1 &` with the task on stdin | `claude:$PEER_ID` |
 | Antigravity | `agy --dangerously-skip-permissions --output-format json -p "<task>" </dev/null >/tmp/peer-<name>.json 2>&1 &` | `conversation_id` in the JSON result |
 | pi | `pi --session-id "$PEER_ID" --mode json -- "<task>" </dev/null >/tmp/peer-<name>.jsonl 2>&1 &` | `pi:$PEER_ID` |
-| Muse Code | `muse --yolo exec --json "<task>" </dev/null >/tmp/peer-<name>.jsonl 2>&1 &` | the session id in its JSONL log, as `muse:<id>` |
+| Muse Code | `muse exec --session-id "$PEER_ID" --json --yolo "<task>" </dev/null >/tmp/peer-<name>.jsonl 2>&1 &` | the session id in its JSONL log, as `muse:<id>` |
 
 Make `PEER_ID` with `python3 -c 'import uuid;print(uuid.uuid4())'`. A Claude background session (`claude --bg -n "peer-<purpose>" --dangerously-skip-permissions "<task>"`) counts as headless too; it has no channel, so it only sees queued messages in `peers chats`. A headless peer gets later messages only through `peers send --headless`, one headless turn each (Step 6); without the flag they wait for it. For Claude, pass the task on stdin: multi-value flags such as `--allowedTools` swallow a trailing prompt argument. For Antigravity, flags go before `-p`. pi saves a session only after its first turn, so send it nothing before that run has finished. A headless muse peer's task must tell it to report its address from `peers whoami`.
 
@@ -226,7 +223,7 @@ Always send with `peers send`, also between two Claude Code sessions: a message 
 | `muse:` with a TUI in herdr | Typed into the `muse` TUI's input with `herdr agent prompt` | As a user turn; while `muse` is busy it waits in `muse`'s queue |
 | `muse:` anything else | Queued in its own squad database | It waits; `peers chats` shows it unread until a later message reaches its TUI in herdr |
 
-A target that is not live gets the line `queued, not delivered yet: <reason>`. That is not a failure: the message is in its inbox. Do not send it again, and do not add `--headless` on your own; tell the user when the work needs that peer now. Only when the user asked for a headless run, pass `--headless`: a target that is not live then runs headless for one turn (OpenCode in its service, `claude -p --resume`, `agy --conversation <id> -p`, `pi --session <file> --mode json`, `muse --yolo exec --session-id <id>`), and `peers` refuses it for an `agy` or `muse` TUI open outside herdr, where it would interleave. Headless runs for one Antigravity conversation, one pi session or one muse session go one at a time, in the order they were sent: `peers` queues a notification behind any run in progress, including one started by another peer's send, and delivers it to the TUI instead if the conversation was opened in herdr meanwhile, or to the extension if the pi session started listening meanwhile. The `SENT` line names the log the run will write.
+A target that is not live gets the line `queued, not delivered yet: <reason>`. That is not a failure: the message is in its inbox. Do not send it again, and do not add `--headless` on your own; tell the user when the work needs that peer now. Only when the user asked for a headless run, pass `--headless`: a target that is not live then runs headless for one turn (OpenCode in its service, `claude -p --resume`, `agy --conversation <id> -p`, `pi --session <file> --mode json`, `muse exec --session-id <id> --json --yolo`), and `peers` refuses it for an `agy` or `muse` TUI open outside herdr, where it would interleave. Headless runs for one Antigravity conversation, one pi session or one muse session go one at a time, in the order they were sent: `peers` queues a notification behind any run in progress, including one started by another peer's send, and delivers it to the TUI instead if the conversation was opened in herdr meanwhile, or to the extension if the pi session started listening meanwhile. The `SENT` line names the log the run will write.
 
 A peer without this skill answers only if the message tells it how. In a first request to such a peer, give it two exact commands and say plainly that it must run them: `peers open <your address>` to read your messages, and `peers send <your address> --seq <n> --kind <kind> --role <its role> --body "<text>"` to reply. Add `--squad <dir>` to both when your notification to it carried one (operating rule 5).
 
@@ -337,7 +334,7 @@ The persona body holds identity, tone and the protocol duties from Step 7; the m
 
 ## Known limitations
 
-- Only a Claude session started with the peers channel gets notifications as turns. The channel must be loaded at launch with `--dangerously-load-development-channels`, which asks for confirmation each start. A session in the desktop app or started with `--bg` cannot load it: such a session only sees queued messages in `peers chats`; run it in herdr with the channel instead.
+- Only a Claude session started with the peers channel gets notifications as turns. The channel must be loaded at launch with `--mcp-config '$(peers channel-config)'`. A session in the desktop app or started with `--bg` cannot load it: such a session only sees queued messages in `peers chats`; run it in herdr with the channel instead.
 - `claude -p --resume` refuses a session that is running; `peers` then queues the notification instead. Resuming a live interactive session from outside would split its history, so `peers` never does it.
 - `claude --bg` ignores `--session-id`.
 - OpenCode sessions with chosen IDs are refused by its free-tier models.
