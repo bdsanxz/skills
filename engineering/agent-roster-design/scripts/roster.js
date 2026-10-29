@@ -2541,7 +2541,7 @@ function cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultS
       const { argv, session } = hcMemberArgv(h, m, dir, sessionLabel(m, `${squad}-${m.name}`));
       let terminal;
       if (sid === null && !args.member) {
-        const opened = h.spaceNew(space, workspace, label, argv);
+        const opened = h.spaceNew(space, dir, label, argv);
         sid = opened.space;
         terminal = opened.terminal;
       } else if (sid !== null) {
