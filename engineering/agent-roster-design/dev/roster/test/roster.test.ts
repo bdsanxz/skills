@@ -587,51 +587,78 @@ describe("launch", () => {
 });
 
 describe("herdr-core launch", () => {
+  const stoppedHerdr = '{"sessions":[{"name":"default","default":true,"running":false}]}';
   const hcLive = (terminals: unknown[]) => ({
-    HERDR_SESSIONS: '{"sessions":[{"name":"default","default":true,"running":false}]}',
+    HERDR_SESSIONS: stoppedHerdr,
     HC_LS_CODE: "0",
     HC_JSON: JSON.stringify({ terminals }),
   });
+  const hcSpace = (spaces: unknown[]) => ({ HCAPP_JSON: JSON.stringify({ spaces }) });
 
-  test("a dry run falls back to hc when the old server is stopped", async () => {
-    clear(s.hcLog);
+  test("a dry run falls back to herdr-core tabs when the old server is stopped", async () => {
+    clear(s.hcappLog);
     clear(s.herdrLog);
-    const dry = (await roster(["launch", W, "--dry-run", "--member", "lead"], hcLive([]))).out;
-    has("hc fallback is announced", dry, "launching with herdr-core (hc) instead");
-    has("hc run starts the member", dry, `RUN hc run --bg --cwd ${W}/lead --name demo-lead claude`);
-    has("hc run carries the first prompt", dry, "Read your instructions");
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]) };
+    const dry = (await roster(["launch", W, "--dry-run", "--member", "lead"], env)).out;
+    has("hc fallback is announced", dry, "launching with herdr-core instead");
+    has("tab opens via herdr-app", dry, "RUN herdr-app do tab.new --space sp-test");
+    has("tab carries the agent argv", dry, "claude");
     has("hc launch reported", dry, "WOULD LAUNCH lead (claude");
-    has("hc backend named", dry, "OK 1 of 3 members, herdr-core (hc)");
+    has("terminal named in output", dry, "terminal <lead>");
+    has("space named in output", dry, "in Herdr app space squad-demo");
     lacks("dry run touches no old pane", read(s.herdrLog), "workspace create");
   });
 
-  test("a real run against the hc stub notifies over hc", async () => {
+  test("a full dry run opens the space first, then one tab per member", async () => {
+    clear(s.hcappLog);
+    const dry = (await roster(["launch", W, "--dry-run"], hcLive([]))).out;
+    has("space opens first", dry, "RUN herdr-app do space.new --name squad-demo");
+    has("further members open tabs", dry, "RUN herdr-app do tab.new --space");
+    has("hc launch reported", dry, "WOULD LAUNCH lead (claude");
+    has("hc backend named", dry, "OK 3 of 3 members, herdr-core (hc)");
+  });
+
+  test("a real run against the stubs notifies over hc", async () => {
     clear(s.hcLog);
+    clear(s.hcappLog);
     clear(s.herdrLog);
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]) };
     await check(
       "hc launch starts the member",
-      "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr-core, terminal demo-docs",
+      "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in Herdr app space squad-demo",
       ["launch", W, "--member", "docs"],
-      hcLive([]),
+      env,
     );
     const log = read(s.hcLog);
-    has("hc run starts agy in the member cwd", log, `run --bg --json --cwd ${W}/docs --name demo-docs agy`);
-    has("first prompt sent over hc", log, "send demo-docs Read your instructions");
+    has("tab opens via herdr-app", read(s.hcappLog), "do tab.new --space sp-test");
+    has("first prompt sent over hc", log, "send t-test2 Read your instructions");
     lacks("real run touches no old pane", read(s.herdrLog), "agent start demo-docs");
   });
 
-  test("an hc terminal that still runs is refused", async () => {
-    const running = hcLive([{ address: "t5", name: "demo-lead", cwd: `${W}/lead`, state: "live" }]);
+  test("a member launch needs its squad space", async () => {
+    await check(
+      "hc member without a space",
+      "no Herdr app space named squad-demo; launch the whole squad first",
+      ["launch", W, "--member", "lead"],
+      hcLive([]),
+    );
+  });
+
+  test("an existing space or running terminal is refused", async () => {
+    await check(
+      "hc full launch names the existing space",
+      "already has a space named squad-demo",
+      ["launch", W],
+      { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]) },
+    );
+    const running = {
+      ...hcLive([{ address: "t5", name: "demo-lead", cwd: `${W}/lead`, state: "live" }]),
+      ...hcSpace([{ id: "sp-test", name: "squad-demo" }]),
+    };
     await check(
       "hc member still running",
       "already runs as hc terminal t5",
       ["launch", W, "--member", "lead"],
-      running,
-    );
-    await check(
-      "hc full launch names what runs",
-      "herdr-core already runs 'lead' (t5)",
-      ["launch", W],
       running,
     );
   });

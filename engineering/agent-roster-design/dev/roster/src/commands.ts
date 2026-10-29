@@ -243,9 +243,10 @@ member's agent, model and effort, each agent's command on PATH, a running herdr 
 that each member is built, that the peers, agent-job and agent-shell CLIs are installed, and the layout (see \`${PROG} --help\`). A full launch also refuses
 when the session already holds the squad's workspace; with --member, a member that still
 has a pane there is refused. When no herdr session runs but herdr-core (hc) does, it
-launches there instead: each member starts with \`hc run --bg\` in its cwd under the name
-<squad>-<member>, notified with \`hc send\`. Arrange its tabs in the Herdr app afterwards;
-the launch output gives the commands.
+launches there instead: each member opens its own tab in a new Herdr app space
+named \`squad-<squad>\` via \`herdr-app do\` (never \`hc run\`, so no member sticks
+to the runner's tab), notified with \`hc send\`. With --member the tab opens in
+the squad's existing space.
 
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
@@ -296,7 +297,8 @@ roster sets one, and a \`MOVED <member>\` line for each running member moved beh
 Tab and pane are labelled with the display name, or the member name. With --dry-run: RUN
 lines with the commands it would run, and WOULD LAUNCH, WOULD MOVE, WOULD REBUILD and WOULD
 SET lines. With herdr-core the OK line names herdr-core instead of a session, and each
-LAUNCHED line names the member's hc terminal instead of a tab and pane.
+LAUNCHED line names the Herdr app space, the tab and the terminal instead of a
+session, tab and pane.
 
 On problems: PROBLEM lines, then \`Nothing was launched.\` On a failure it stops with a FAILED
 line naming the member and pane, lists the members already running and the panes of those
