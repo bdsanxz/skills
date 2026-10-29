@@ -8,19 +8,25 @@ import {
   type JsonObject,
   type SkillSources,
   display,
+  dumps,
   fail,
   isFile,
   isObject,
   join,
   parseJsonFile,
   print,
+  partition,
   reason,
   repr,
+  sessionLabel,
   shown,
+  tail,
   which,
 } from "./core";
-import { type Member, agent } from "./agents";
-import { Herdr, herdrSession } from "./herdr";
+import { type Member, agent, agyArgv, claudeArgv, museArgv, piArgv } from "./agents";
+import { agentJobPiExtension } from "./agentjob";
+import { Hc, hcName, hcTerminals } from "./hc";
+import { Herdr, field, herdrSession, text } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
 import { peersInstalled } from "./peers";
 import { agentJobInstalled } from "./agentjob";
@@ -85,6 +91,71 @@ function builtFor(workspace: string, m: Member) {
   return built;
 }
 
+/** Start one member as an hc terminal; return the runtime session id when the launch
+ * establishes one, else null. Mirrors the herdr launchers in agents.ts. */
+function launchHcMember(h: Hc, m: Member, dir: string, terminal: string, herdrName: string): string | null {
+  const label = sessionLabel(m, herdrName);
+  const dialogs = agent(m.agent).dialogs;
+  switch (m.agent) {
+    case "claude": {
+      h.startTerminal(dir, terminal, claudeArgv(m, label));
+      if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
+        h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
+      }
+      h.settle(terminal);
+      return null;
+    }
+    case "opencode": {
+      if (!m.model) {
+        h.startTerminal(dir, terminal, ["opencode"]);
+        h.firstPrompt(terminal, dialogs);
+        return null;
+      }
+      const created = h.opencodeApi(dir, "session.create", {}, {
+        title: `${label} (peers squad member)`,
+        location: { directory: dir },
+      });
+      const session = text(field(created, "data"), "id");
+      if (!session && !h.dryRun) {
+        throw new LaunchError(`\`opencode api session.create\` returned no session id: ${tail(dumps(created), 400)}`);
+      }
+      h.startTerminal(dir, terminal, ["opencode", "--session", session]);
+      h.settle(terminal);
+      const [provider, , modelId] = partition(m.model, "/");
+      const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
+      h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
+      const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+      const variant = m.effort || "default";
+      const same = now.providerID === provider && now.id === modelId && ((now.variant as string) || "default") === variant;
+      if (!h.dryRun && !same) {
+        throw new LaunchError(
+          `OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`,
+        );
+      }
+      h.firstPrompt(terminal, dialogs);
+      return session || null;
+    }
+    case "pi": {
+      const cmd = piArgv(m, label, agentJobPiExtension());
+      h.startTerminal(dir, terminal, cmd);
+      h.firstPrompt(terminal, dialogs);
+      return null;
+    }
+    case "agy": {
+      h.startTerminal(dir, terminal, agyArgv(m));
+      h.firstPrompt(terminal, dialogs);
+      return null;
+    }
+    case "muse": {
+      h.startTerminal(dir, terminal, museArgv(m));
+      h.firstPrompt(terminal, dialogs);
+      return null;
+    }
+    default:
+      throw new LaunchError(`unknown agent ${repr(m.agent)} for member ${repr(m.name)}`);
+  }
+}
+
 /** Record the member's runtime session in roster.json, so rebuild and a later launch
  * know which session is the member's. The id is what the launch established, else the
  * runtime's newest session in the member's directory. peers send/open never read it. */
@@ -111,6 +182,136 @@ function recordSession(
   print(`RECORDED ${m.name}: session ${m.agent}:${id} in roster.json`);
 }
 
+export function cmdLaunchHc(
+  args: LaunchArgs,
+  workspace: string,
+  roster: Roster,
+  members: Member[],
+  tabs: Tab[],
+  terminals: { address: string; name: string; cwd: string }[],
+  defaultSources: SkillSources,
+  problems: string[],
+  notes: string[],
+  herdrWhy: string | null,
+) {
+  const squad = String(roster.squad);
+  const byName = new Map(members.map((m) => [m.name, m]));
+  const terminalOf = (m: Member): { address: string; name: string; cwd: string } | null => {
+    const want = hcName(squad, m.name);
+    const dir = join(workspace, m.cwd);
+    return terminals.find((t) => t.name === want || t.address === want || (t.cwd !== "" && t.cwd === dir)) ?? null;
+  };
+  notes.push(
+    `old herdr ${herdrWhy ?? "session is not running"}; launching with herdr-core (hc) instead: ` +
+      "each member starts with `hc run --bg` in its cwd, notified with `hc send`",
+  );
+  const rebuild: Member[] = [];
+  const retune: Member[] = [];
+  for (const m of selected(members, args.member)) {
+    const built = builtFor(workspace, m);
+    if (!Object.keys(built).length) {
+      problems.push(`member ${repr(m.name)} is not built; run \`bun ${SCRIPT} build ${workspace}\` first`);
+    } else if (built.agent !== m.agent) rebuild.push(m);
+    else if ((built.model ?? null) !== m.model || (built.effort ?? null) !== m.effort) retune.push(m);
+    const held = terminalOf(m);
+    if (args.member && held) {
+      problems.push(
+        `member ${repr(m.name)} already runs as hc terminal ${held.address}; stop it (\`hc kill ${held.address}\`) first`,
+      );
+    }
+  }
+  if (!args.member) {
+    const running = selected(members, null).filter((m) => terminalOf(m));
+    if (running.length) {
+      problems.push(
+        `herdr-core already runs ${running.map((m) => `${repr(m.name)} (${terminalOf(m)!.address})`).join(", ")}; ` +
+          `stop each with \`hc kill <terminal>\` to start the whole squad again, or start single members with --member`,
+      );
+    }
+  }
+  for (const m of members) {
+    if (validSession(m.session) && sessionLive(m.session.runtime, m.session.id)) {
+      notes.push(`member ${repr(m.name)}: session ${m.session.runtime}:${m.session.id} is already live`);
+    }
+  }
+  report(notes, problems);
+  if (problems.length) {
+    print("Nothing was launched.");
+    throw new Exit(1);
+  }
+  const targets = selected(members, args.member);
+  print(`OK ${targets.length} of ${members.length} members, herdr-core (hc)`);
+  for (const e of targets) print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
+  for (const line of layoutLines(tabs, byName)) print(line);
+  if (rebuild.length || retune.length) {
+    if (args.dryRun) {
+      for (const m of rebuild) print(`WOULD REBUILD ${m.name} for agent ${m.agent} (instruction file, skills, configuration)`);
+      for (const m of retune) print(`WOULD ${settingsChange(m)}`);
+    } else {
+      const sources = rebuild.length ? skillSourcesOf(roster, defaultSources) : defaultSources;
+      for (const m of rebuild) {
+        print(`REBUILT ${m.name} (${m.agent}): ` + buildMember(workspace, roster, members, m, sources).join("; "));
+      }
+      for (const m of retune) {
+        writeIdentity(workspace, roster, m);
+        agent(m.agent).configure(workspace, join(workspace, m.cwd), m);
+        print(settingsChange(m));
+      }
+      for (const m of members) writeInstructions(workspace, roster, members, m);
+    }
+  }
+  const h = new Hc(args.dryRun);
+  const wanted = new Set(targets.map((m) => m.name));
+  const launched: [Member, string][] = [];
+  let failed: [Member, string | null] | null = null;
+  try {
+    for (const tab of tabs) {
+      if (!wanted.has(tab.member)) continue;
+      const m = byName.get(tab.member)!;
+      failed = [m, null];
+      const dir = join(workspace, m.cwd);
+      const terminal = hcName(squad, m.name);
+      failed = [m, terminal];
+      const established = launchHcMember(h, m, dir, terminal, `${squad}-${m.name}`);
+      launched.push([m, h.dryRun ? `<${terminal}>` : terminal]);
+      const settings = agent(m.agent).launchSettings
+        ? `model ${m.model || "the agent's own default"}, effort ${m.effort || "the agent's own default"}`
+        : `model and effort managed by ${agent(m.agent).label}`;
+      void established;
+      print(
+        `${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${m.name}${shown(m)} (${m.agent}, ${settings}) ` +
+          `in herdr-core, terminal ${h.dryRun ? `<${terminal}>` : terminal} ${repr(display(m))}`,
+      );
+      recordSession(args, roster, m, dir, h.dryRun ? null : established);
+    }
+  } catch (error) {
+    if (!(error instanceof LaunchError) || !failed) throw error;
+    const [m, terminal] = failed;
+    print(`FAILED ${m.name} (${m.agent}) as hc terminal ${terminal}: ${error.message}`);
+    const started = new Set(launched.map(([x]) => x.name));
+    const runningNow = launched.map(([x, t]) => `${x.name} (terminal ${t})`).join(", ") || "none";
+    print(
+      `Already running: ${runningNow}. Not started: ` +
+        [...byName.keys()].filter((n) => wanted.has(n) && !started.has(n)).join(", ") +
+        ". Fix the cause, " +
+        (launched.length ? `stop what started with \`hc kill <terminal>\`, then ` : "then ") +
+        "launch each member that is not running with --member.",
+    );
+    throw new Exit(1);
+  }
+  if (!args.dryRun) {
+    print(
+      "Find each member's address with `peers list`, " +
+        "by its directory. The squad starts working when the lead receives a request through peers.",
+    );
+  }
+  print(
+    `NOTE the members run as hc terminals (\`hc ls\`); to watch them in the Herdr app, ` +
+      `create a space named ${workspaceLabel(roster)} and open one tab per member in TAB order ` +
+      `(\`herdr-app do space.new --name ${workspaceLabel(roster)} --folder ${workspace}\`, then \`herdr-app ls\` to place them).`,
+  );
+}
+
 export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
   const workspace = args.workspace;
   const roster = loadRoster(workspace);
@@ -127,11 +328,20 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
   if (!agentShellInstalled()) {
     problems.push(`the agent-shell CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
+  let herdrWhy: string | null = null;
   if (members !== null) {
     const [found, why] = herdrSession(args.session);
     session = found;
-    if (why) problems.push(why);
+    herdrWhy = why;
     tabs = planLayout(members);
+    if (!session) {
+      const terminals = hcTerminals();
+      if (terminals !== null) {
+        cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultSources, problems, notes, herdrWhy);
+        return;
+      }
+      if (why) problems.push(`${why}; no herdr-core terminal either (\`hc ls\` failed: is herdr-core running?)`);
+    }
   }
   if (session) state = squadState(new Herdr(session, true), roster);
   let ws = state[0];

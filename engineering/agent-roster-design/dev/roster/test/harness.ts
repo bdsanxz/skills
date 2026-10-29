@@ -144,6 +144,23 @@ case "$1" in
 esac
 `;
 
+/** hc: logs every call; HC_LS_CODE=0 with HC_JSON makes `hc ls --json` list a
+ * live core, otherwise it fails and the old herdr path stays in charge. */
+const HC = `#!/bin/bash
+echo "$*" >>"$HC_LOG"
+if [ "$1" = ls ]; then
+  [ "\${HC_LS_CODE:-1}" != 0 ] && exit 1
+  if [ -n "\${HC_JSON:-}" ]; then printf '%s' "$HC_JSON"; else printf '{"terminals":[]}'; fi
+  exit 0
+fi
+if [ "$1" = run ]; then echo '{"address":"t99","name":"hc-test"}'; exit 0; fi
+if [ "$1" = wait ]; then exit 0; fi
+if [ "$1" = read ]; then exit 0; fi
+if [ "$1" = send ]; then exit 0; fi
+if [ "$1" = keys ]; then exit 0; fi
+echo "unexpected hc call: $*" >&2; exit 9
+`;
+
 /** The agent-job install script build fetches; INSTALLER_FAIL=1 makes it fail. */
 export const AGENT_JOB_INSTALLER = `[ "\${INSTALLER_FAIL:-}" = 1 ] && { echo "agent-job-install: error: no release" >&2; exit 1; }
 dir="\${AGENT_JOB_INSTALL_DIR:-$HOME/.local/bin}"
@@ -169,9 +186,10 @@ export type Squad = {
   npxLog: string;
   herdrLog: string;
   opencodeLog: string;
+  hcLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
@@ -187,6 +205,7 @@ export function setUp(): Squad {
     npxLog: path.join(tmp, "npx.log"),
     herdrLog: path.join(tmp, "herdr.log"),
     opencodeLog: path.join(tmp, "opencode.log"),
+    hcLog: path.join(tmp, "hc.log"),
   };
   fs.mkdirSync(squad.w);
   savedEnv = { ...process.env };
@@ -195,6 +214,7 @@ export function setUp(): Squad {
     NPX_LOG: squad.npxLog,
     HERDR_LOG: squad.herdrLog,
     OPENCODE_LOG: squad.opencodeLog,
+    HC_LOG: squad.hcLog,
     PEERS_CACHE: path.join(tmp, "cache"),
     AGENT_JOB_INSTALL_DIR: path.join(tmp, "agent-job-bin"),
     AGENT_JOB_HOME: path.join(tmp, "agent-job-home"),

@@ -235,14 +235,17 @@ line when it installed that CLI (with the same WARNING), then one \`BUILT <membe
 
 const LAUNCH: Command = {
   name: "launch",
-  summary: "Start the built squad in herdr, one workspace with a tab per member, each member on its agent, model and effort.",
+  summary: "Start the built squad in herdr, each member on its agent, model and effort (herdr-core when herdr is stopped).",
   description: `
 Use it only when the user asks to start the squad: run it with --dry-run first, then
 without. Validates everything first and launches nothing on a problem: the roster, every
 member's agent, model and effort, each agent's command on PATH, a running herdr session,
 that each member is built, that the peers, agent-job and agent-shell CLIs are installed, and the layout (see \`${PROG} --help\`). A full launch also refuses
 when the session already holds the squad's workspace; with --member, a member that still
-has a pane there is refused.
+has a pane there is refused. When no herdr session runs but herdr-core (hc) does, it
+launches there instead: each member starts with \`hc run --bg\` in its cwd under the name
+<squad>-<member>, notified with \`hc send\`. Arrange its tabs in the Herdr app afterwards;
+the launch output gives the commands.
 
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
@@ -282,7 +285,7 @@ roster.json; edit roster.json to keep a change.`,
       name: "--dry-run",
       dest: "dryRun",
       flag: true,
-      help: "validate and print the herdr commands (RUN lines), but start and change nothing",
+      help: "validate and print the commands it would run (RUN lines), but start and change nothing",
     },
   ],
   output: `
@@ -292,7 +295,8 @@ The check's MEMBER and TAB lines (\`OK <n> of <m> members, herdr session <s>\` f
 roster sets one, and a \`MOVED <member>\` line for each running member moved behind a new tab.
 Tab and pane are labelled with the display name, or the member name. With --dry-run: RUN
 lines with the commands it would run, and WOULD LAUNCH, WOULD MOVE, WOULD REBUILD and WOULD
-SET lines.
+SET lines. With herdr-core the OK line names herdr-core instead of a session, and each
+LAUNCHED line names the member's hc terminal instead of a tab and pane.
 
 On problems: PROBLEM lines, then \`Nothing was launched.\` On a failure it stops with a FAILED
 line naming the member and pane, lists the members already running and the panes of those
@@ -326,15 +330,16 @@ Check, build and launch a squad of peer agents from <workspace>/roster.json. The
 holds roster.json and one directory per member, each with the member's PROJECT.md, ROLE.md,
 COMMUNICATIONS.md and MEMORY.md. Each member runs one agent (${AGENT_NAMES}) with one
 model and one effort level. Use it to validate a squad design, to write each member's
-instruction file and install its skills, and to start the squad in herdr. Run
+instruction file and install its skills, and to start the squad in herdr (or in
+herdr-core when no herdr session runs). Run
 \`${PROG} <command> --help\` (or \`${PROG} help <command>\`) for the details of one command.`;
 
 const FOOTER = `
 typical workflow (the order the skill runs the commands):
   1. check <workspace>             validate; fix every PROBLEM and run it again
   2. build <workspace>             write each member's files and install its skills
-  3. launch <workspace> --dry-run  preview the herdr commands
-  4. launch <workspace>            start the squad in herdr
+  3. launch <workspace> --dry-run  preview the commands it would run
+  4. launch <workspace>            start the squad (herdr-core when herdr is stopped)
   Run each as \`${RUN} <command> ...\`, from this skill's directory. After
   roster.json changes: assemble <workspace>, or build <workspace> --member NAME.
 
