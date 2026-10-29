@@ -43,14 +43,14 @@ The command is everything after `--`; use `sh -c '...'` for shell features (pipe
 
 ## Step 3: Read the result
 
-The notify turn arrives on its own. Read the job once:
+The notify turn arrives on its own. Verify the job once before using its result:
 
 ```bash
+agent-shell check <id>
 agent-shell show <id>
-agent-shell tail <id> --lines 50
 ```
 
-`show` prints the state (`done`, `failed`, `killed`), the exit code, the notify detail and the tail of the output. Act on it in your next turn: report the failure, fix it, or continue the work that needed it.
+`check` prints one `ok`/`FAIL` line per item — finished state, recorded exit code, readable output, delivered notify — plus a `check <id>: 4/4 pass` summary. It exits 0 only when all four pass. A killed job fails the check (partial output, no notify); a running job exits 2. When the check passes, read the output with `show` (state, exit code, notify detail, output tail) or `tail`. Act on it in your next turn: report the failure, fix it, or continue the work that needed it.
 
 ## Step 4: Manage jobs
 
