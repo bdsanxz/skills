@@ -89,10 +89,15 @@ function configureNothing() {
   return null;
 }
 
-export function claudeArgv(m: Member, label: string): string[] {
+export function claudeBaseArgv(m: Member, label: string): string[] {
   const cmd = ["claude", "--dangerously-skip-permissions", "-n", label];
   if (m.model) cmd.push("--model", m.model);
   if (m.effort) cmd.push("--effort", m.effort);
+  return cmd;
+}
+
+export function claudeArgv(m: Member, label: string): string[] {
+  const cmd = claudeBaseArgv(m, label);
   // Keep the "--" so a prompt starting with a dash is not parsed as a flag.
   // The agent-job channel comes from the member's .mcp.json; no extra flag loads it.
   cmd.push("--", FIRST_PROMPT);

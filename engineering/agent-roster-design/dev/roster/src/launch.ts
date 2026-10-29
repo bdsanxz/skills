@@ -23,10 +23,10 @@ import {
   tail,
   which,
 } from "./core";
-import { type Member, agent, agyArgv, claudeArgv, museArgv, piArgv } from "./agents";
+import { type Member, agent, agyArgv, claudeBaseArgv, museArgv, piArgv } from "./agents";
 import { agentJobPiExtension } from "./agentjob";
-import { Hc, hcName, hcTerminals } from "./hc";
-import { Herdr, field, herdrSession, text } from "./herdr";
+import { Hc, appSpaces, haveApp, hcSpaceName, hcTerminals } from "./hc";
+import { FIRST_PROMPT, Herdr, field, herdrSession, text } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
 import { peersInstalled } from "./peers";
 import { agentJobInstalled } from "./agentjob";
@@ -91,26 +91,16 @@ function builtFor(workspace: string, m: Member) {
   return built;
 }
 
-/** Start one member as an hc terminal; return the runtime session id when the launch
- * establishes one, else null. Mirrors the herdr launchers in agents.ts. */
-function launchHcMember(h: Hc, m: Member, dir: string, terminal: string, herdrName: string): string | null {
-  const label = sessionLabel(m, herdrName);
-  const dialogs = agent(m.agent).dialogs;
+/** Build one member's agent argv for herdr-core, without the first prompt: it is
+ * always sent with `hc send` after the tab opens, so it is delivered exactly
+ * once even when the tab opens on a trust dialog. Returns the argv and the
+ * runtime session id when creating one is part of opening the tab. */
+function hcMemberArgv(h: Hc, m: Member, dir: string, label: string): { argv: string[]; session: string | null } {
   switch (m.agent) {
-    case "claude": {
-      h.startTerminal(dir, terminal, claudeArgv(m, label));
-      if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
-        h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
-      }
-      h.settle(terminal);
-      return null;
-    }
+    case "claude":
+      return { argv: claudeBaseArgv(m, label), session: null };
     case "opencode": {
-      if (!m.model) {
-        h.startTerminal(dir, terminal, ["opencode"]);
-        h.firstPrompt(terminal, dialogs);
-        return null;
-      }
+      if (!m.model) return { argv: ["opencode"], session: null };
       const created = h.opencodeApi(dir, "session.create", {}, {
         title: `${label} (peers squad member)`,
         location: { directory: dir },
@@ -119,41 +109,45 @@ function launchHcMember(h: Hc, m: Member, dir: string, terminal: string, herdrNa
       if (!session && !h.dryRun) {
         throw new LaunchError(`\`opencode api session.create\` returned no session id: ${tail(dumps(created), 400)}`);
       }
-      h.startTerminal(dir, terminal, ["opencode", "--session", session]);
-      h.settle(terminal);
-      const [provider, , modelId] = partition(m.model, "/");
-      const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
-      h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
-      const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
-      const variant = m.effort || "default";
-      const same = now.providerID === provider && now.id === modelId && ((now.variant as string) || "default") === variant;
-      if (!h.dryRun && !same) {
-        throw new LaunchError(
-          `OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`,
-        );
-      }
-      h.firstPrompt(terminal, dialogs);
-      return session || null;
+      return { argv: ["opencode", "--session", session], session: session || null };
     }
-    case "pi": {
-      const cmd = piArgv(m, label, agentJobPiExtension());
-      h.startTerminal(dir, terminal, cmd);
-      h.firstPrompt(terminal, dialogs);
-      return null;
-    }
-    case "agy": {
-      h.startTerminal(dir, terminal, agyArgv(m));
-      h.firstPrompt(terminal, dialogs);
-      return null;
-    }
-    case "muse": {
-      h.startTerminal(dir, terminal, museArgv(m));
-      h.firstPrompt(terminal, dialogs);
-      return null;
-    }
+    case "pi":
+      return { argv: piArgv(m, label, agentJobPiExtension()), session: null };
+    case "agy":
+      return { argv: agyArgv(m), session: null };
+    case "muse":
+      return { argv: museArgv(m), session: null };
     default:
       throw new LaunchError(`unknown agent ${repr(m.agent)} for member ${repr(m.name)}`);
   }
+}
+
+/** Settle one member's tab, answer its known dialogs, and send the first prompt. */
+function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session: string | null) {
+  const dialogs = agent(m.agent).dialogs;
+  if (m.agent === "claude") {
+    if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
+      h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
+    }
+    h.settle(terminal);
+    h.sendPrompt(terminal, FIRST_PROMPT);
+    return;
+  }
+  h.settle(terminal);
+  if (m.agent === "opencode" && session) {
+    const [provider, , modelId] = partition(m.model ?? "", "/");
+    const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
+    h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
+    const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+    const variant = m.effort || "default";
+    const same = now.providerID === provider && now.id === modelId && ((now.variant as string) || "default") === variant;
+    if (!h.dryRun && !same) {
+      throw new LaunchError(
+        `OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`,
+      );
+    }
+  }
+  h.firstPrompt(terminal, dialogs);
 }
 
 /** Record the member's runtime session in roster.json, so rebuild and a later launch
@@ -195,16 +189,25 @@ export function cmdLaunchHc(
   herdrWhy: string | null,
 ) {
   const squad = String(roster.squad);
+  const space = hcSpaceName(squad);
   const byName = new Map(members.map((m) => [m.name, m]));
   const terminalOf = (m: Member): { address: string; name: string; cwd: string } | null => {
-    const want = hcName(squad, m.name);
     const dir = join(workspace, m.cwd);
-    return terminals.find((t) => t.name === want || t.address === want || (t.cwd !== "" && t.cwd === dir)) ?? null;
+    return terminals.find((t) => t.cwd !== "" && t.cwd === dir) ?? null;
   };
   notes.push(
-    `old herdr ${herdrWhy ?? "session is not running"}; launching with herdr-core (hc) instead: ` +
-      "each member starts with `hc run --bg` in its cwd, notified with `hc send`",
+    `old herdr ${herdrWhy ?? "session is not running"}; launching with herdr-core instead: ` +
+      `each member opens its own tab in Herdr app space ${space} via \`herdr-app do\` (no parent terminal), notified with \`hc send\``,
   );
+  if (!haveApp()) {
+    problems.push("the Herdr app CLI (herdr-app) is not on PATH; install it before launching to herdr-core");
+  }
+  let spaceId: string | null = null;
+  const spaces = haveApp() ? appSpaces() : null;
+  if (haveApp() && !spaces) {
+    problems.push("the Herdr app did not answer (`herdr-app ls` failed); open the Herdr app and launch again");
+  }
+  if (spaces) spaceId = spaces.get(space) ?? null;
   const rebuild: Member[] = [];
   const retune: Member[] = [];
   for (const m of selected(members, args.member)) {
@@ -220,7 +223,16 @@ export function cmdLaunchHc(
       );
     }
   }
-  if (!args.member) {
+  if (args.member) {
+    if (spaces && !spaceId) {
+      problems.push(`no Herdr app space named ${space}; launch the whole squad first`);
+    }
+  } else if (spaceId) {
+    problems.push(
+      `the Herdr app already has a space named ${space}; close it in the app to start the whole squad again, ` +
+        `or start single members with --member`,
+    );
+  } else {
     const running = selected(members, null).filter((m) => terminalOf(m));
     if (running.length) {
       problems.push(
@@ -264,30 +276,41 @@ export function cmdLaunchHc(
   const wanted = new Set(targets.map((m) => m.name));
   const launched: [Member, string][] = [];
   let failed: [Member, string | null] | null = null;
+  let sid = spaceId;
   try {
     for (const tab of tabs) {
       if (!wanted.has(tab.member)) continue;
       const m = byName.get(tab.member)!;
       failed = [m, null];
       const dir = join(workspace, m.cwd);
-      const terminal = hcName(squad, m.name);
+      const label = display(m);
+      const { argv, session } = hcMemberArgv(h, m, dir, sessionLabel(m, `${squad}-${m.name}`));
+      let terminal: string;
+      if (sid === null && !args.member) {
+        const opened = h.spaceNew(space, workspace, label, argv);
+        sid = opened.space;
+        terminal = opened.terminal;
+      } else if (sid !== null) {
+        terminal = h.tabNew(sid, label, dir, argv);
+      } else {
+        throw new LaunchError(`no Herdr app space named ${space}; launch the whole squad first`);
+      }
       failed = [m, terminal];
-      const established = launchHcMember(h, m, dir, terminal, `${squad}-${m.name}`);
-      launched.push([m, h.dryRun ? `<${terminal}>` : terminal]);
+      launchHcAgent(h, m, dir, terminal, session);
+      launched.push([m, terminal]);
       const settings = agent(m.agent).launchSettings
         ? `model ${m.model || "the agent's own default"}, effort ${m.effort || "the agent's own default"}`
         : `model and effort managed by ${agent(m.agent).label}`;
-      void established;
       print(
         `${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${m.name}${shown(m)} (${m.agent}, ${settings}) ` +
-          `in herdr-core, terminal ${h.dryRun ? `<${terminal}>` : terminal} ${repr(display(m))}`,
+          `in Herdr app space ${space}, tab ${repr(label)} (terminal ${terminal})`,
       );
-      recordSession(args, roster, m, dir, h.dryRun ? null : established);
+      recordSession(args, roster, m, dir, h.dryRun ? null : session);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed) throw error;
     const [m, terminal] = failed;
-    print(`FAILED ${m.name} (${m.agent}) as hc terminal ${terminal}: ${error.message}`);
+    print(`FAILED ${m.name} (${m.agent}) in Herdr app space ${space} (terminal ${terminal ?? "none yet"}): ${error.message}`);
     const started = new Set(launched.map(([x]) => x.name));
     const runningNow = launched.map(([x, t]) => `${x.name} (terminal ${t})`).join(", ") || "none";
     print(
@@ -305,11 +328,7 @@ export function cmdLaunchHc(
         "by its directory. The squad starts working when the lead receives a request through peers.",
     );
   }
-  print(
-    `NOTE the members run as hc terminals (\`hc ls\`); to watch them in the Herdr app, ` +
-      `create a space named ${workspaceLabel(roster)} and open one tab per member in TAB order ` +
-      `(\`herdr-app do space.new --name ${workspaceLabel(roster)} --folder ${workspace}\`, then \`herdr-app ls\` to place them).`,
-  );
+  print(`NOTE the members run in Herdr app space ${space}, one tab per member in TAB order, with no parent terminal.`);
 }
 
 export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
@@ -334,13 +353,15 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
     session = found;
     herdrWhy = why;
     tabs = planLayout(members);
-    if (!session) {
+    if (!session && args.session === null) {
       const terminals = hcTerminals();
       if (terminals !== null) {
         cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultSources, problems, notes, herdrWhy);
         return;
       }
       if (why) problems.push(`${why}; no herdr-core terminal either (\`hc ls\` failed: is herdr-core running?)`);
+    } else if (!session && why) {
+      problems.push(why);
     }
   }
   if (session) state = squadState(new Herdr(session, true), roster);

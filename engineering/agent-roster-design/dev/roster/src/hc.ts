@@ -1,7 +1,8 @@
-// herdr-core backend: start members with `hc run --bg` in their cwd, notify
-// them with `hc send`. Used when the old herdr server is stopped but `hc`
-// lists a live core. Tabs are not arranged here; the launch output names the
-// `herdr-app` commands that show the terminals.
+// herdr-core backend: open one Herdr app tab per member with `herdr-app do
+// tab.new`, notify them with `hc send`. Used when the old herdr server is
+// stopped but `hc` lists a live core. Terminals opened by herdr-app have no
+// parent, so members never stick to the runner's tab; never start them with
+// `hc run` from inside an agent.
 
 import {
   LaunchError,
@@ -30,6 +31,35 @@ export function hcName(squad: string, member: string): string {
 /** Whether the hc command exists. */
 export function haveHc(): boolean {
   return which("hc") !== null;
+}
+
+/** Whether the Herdr app CLI exists. */
+export function haveApp(): boolean {
+  return which("herdr-app") !== null;
+}
+
+/** Herdr app spaces by name, or null when the app cannot be listed. */
+export function appSpaces(): Map<string, string> | null {
+  if (!haveApp()) return null;
+  const done = run(["herdr-app", "ls"], { timeoutMs: TIMEOUT_MS });
+  if (done.timedOut || done.code !== 0) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(done.stdout);
+  } catch {
+    return null;
+  }
+  if (!isObject(parsed) || !Array.isArray(parsed.spaces)) return null;
+  const out = new Map<string, string>();
+  for (const s of parsed.spaces) {
+    if (isObject(s) && typeof s.id === "string" && typeof s.name === "string") out.set(s.name, s.id);
+  }
+  return out;
+}
+
+/** The Herdr app space name for a squad. */
+export function hcSpaceName(squad: string): string {
+  return `squad-${squad}`;
 }
 
 export type HcTerminal = { address: string; name: string; cwd: string };
@@ -81,23 +111,79 @@ export class Hc {
     return output;
   }
 
-  /** Start a terminal with `hc run --bg --json`; return its address. */
-  startTerminal(cwd: string, name: string, argv: string[]): string {
+  /** Run a `herdr-app do` command and return its stdout. */
+  app(argv: string[], note?: string): string {
+    const cmd = ["herdr-app", "do", ...argv];
     if (this.dryRun) {
-      this.run(["run", "--bg", "--cwd", cwd, "--name", name, ...argv]);
-      return `<${name}>`;
+      print("RUN " + shlexJoin(cmd) + (note ? `   # ${note}` : ""));
+      return "";
     }
-    const output = this.run(["run", "--bg", "--json", "--cwd", cwd, "--name", name, ...argv]);
+    const done = run(cmd, { timeoutMs: TIMEOUT_MS });
+    if (done.timedOut) throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within 120 s`);
+    if (done.code !== 0) {
+      throw new LaunchError(`\`${shlexJoin(cmd)}\` failed (exit ${done.code}): ${tail(strip(done.stdout + done.stderr), 800)}`);
+    }
+    return done.stdout;
+  }
+
+  /** Parse a `herdr-app do` call that returns {space, tab, terminal}. */
+  appTerminal(argv: string[], note: string, dryTerminal: string): string {
+    if (this.dryRun) {
+      this.app(argv, note);
+      return dryTerminal;
+    }
+    const output = this.app(argv);
     let parsed: unknown;
     try {
       parsed = JSON.parse(output);
     } catch {
-      throw new LaunchError(`\`hc run --bg --name ${name}\` printed no JSON: ${tail(strip(output), 400)}`);
+      throw new LaunchError(`\`herdr-app do ${shlexJoin(argv)}\` printed no JSON: ${tail(strip(output), 400)}`);
     }
-    if (!isObject(parsed)) throw new LaunchError(`\`hc run --bg --name ${name}\` printed no JSON object`);
-    const address = typeof parsed.address === "string" ? parsed.address : "";
-    if (address === "") throw new LaunchError(`\`hc run --bg --name ${name}\` reported no terminal address`);
-    return address;
+    if (!isObject(parsed) || typeof parsed.terminal !== "string" || parsed.terminal === "") {
+      throw new LaunchError(`\`herdr-app do ${shlexJoin(argv)}\` reported no terminal: ${tail(strip(output), 400)}`);
+    }
+    return parsed.terminal;
+  }
+
+  /** Parse a `herdr-app do` call that returns {space, tab, terminal}. */
+  appSpace(argv: string[], note: string, dry: { space: string; terminal: string }): { space: string; terminal: string } {
+    if (this.dryRun) {
+      this.app(argv, note);
+      return dry;
+    }
+    const output = this.app(argv);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      throw new LaunchError(`\`herdr-app do ${shlexJoin(argv)}\` printed no JSON: ${tail(strip(output), 400)}`);
+    }
+    if (!isObject(parsed) || typeof parsed.terminal !== "string" || parsed.terminal === "") {
+      throw new LaunchError(`\`herdr-app do ${shlexJoin(argv)}\` reported no terminal: ${tail(strip(output), 400)}`);
+    }
+    const space = typeof parsed.space === "string" && parsed.space !== "" ? parsed.space : "";
+    if (space === "") {
+      throw new LaunchError(`\`herdr-app do ${shlexJoin(argv)}\` reported no space: ${tail(strip(output), 400)}`);
+    }
+    return { space, terminal: parsed.terminal };
+  }
+
+  /** Open the squad's space with its first tab running argv; return the space id and terminal. */
+  spaceNew(space: string, folder: string, tab: string, argv: string[]): { space: string; terminal: string } {
+    return this.appSpace(
+      ["space.new", "--name", space, "--folder", folder, "--tab", tab, "--argv", dumps(argv)],
+      `space ${space}`,
+      { space: `<${space}>`, terminal: `<${tab}>` },
+    );
+  }
+
+  /** Open one more tab in the squad's space running argv; return the terminal. */
+  tabNew(space: string, tab: string, folder: string, argv: string[]): string {
+    return this.appTerminal(
+      ["tab.new", "--space", space, "--name", tab, "--folder", folder, "--argv", dumps(argv)],
+      `tab ${tab}`,
+      `<${tab}>`,
+    );
   }
 
   /** Wait until the terminal stops working (idle) or exits; timeouts only check in. */

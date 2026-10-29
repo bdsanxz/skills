@@ -144,6 +144,16 @@ case "$1" in
 esac
 `;
 
+/** herdr-app: logs every call; HCAPP_JSON sets the `ls` spaces, HCAPP_LS_CODE=1
+ * makes it fail. space.new and tab.new report fixed test terminals. */
+const HCAPP = `#!/bin/bash
+echo "$*" >>"$HCAPP_LOG"
+if [ "$1 $2" = "do space.new" ]; then printf '{"space":"sp-test","tab":"tb-test1","terminal":"t-test1"}'; exit 0; fi
+if [ "$1 $2" = "do tab.new" ]; then printf '{"space":"sp-test","tab":"tb-test2","terminal":"t-test2"}'; exit 0; fi
+if [ "$1" = ls ]; then if [ -n "\${HCAPP_JSON:-}" ]; then printf '%s' "$HCAPP_JSON"; else printf '{"spaces":[]}'; fi; exit \${HCAPP_LS_CODE:-0}; fi
+echo "unexpected herdr-app call: $*" >&2; exit 9
+`;
+
 /** hc: logs every call; HC_LS_CODE=0 with HC_JSON makes `hc ls --json` list a
  * live core, otherwise it fails and the old herdr path stays in charge. */
 const HC = `#!/bin/bash
@@ -187,9 +197,10 @@ export type Squad = {
   herdrLog: string;
   opencodeLog: string;
   hcLog: string;
+  hcappLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, "herdr-app": HCAPP, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
@@ -206,6 +217,7 @@ export function setUp(): Squad {
     herdrLog: path.join(tmp, "herdr.log"),
     opencodeLog: path.join(tmp, "opencode.log"),
     hcLog: path.join(tmp, "hc.log"),
+    hcappLog: path.join(tmp, "hcapp.log"),
   };
   fs.mkdirSync(squad.w);
   savedEnv = { ...process.env };
@@ -215,6 +227,7 @@ export function setUp(): Squad {
     HERDR_LOG: squad.herdrLog,
     OPENCODE_LOG: squad.opencodeLog,
     HC_LOG: squad.hcLog,
+    HCAPP_LOG: squad.hcappLog,
     PEERS_CACHE: path.join(tmp, "cache"),
     AGENT_JOB_INSTALL_DIR: path.join(tmp, "agent-job-bin"),
     AGENT_JOB_HOME: path.join(tmp, "agent-job-home"),
