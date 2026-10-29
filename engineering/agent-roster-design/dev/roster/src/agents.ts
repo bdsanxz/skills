@@ -89,13 +89,39 @@ function configureNothing() {
   return null;
 }
 
-function launchClaude(h: Herdr, m: Member, pane: string, name: string): string | null {
-  const cmd = ["claude", "--dangerously-skip-permissions", "-n", sessionLabel(m, name)];
+export function claudeArgv(m: Member, label: string): string[] {
+  const cmd = ["claude", "--dangerously-skip-permissions", "-n", label];
   if (m.model) cmd.push("--model", m.model);
   if (m.effort) cmd.push("--effort", m.effort);
   // Keep the "--" so a prompt starting with a dash is not parsed as a flag.
   // The agent-job channel comes from the member's .mcp.json; no extra flag loads it.
   cmd.push("--", FIRST_PROMPT);
+  return cmd;
+}
+
+export function piArgv(m: Member, label: string, ext: string): string[] {
+  const args = ["pi", "--approve", "-e", ext, "--name", label];
+  if (m.model) args.push("--model", m.model);
+  if (m.effort) args.push("--thinking", m.effort);
+  return args;
+}
+
+export function agyArgv(m: Member): string[] {
+  const args = ["agy", "--dangerously-skip-permissions"];
+  if (m.model) args.push("--model", m.model);
+  if (m.effort) args.push("--effort", m.effort);
+  return args;
+}
+
+export function museArgv(m: Member): string[] {
+  const args = ["muse", "--yolo"];
+  if (m.model) args.push("--model", m.model);
+  if (m.effort) args.push("--effort", m.effort);
+  return args;
+}
+
+function launchClaude(h: Herdr, m: Member, pane: string, name: string): string | null {
+  const cmd = claudeArgv(m, sessionLabel(m, name));
   h.run(["pane", "run", pane, shlexJoin(cmd)]);
   // Claude asks to trust a new folder before it starts; "No, exit" is preselected, and the
   // member cwd is one the roster names. No channel banner is matched: readiness is the
@@ -167,9 +193,7 @@ function launchPi(h: Herdr, m: Member, pane: string, name: string): string | nul
   // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
   // asking. -e loads the agent-job extension for this session only, from the file the installed
   // CLI writes, so it matches its binary. pi's --thinking takes every level.
-  const args = ["--approve", "-e", agentJobPiExtension(), "--name", sessionLabel(m, name)];
-  if (m.model) args.push("--model", m.model);
-  if (m.effort) args.push("--thinking", m.effort);
+  const args = piArgv(m, sessionLabel(m, name), agentJobPiExtension()).slice(1);
   h.startAgent(name, "pi", pane, args);
   h.firstPrompt(name, pane, AGENTS.pi!.dialogs);
   // pi's session id is known only to its runtime; launch records it by lookup instead.
@@ -177,9 +201,7 @@ function launchPi(h: Herdr, m: Member, pane: string, name: string): string | nul
 }
 
 function launchAgy(h: Herdr, m: Member, pane: string, name: string): string | null {
-  const args = ["--dangerously-skip-permissions"];
-  if (m.model) args.push("--model", m.model);
-  if (m.effort) args.push("--effort", m.effort);
+  const args = agyArgv(m).slice(1);
   h.startAgent(name, "agy", pane, args, true);
   h.firstPrompt(name, pane, AGENTS.agy!.dialogs);
   // The conversation id is known only to its runtime; launch records it by lookup instead.
@@ -189,9 +211,7 @@ function launchAgy(h: Herdr, m: Member, pane: string, name: string): string | nu
 function launchMuse(h: Herdr, m: Member, pane: string, name: string): string | null {
   // Muse peers always run with --yolo: nobody answers a peer's approval prompts, and the member's
   // cwd is trusted so its AGENTS.md and project skills load without asking.
-  const args = ["--yolo"];
-  if (m.model) args.push("--model", m.model);
-  if (m.effort) args.push("--effort", m.effort);
+  const args = museArgv(m).slice(1);
   h.startAgent(name, "muse", pane, args);
   h.firstPrompt(name, pane, AGENTS.muse!.dialogs);
   // Muse's session id is known only to its runtime; launch records it by lookup instead.

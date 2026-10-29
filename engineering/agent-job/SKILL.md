@@ -1,17 +1,17 @@
 ---
 name: agent-job
 description: |
-  Puts instructions into a live agent session at the right moment: natively through `/loop` and `/goal` for runtimes that have them (Claude Code, the Antigravity CLI, Muse Code, sent with `herdr agent prompt`), and through the `agent-job` command and its daemon for the rest (OpenCode, pi). Use when the user wants a reminder, a task repeated or run later in a session, a session kept working until an objective holds, or another session reminded. Do not use for work that must run with no agent open; use the system scheduler.
+  Puts instructions into a live agent session at the right moment: natively through `/loop` and `/goal` for runtimes that have them (Claude Code, the Antigravity CLI, Muse Code, sent with `herdr agent prompt`, or `hc send` when the old server is stopped), and through the `agent-job` command and its daemon for the rest (OpenCode, pi). Use when the user wants a reminder, a task repeated or run later in a session, a session kept working until an objective holds, or another session reminded. Do not use for work that must run with no agent open; use the system scheduler.
 ---
 
 # Agent Job
 
-One principle: use the runtime's native command whenever it has one; use the `agent-job` command and its daemon only for runtimes that do not. A native send is a single `herdr agent prompt` into the member's TUI — no daemon, watch, channel, setup or hooks.
+One principle: use the runtime's native command whenever it has one; use the `agent-job` command and its daemon only for runtimes that do not. A native send is a single `herdr agent prompt` into the member's TUI (or `hc send` into its herdr-core terminal when the old server is stopped) — no daemon, watch, channel, setup or hooks.
 
 ## Words
 
 - An **address** names a session: `claude:<id>`, `opencode:<id>`, `antigravity:<id>`, `pi:<id>` or `muse:<id>`.
-- A session is **open** while its runtime shows it: a TUI in herdr, a running OpenCode turn, a fresh pi extension listener, a live channel or extension lease.
+- A session is **open** while its runtime shows it: a TUI in herdr or herdr-core, a running OpenCode turn, a fresh pi extension listener, a live channel or extension lease.
 - A **repeat** runs an instruction again: natively with `/loop`, else with an `agent-job` **cron**, which fires at a time.
 - A **goal** keeps one objective alive: natively with `/goal`, else with an `agent-job` **goal**, which fires at creation, at every turn end, and after a compaction.
 
@@ -19,7 +19,7 @@ One principle: use the runtime's native command whenever it has one; use the `ag
 
 1. Write the instruction or objective so that it stands alone. It arrives as a new turn, possibly much later; say what to do and what to report, not "do that again".
 2. Send only into an open session, only your own or one the user named. Never start a session or run one headless to receive anything. When a session is gone, its repeats and goals end with it; tell the user which ended and why.
-3. Native sends are fire-and-forget: one `herdr agent prompt`, then read the member back once to confirm the acknowledgement. Never sleep, poll, or loop waiting for it.
+3. Native sends are fire-and-forget: one `herdr agent prompt` (`hc send` to a herdr-core terminal when the old server is stopped), then read the member back once to confirm the acknowledgement. Never sleep, poll, or loop waiting for it.
 4. Daemon sends come from `agent-job cron|goal create`, which refuses a session that does not look open (`--force` only when the user asks). Confirm back the schedule or start that the `create` output prints, and act on any `ARM:` or `SETUP:` line it prints: show it to the user and let them apply it; never install, configure, or restart anything yourself.
 5. Treat each delivery like the user's own request for that moment, and no more: it authorizes nothing the user has not.
 6. Close properly. A daemon goal ends only through `goal done` (with checked evidence) or `goal blocked` (with what you need); never mark one done to stop the messages. A native `/goal` or `/loop` ends through the runtime's own goal and loop controls.
@@ -78,6 +78,8 @@ State the objective as a condition you can check, and say what counts as evidenc
 ```
 agent-job goal create --prompt "All tests under test/ pass with `bun test`, and no test is skipped or deleted to get there."
 ```
+
+`--objective` is an alias for `--prompt` on `goal create` (and `cron create`).
 
 A session holds at most one daemon goal; `create` refuses a second one. Without `--max-turns` it runs until marked done or blocked; `--max-turns <n>` caps continuations, ending with one last message saying it stopped (report where it stands). Creating a goal for your own session prints guidance instead of sending anything: start working on the objective. For another session, the start message is sent into it. `goal resume` takes effect at the next turn end; it does not nudge an idle session by itself.
 

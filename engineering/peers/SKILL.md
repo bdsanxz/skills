@@ -1,12 +1,12 @@
 ---
 name: peers
 description: |
-  Lets agent sessions in one herdr workspace message each other in any direction through the `peers` command, an inbox messenger: messages keep their chat history, and the receiver is notified as an ordinary turn with one fire-and-forget `herdr agent prompt`. Use when the user wants sessions to talk to each other, report back, hand work between members, coordinate long-running work, or resume an exchange with its history. Prefer it over subagents when resumability, two-way messaging or another member matters. Do not use for a one-off subtask a single subagent handles well.
+  Lets agent sessions in one herdr workspace message each other in any direction through the `peers` command, an inbox messenger: messages keep their chat history, and the receiver is notified as an ordinary turn with one fire-and-forget `herdr agent prompt` (`hc send` when the old server is stopped). Use when the user wants sessions to talk to each other, report back, hand work between members, coordinate long-running work, or resume an exchange with its history. Prefer it over subagents when resumability, two-way messaging or another member matters. Do not use for a one-off subtask a single subagent handles well.
 ---
 
 # Peers
 
-Cross-session messaging between agent sessions that live in one herdr workspace, working like an inbox messenger. Instead of spawning a fire-and-forget subagent, message the member's session directly. The message is stored in a chat that keeps its whole history. The peer gets a short notification as an ordinary turn and opens the chat to read it, and its replies reach you the same way. Sessions are first-class: they are listed, read and inspected with `peers` commands, and every notification travels the same single route, one fire-and-forget `herdr agent prompt`.
+Cross-session messaging between agent sessions that live in one herdr workspace, working like an inbox messenger. Instead of spawning a fire-and-forget subagent, message the member's session directly. The message is stored in a chat that keeps its whole history. The peer gets a short notification as an ordinary turn and opens the chat to read it, and its replies reach you the same way. Sessions are first-class: they are listed, read and inspected with `peers` commands, and every notification travels one fire-and-forget route, `herdr agent prompt`, falling back to `hc send` when the old herdr server is stopped.
 
 Words used throughout:
 
@@ -15,7 +15,7 @@ Words used throughout:
 - A **chat** is the whole conversation between you and one peer. Your **inbox** is your chats in the squad database; it counts the messages you have not read.
 - A **notification** is the one line a receiver gets when a message arrives: `New message from <name> (<role>). You have <n> unread messages in your inbox. Read it with: peers open <sender address>`. It never carries the message itself.
 
-Everything goes through the `peers` command, one file on `PATH` for every agent on the machine (it runs with Bun). It does the addressing and storage; delivery is always one `herdr agent prompt` into the peer's input, with no `--wait` — the same wrapping for every member, whatever agent runs it. Before you first call it, run `peers --version`. If that fails, stop and tell the user the `peers` CLI is not installed: `curl -fsSL https://raw.githubusercontent.com/bdsanxz/peers/main/install.sh | sh` installs it at `~/.local/bin/peers`. Do not install it yourself. Then run `peers --help`, and `peers <command> --help` for the command you need, to learn its arguments, defaults, output and exit codes; help runs nothing else.
+Everything goes through the `peers` command, one file on `PATH` for every agent on the machine (it runs with Bun). It does the addressing and storage; delivery is one `herdr agent prompt` into the peer's input, falling back to `hc send` when the old herdr server is stopped, with no `--wait` — the same wrapping for every member, whatever agent runs it. Before you first call it, run `peers --version`. If that fails, stop and tell the user the `peers` CLI is not installed: `curl -fsSL https://raw.githubusercontent.com/bdsanxz/peers/main/install.sh | sh` installs it at `~/.local/bin/peers`. Do not install it yourself. Then run `peers --help`, and `peers <command> --help` for the command you need, to learn its arguments, defaults, output and exit codes; help runs nothing else.
 
 ## Operating rules (must follow)
 
@@ -42,11 +42,11 @@ Use `peers` when at least one of these holds:
 peers whoami
 ```
 
-It prints your member name from your herdr pane (`herdr agent list` matched against `HERDR_PANE_ID`). It also records your profile in your squad database, so the squad finds you in `peers contacts`. Print it before acting so the transcript and every peer message can quote it. If it fails, you are not inside a herdr agent pane; set `PEERS_SELF=<your member name>` only when the user tells you which session you are.
+It prints your member name from your live session (`herdr agent list` matched against `HERDR_PANE_ID`, or `hc ls` against `HC_TERMINAL_ID`). It also records your profile in your squad database, so the squad finds you in `peers contacts`. Print it before acting so the transcript and every peer message can quote it. If it fails, you are not inside a live agent session; set `PEERS_SELF=<your member name>` only when the user tells you which session you are.
 
 ## Step 2: Make sure notifications reach you
 
-A notification reaches a member through one `herdr agent prompt` into its input, as a turn; while the member is busy it waits in its input queue. Nothing else is needed, and no other route exists: every member, whatever agent it runs, is notified the same way. A member that is not live gets no prompt: its messages wait in its inbox, and the next notification after it runs carries every waiting message's count. So a member that expects replies runs in herdr. A muse member always runs with `muse --yolo`, so it asks no approval prompts.
+A notification reaches a member through one `herdr agent prompt` into its input, as a turn, falling back to `hc send` when the old herdr server is stopped; while the member is busy it waits in its input queue. Nothing else is needed: every member, whatever agent it runs, is notified the same way. A member that is not live gets no prompt: its messages wait in its inbox, and the next notification after it runs carries every waiting message's count. So a member that expects replies runs in herdr or herdr-core. A muse member always runs with `muse --yolo`, so it asks no approval prompts.
 
 ## Step 3: Find peers
 
@@ -150,10 +150,10 @@ peers send <member> --kind <kind> --seq <n> <<'EOF'
 EOF
 ```
 
-Always send with `peers send`: a message sent any other way, such as with a bare `herdr agent prompt`, is missing from the chat history. The command stores the message, then notifies the peer with one fire-and-forget `herdr agent prompt` — no `--wait`, no polling — and prints one `SENT ...` line saying how it went:
+Always send with `peers send`: a message sent any other way, such as with a bare `herdr agent prompt`, is missing from the chat history. The command stores the message, then notifies the peer with one fire-and-forget turn — no `--wait`, no polling — and prints one `SENT ...` line saying how it went:
 
-- Peer live in herdr: `SENT <member>: stored in its inbox (...); notified via herdr agent prompt to <member>`. The peer gets it as a user turn; while it is busy it waits in its input queue.
-- Peer not live: `queued, not delivered yet: <member> is not a live herdr agent. ... No prompt was sent.` That is not a failure: the message is in its inbox, and the next notification after it runs carries every waiting message's count. Do not send it again.
+- Peer live: `SENT <member>: stored in its inbox (...); notified via herdr agent prompt to <member>` (or `notified via hc send to <member>` when the old server is stopped). The peer gets it as a user turn; while it is busy it waits in its input queue.
+- Peer not live: `queued, not delivered yet: <member> is not a live agent. ... No prompt was sent.` That is not a failure: the message is in its inbox, and the next notification after it runs carries every waiting message's count. Do not send it again.
 
 A peer without this skill answers only if the message tells it how. In a first request to such a peer, give it two exact commands and say plainly that it must run them: `peers open <your address>` to read your messages, and `peers send <your address> --seq <n> --kind <kind> --role <its role> --body "<text>"` to reply. Add `--squad <dir>` to both when the notification to it carried one (operating rule 5).
 
@@ -211,12 +211,14 @@ herdr agent get <member>          # one member's state: idle, working, blocked, 
 herdr agent read <member> --source recent-unwrapped --lines 120
 ```
 
+With herdr-core instead of old herdr, use `hc get <terminal>` for the state and `hc read <terminal>` for the screen.
+
 Read the state once, act on it, and end your turn.
 
-- **Your message shows `not read yet`.** The peer got no notification, or has not acted on it. If your `SENT` line said `queued, not delivered yet`, the peer is not live in herdr: tell the user, and start it visibly (Step 4) when they agree. Otherwise read what follows.
-- **No reply from a peer.** Read its screen with `herdr agent read <member> --source recent-unwrapped --lines 120`. A notification still shown in its input waits in the member's queue behind a running turn; one still queued in peers (`queued, not delivered yet`) means it is not live in herdr — move it to herdr.
-- **State `blocked`.** Inspect `herdr agent read <member>` output and ask the user before answering the approval or question UI. Nobody answers a member's approval prompts on their own.
-- **The member is gone from `herdr agent list`.** Its session ended. Start its agent again with the same name and kind, or give its open requests to another member with a new `SEQ` and tell the user what ended.
+- **Your message shows `not read yet`.** The peer got no notification, or has not acted on it. If your `SENT` line said `queued, not delivered yet`, the peer is not live: tell the user, and start it visibly (Step 4) when they agree. Otherwise read what follows.
+- **No reply from a peer.** Read its screen with `herdr agent read <member> --source recent-unwrapped --lines 120` (`hc read <terminal>` with herdr-core). A notification still shown in its input waits in the member's queue behind a running turn; one still queued in peers (`queued, not delivered yet`) means it is not live — move it to herdr or herdr-core.
+- **State `blocked`.** Inspect the read output and ask the user before answering the approval or question UI. Nobody answers a member's approval prompts on their own.
+- **The member is gone from `peers list`.** Its session ended. Start its agent again with the same name and kind, or give its open requests to another member with a new `SEQ` and tell the user what ended.
 - **`peers open` says "No chat with" a peer that wrote to you.** The chat is in another squad's database. Use the read command from the notification, with its `--squad` flag.
 - **The peer's model cannot run.** Its screen or log shows a quota, rate-limit or sign-in error under your notification, such as "Individual quota reached … Resets in 74h59m". It cannot answer before that is fixed, and it sends nothing to say so. Give its open requests to another peer, send it a `notice` that withdraws them, and tell the user what it needs.
 - **A loop or token runaway.** Interrupt or stop both sessions and restart with shorter tasks.
@@ -246,6 +248,6 @@ When a peer has a specialized role, put the persona in an agent definition, not 
 
 ## Known limitations
 
-- A member gets notifications only while it runs in herdr, where `peers` types them into its input with `herdr agent prompt`. In any other state they wait, and only the next message after it runs in herdr notifies it (with the unread count of every waiting message).
+- A member gets notifications only while it runs in herdr or herdr-core, where `peers` types them into its input with `herdr agent prompt` or `hc send`. In any other state they wait, and only the next message after it runs notifies it (with the unread count of every waiting message).
 - Chats live in one squad's database. A session outside the squad must use `--squad` for those chats, and `peers chats` without it shows only its own squad's chats.
-- `peers list` shows live herdr agents only; finished sessions leave no row. Their chats stay readable in `peers chats` and `peers open`.
+- `peers list` shows live agents only (old herdr and herdr-core); finished sessions leave no row. Their chats stay readable in `peers chats` and `peers open`.

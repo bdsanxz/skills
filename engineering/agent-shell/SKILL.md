@@ -31,7 +31,7 @@ Print your caller context and find your notify target:
 printf '%s\n' "$HERDR_WORKSPACE_ID" "$HERDR_TAB_ID" "$HERDR_PANE_ID"
 ```
 
-Your notify target is your pane ID (`$HERDR_PANE_ID`): `run` uses it by default, so the notify turn reaches this session. When the user names another member to receive it (a herdr agent name or pane ID), pass it with `--notify <target>` instead. If you are not inside herdr (no `HERDR_PANE_ID`), the job still runs, but its notify is skipped; say so, and read the job back explicitly.
+Your notify target is your pane ID (`$HERDR_PANE_ID`), or your herdr-core terminal (`$HC_TERMINAL_ID`) when you run outside the old herdr: `run` uses it by default, so the notify turn reaches this session through `herdr agent prompt` (or `hc send`). When the user names another member to receive it (a herdr agent name, pane ID or hc terminal), pass it with `--notify <target>` instead. If you are in neither (no `HERDR_PANE_ID` and no `HC_TERMINAL_ID`), the job still runs, but its notify is skipped; say so, and read the job back explicitly.
 
 ## Step 2: Start a job
 
@@ -42,7 +42,7 @@ agent-shell run --name e2e --heartbeat 5m -- sh -c './scripts/e2e.sh'
 agent-shell run --name quick --no-heartbeat -- sh -c './scripts/fast.sh'
 ```
 
-The command is everything after `--`; use `sh -c '...'` for shell features (pipes, redirects, `&&`). Give a short kebab-case `--name` (`build`, `test-e2e`), and `--cwd` when the command must run elsewhere. Every job sends a progress turn with its last output line every 2 minutes by default, so you can tell stuck from working; `--heartbeat <duration>` (minimum `1s`, e.g. `30s`, `5m`) changes the interval and `--no-heartbeat` disables progress turns, leaving only the completion turn. The output prints the job id, the notify target, the heartbeat setting and the read command. End your turn there.
+The command is everything after `--`; use `sh -c '...'` for shell features (pipes, redirects, `&&`). Give a short kebab-case `--name` (`build`, `test-e2e`), and `--cwd` when the command must run elsewhere. Every job sends a progress turn with its last output line every 2 minutes by default, so you can tell stuck from working; `--heartbeat <duration>` (minimum `1s`, e.g. `30s`, `5m`) changes the interval and `--no-heartbeat` disables progress turns, leaving only the completion turn. The output prints the job id, the notify target, the heartbeat setting and the read command. For a quick command, pass `--wait <duration>` (e.g. `5s`) to wait for it to finish and print its output and exit status inline instead of ending your turn. End your turn there.
 
 ## Step 3: Read the result
 
