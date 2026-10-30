@@ -158,6 +158,194 @@ function resolveDynamicTarget(loops, prompt) {
   }
   return;
 }
+function parseGoalCommand(input) {
+  const text = input.trim();
+  if (text === "")
+    return { action: "status" };
+  if (text === "clear")
+    return { action: "clear" };
+  return { action: "set", condition: text };
+}
+function goalMaxChecksFromEnv(envValue) {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isSafeInteger(n) && n > 0)
+      return n;
+  }
+  return 30;
+}
+function goalEvalTimeoutFromEnv(envValue) {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isFinite(n) && n > 0)
+      return Math.floor(n);
+  }
+  return 60000;
+}
+function goalTranscriptMaxFromEnv(envValue) {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isFinite(n) && n > 0)
+      return Math.floor(n);
+  }
+  return 12000;
+}
+function isGoalCapReached(checks, maxChecks) {
+  return checks >= maxChecks;
+}
+var GOAL_MAX_EVAL_FAILURES = 3;
+function isGoalEvalGiveUp(failures) {
+  return failures >= GOAL_MAX_EVAL_FAILURES;
+}
+function shouldSkipGoalCheck(hasPendingMessages) {
+  return hasPendingMessages;
+}
+function shouldApplyEvalResult(input) {
+  if (!input.goalActive)
+    return false;
+  if (input.evalGeneration !== input.currentGeneration)
+    return false;
+  return input.evalCondition === input.currentCondition;
+}
+function buildGoalAck(condition) {
+  return `A session-scoped Stop hook is now active with condition: "${condition}". Briefly acknowledge the goal, then immediately start (or continue) working toward it — treat the condition itself as your directive and do not pause to ask the user what to do. The hook will block stopping until the condition holds. It auto-clears once the condition is met — do not tell the user to run \`/goal clear\` after success; that's only for clearing a goal early. Do not use the Schedule tool for this goal; when you stop, the harness checks the condition and continues you if it is not met.`;
+}
+function shouldLogGoalScheduleCall(input) {
+  if (!input.goalActive)
+    return false;
+  if (input.prompt === undefined)
+    return false;
+  return findDynamicByTask(input.loops, input.prompt) === undefined;
+}
+function buildGoalFeedback(condition, reason) {
+  return `Stop hook feedback:
+[${condition}]: ${reason}`;
+}
+function goalEvaluatorSystemPrompt() {
+  return [
+    "You are a Stop hook evaluator. Decide whether the session has met its completion condition.",
+    'Reply with strict JSON only: {"met": boolean, "reason": string}.',
+    "The reason must cite evidence from the transcript."
+  ].join(`
+`);
+}
+function buildEvaluatorPrompt(condition, transcript) {
+  return [
+    `Completion condition: ${condition}`,
+    "",
+    "<transcript>",
+    transcript,
+    "</transcript>",
+    "",
+    'Reply with strict JSON only: {"met": boolean, "reason": string}.'
+  ].join(`
+`);
+}
+function capTranscript(text, maxChars) {
+  if (text.length <= maxChars)
+    return text;
+  return text.slice(text.length - maxChars);
+}
+function transcriptToText(entries) {
+  const sections = [];
+  for (const entry of entries) {
+    if (entry.type !== "message" || !entry.message)
+      continue;
+    const role = entry.message.role;
+    const content = entry.message.content;
+    const parts = [];
+    if (typeof content === "string") {
+      parts.push(content);
+    } else if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part !== null && typeof part === "object") {
+          const block = part;
+          if (block.type === "text" && typeof block.text === "string")
+            parts.push(block.text);
+          else if (block.type === "toolCall" && typeof block.name === "string") {
+            parts.push(`Tool ${block.name} was called with args ${JSON.stringify(block.arguments ?? {})}`);
+          }
+        }
+      }
+    } else {
+      continue;
+    }
+    const text = parts.join(`
+`).trim();
+    if (!text)
+      continue;
+    if (role === "user")
+      sections.push(`User: ${text}`);
+    else if (role === "assistant")
+      sections.push(`Assistant: ${text}`);
+  }
+  return sections.join(`
+
+`);
+}
+function stripCodeFences(raw) {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced)
+    return (fenced[1] ?? "").trim();
+  return trimmed;
+}
+function parseEvaluatorVerdict(raw) {
+  const candidates = [];
+  const stripped = stripCodeFences(raw);
+  candidates.push(stripped);
+  const first = stripped.indexOf("{");
+  const last = stripped.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first)
+    candidates.push(stripped.slice(first, last + 1));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const record = parsed;
+        if (typeof record.met !== "boolean")
+          continue;
+        const reason = typeof record.reason === "string" ? record.reason : "";
+        return { met: record.met, reason };
+      }
+    } catch {}
+  }
+  return null;
+}
+function formatGoalElapsed(setAtMs, nowMs) {
+  const seconds = Math.max(0, Math.floor((nowMs - setAtMs) / 1000));
+  if (seconds < 60)
+    return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+function formatGoalTokens(tokens) {
+  if (tokens >= 1000) {
+    const rounded = Math.round(tokens / 100) / 10;
+    return `${rounded}k`;
+  }
+  return `${tokens}`;
+}
+function formatGoalStatus(goal, nowMs) {
+  if (!goal)
+    return `No goal set
+/goal <condition> to set one.`;
+  const lines = [
+    "Goal active",
+    `running ${formatGoalElapsed(goal.setAtMs, nowMs)} · ${goal.checks} turns · ${formatGoalTokens(goal.tokens)} tokens`,
+    `Goal: ${goal.condition}`,
+    `Last check: ${goal.lastReason ?? "not yet evaluated"}`,
+    "/goal clear to stop early."
+  ];
+  return lines.join(`
+`);
+}
+function applyGoalSet(condition, nowMs) {
+  return { condition, setAtMs: nowMs, checks: 0, tokens: 0, evalFailures: 0 };
+}
+function formatGoalAchieved(goal, nowMs) {
+  return `✔ Goal achieved (${formatGoalElapsed(goal.setAtMs, nowMs)} · ${goal.checks} turns · ${formatGoalTokens(goal.tokens)} tokens)`;
+}
 
 // index.ts
 function pi_roster_default(pi) {
@@ -172,6 +360,51 @@ function pi_roster_default(pi) {
   const loops = new Map;
   let seq = 1;
   let lastDynamicId;
+  let goal;
+  let goalGeneration = 0;
+  let goalEvaluating = false;
+  let goalAbort;
+  const goalMaxChecks = () => goalMaxChecksFromEnv(process.env.ROSTER_GOAL_MAX_CHECKS);
+  const goalEvalTimeoutMs = () => goalEvalTimeoutFromEnv(process.env.ROSTER_GOAL_EVAL_TIMEOUT_MS);
+  const goalTranscriptMax = () => goalTranscriptMaxFromEnv(process.env.ROSTER_GOAL_TRANSCRIPT_MAX_CHARS);
+  const abortGoalEval = () => {
+    if (goalAbort) {
+      try {
+        goalAbort.abort();
+      } catch {}
+      goalAbort = undefined;
+    }
+  };
+  const refreshGoalStatus = (ctx) => {
+    try {
+      if (!goal) {
+        ctx?.ui.setStatus("goal", undefined);
+        return;
+      }
+      ctx?.ui.setStatus("goal", `◎ /goal active (${formatGoalElapsed(goal.setAtMs, Date.now())})`);
+    } catch {}
+  };
+  let goalTimer;
+  let goalTimerCtx = undefined;
+  const stopGoalTimer = () => {
+    if (goalTimer !== undefined)
+      clearInterval(goalTimer);
+    goalTimer = undefined;
+    goalTimerCtx = undefined;
+  };
+  const startGoalTimer = (ctx) => {
+    stopGoalTimer();
+    goalTimerCtx = ctx;
+    goalTimer = setInterval(() => {
+      try {
+        if (goal)
+          refreshGoalStatus(goalTimerCtx);
+      } catch {}
+    }, 1000);
+    try {
+      goalTimer.unref?.();
+    } catch {}
+  };
   const maxLoops = () => maxLoopsFromEnv(process.env.ROSTER_MAX_JOBS);
   const pendingMaxForLoop = (loop) => pendingMaxMsFromEnv(loop.lastDelayMs, process.env.ROSTER_PENDING_MAX_MS);
   const clearLoopPending = (loop) => {
@@ -329,6 +562,184 @@ function pi_roster_default(pi) {
       }
     }
   });
+  pi.on("agent_end", async (_event, ctx) => {
+    if (!goal) {
+      log("goal_eval_skip", { reason: "no_goal" }, ctx);
+      return;
+    }
+    if (goalEvaluating) {
+      log("goal_eval_skip", { reason: "already_evaluating", condition: goal.condition }, ctx);
+      refreshGoalStatus(ctx);
+      return;
+    }
+    refreshGoalStatus(ctx);
+    goalTimerCtx = ctx;
+    let queued = false;
+    try {
+      queued = typeof ctx?.hasPendingMessages === "function" ? ctx.hasPendingMessages() : false;
+    } catch {
+      queued = false;
+    }
+    if (shouldSkipGoalCheck(queued)) {
+      log("goal_skipped_background", { condition: goal.condition }, ctx);
+      return;
+    }
+    let model;
+    try {
+      model = ctx?.model;
+    } catch (error) {
+      log("goal_eval_failed", { reason: "ctx_stale", detail: error instanceof Error ? error.message : String(error), condition: goal.condition }, ctx);
+      return;
+    }
+    if (!model) {
+      log("goal_eval_failed", { reason: "no_model", condition: goal.condition }, ctx);
+      return;
+    }
+    const generation = goalGeneration;
+    const condition = goal.condition;
+    log("goal_eval_start", { condition, generation }, ctx);
+    goalEvaluating = true;
+    const abort = new AbortController;
+    goalAbort = abort;
+    const timer = setTimeout(() => abort.abort(), goalEvalTimeoutMs());
+    try {
+      ctx?.ui.setWorkingMessage("running Stop hook");
+    } catch {}
+    const started = Date.now();
+    const clearActiveGoal = (event, details, notice, noticeType) => {
+      goal = undefined;
+      goalGeneration++;
+      abortGoalEval();
+      stopGoalTimer();
+      refreshGoalStatus(ctx);
+      log(event, details, ctx);
+      try {
+        ctx?.ui.notify(notice, noticeType);
+      } catch {}
+    };
+    try {
+      const branch = ctx.sessionManager.getBranch();
+      const transcript = capTranscript(transcriptToText(branch), goalTranscriptMax());
+      const response = await ctx.modelRegistry.complete(model, {
+        systemPrompt: goalEvaluatorSystemPrompt(),
+        messages: [{
+          role: "user",
+          content: [{ type: "text", text: buildEvaluatorPrompt(condition, transcript) }],
+          timestamp: Date.now()
+        }]
+      }, { signal: abort.signal });
+      const text = Array.isArray(response?.content) ? response.content.filter((c) => c?.type === "text").map((c) => c.text).join(`
+`) : "";
+      const usage = response?.usage;
+      const tokens = typeof usage?.totalTokens === "number" ? usage.totalTokens : 0;
+      const durationMs = Date.now() - started;
+      if (!shouldApplyEvalResult({ goalActive: goal !== undefined, evalGeneration: generation, currentGeneration: goalGeneration, evalCondition: condition, currentCondition: goal?.condition })) {
+        log("goal_eval_stale", { reason: "generation_or_condition_changed", condition, eval_generation: generation }, ctx);
+        return;
+      }
+      const active = goal;
+      if (!active) {
+        log("goal_eval_stale", { reason: "goal_gone", condition, eval_generation: generation }, ctx);
+        return;
+      }
+      const verdict = parseEvaluatorVerdict(text);
+      if (!verdict) {
+        active.evalFailures++;
+        log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures }, ctx);
+        if (isGoalEvalGiveUp(active.evalFailures)) {
+          clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup" }, `Goal cleared after ${active.evalFailures} failed evaluations: ${condition}`, "error");
+        }
+        return;
+      }
+      active.evalFailures = 0;
+      active.tokens += tokens;
+      active.checks++;
+      active.lastReason = verdict.reason;
+      if (!verdict.met) {
+        log("goal_check", { met: false, condition, reason: verdict.reason, duration_ms: durationMs }, ctx);
+        if (isGoalCapReached(active.checks, goalMaxChecks())) {
+          clearActiveGoal("goal_cap_reached", { condition, checks: active.checks, max_checks: goalMaxChecks() }, `Goal stopped after ${active.checks} checks without success: ${condition}`, "error");
+          return;
+        }
+        refreshGoalStatus(ctx);
+        try {
+          ctx?.ui.notify("◯ Goal not yet met… continuing", "info");
+        } catch {}
+        try {
+          pi.sendUserMessage(buildGoalFeedback(condition, verdict.reason), { deliverAs: "followUp" });
+          log("goal_continue", { condition, checks: active.checks }, ctx);
+        } catch (error) {
+          log("error", { stack: error instanceof Error ? error.stack : String(error) }, ctx);
+        }
+        return;
+      }
+      log("goal_check", { met: true, condition, reason: verdict.reason, duration_ms: durationMs, iterations: active.checks, tokens: active.tokens }, ctx);
+      const achieved = formatGoalAchieved(active, Date.now());
+      clearActiveGoal("goal_achieved", { condition, iterations: active.checks, duration_ms: durationMs, tokens: active.tokens }, achieved, "info");
+    } catch (error) {
+      const durationMs = Date.now() - started;
+      if (!shouldApplyEvalResult({ goalActive: goal !== undefined, evalGeneration: generation, currentGeneration: goalGeneration, evalCondition: condition, currentCondition: goal?.condition })) {
+        log("goal_eval_stale", { reason: "generation_or_condition_changed", condition, eval_generation: generation }, ctx);
+        return;
+      }
+      if (!goal) {
+        log("goal_eval_stale", { reason: "goal_gone", condition, eval_generation: generation }, ctx);
+        return;
+      }
+      goal.evalFailures++;
+      log("goal_eval_failed", { reason: error instanceof Error ? error.message : String(error), condition, duration_ms: durationMs, eval_failures: goal.evalFailures }, ctx);
+      if (isGoalEvalGiveUp(goal.evalFailures)) {
+        clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup" }, `Goal cleared after ${goal.evalFailures} failed evaluations: ${condition}`, "error");
+      }
+    } finally {
+      clearTimeout(timer);
+      try {
+        ctx?.ui.setWorkingMessage();
+      } catch {}
+      if (goalAbort === abort)
+        goalAbort = undefined;
+      goalEvaluating = false;
+    }
+  });
+  pi.registerCommand("goal", {
+    description: "Set a session completion condition checked by a Stop hook evaluator",
+    handler: async (args, ctx) => {
+      try {
+        const command = parseGoalCommand(args);
+        log("command_received", { raw_args: args, parsed_action: `goal_${command.action}` }, ctx);
+        if (command.action === "status") {
+          refreshGoalStatus(ctx);
+          ctx.ui.notify(formatGoalStatus(goal, Date.now()), "info");
+          return;
+        }
+        if (command.action === "clear") {
+          if (!goal) {
+            ctx.ui.notify("No goal set.", "info");
+            return;
+          }
+          const condition = goal.condition;
+          goal = undefined;
+          goalGeneration++;
+          abortGoalEval();
+          stopGoalTimer();
+          refreshGoalStatus(ctx);
+          log("goal_cleared", { condition, reason: "user /goal clear" }, ctx);
+          ctx.ui.notify(`Goal cleared: ${condition}`, "info");
+          return;
+        }
+        goalGeneration++;
+        abortGoalEval();
+        goal = applyGoalSet(command.condition, Date.now());
+        log("goal_set", { condition: command.condition }, ctx);
+        refreshGoalStatus(ctx);
+        startGoalTimer(ctx);
+        ctx.ui.notify(`Goal set: ${command.condition}`, "info");
+        pi.sendUserMessage(buildGoalAck(command.condition), { deliverAs: "followUp" });
+      } catch (error) {
+        log("error", { stack: error instanceof Error ? error.stack : String(error) }, ctx);
+      }
+    }
+  });
   pi.registerCommand("loop", {
     description: "Run recurring or dynamic prompt loops",
     handler: async (args, ctx) => {
@@ -423,6 +834,9 @@ function pi_roster_default(pi) {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       try {
         const rawPrompt = typeof params.prompt === "string" && params.prompt.trim() !== "" ? params.prompt.trim() : undefined;
+        if (shouldLogGoalScheduleCall({ goalActive: goal !== undefined, prompt: rawPrompt, loops: summaries() })) {
+          log("goal_schedule_call", { prompt: rawPrompt, condition: goal?.condition }, ctx);
+        }
         if (params.stop) {
           if (rawPrompt !== undefined) {
             const resolved = findDynamicByTask(summaries(), rawPrompt);
@@ -485,6 +899,13 @@ function pi_roster_default(pi) {
     loops.clear();
     lastDynamicId = undefined;
     refreshStatus(ctx);
+    if (goal)
+      log("goal_cleared", { condition: goal.condition, reason: "session_shutdown" }, ctx);
+    goal = undefined;
+    goalGeneration++;
+    abortGoalEval();
+    stopGoalTimer();
+    refreshGoalStatus(ctx);
   });
 }
 export {

@@ -58,6 +58,9 @@ describe("pi members", () => {
     expect(exists(path.join(dir, "AGENTS.md"))).toBe(true);
     expect(read(path.join(dir, "AGENTS.md"))).toContain("## Loop");
     expect(read(path.join(dir, "AGENTS.md"))).toContain("/loop stop");
+    expect(read(path.join(dir, "AGENTS.md"))).toContain("/goal <condition>");
+    expect(read(path.join(dir, "AGENTS.md"))).toContain("A goal never needs Schedule");
+    expect(read(path.join(dir, "AGENTS.md"))).toContain("Prefer this native `/goal` over an agent-job daemon goal");
     expect(JSON.parse(read(path.join(dir, ".peers.json"))).agent).toBe("pi");
   });
 

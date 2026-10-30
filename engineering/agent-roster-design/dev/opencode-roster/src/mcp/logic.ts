@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
+import { buildGoalAckPrompt, buildGoalCapPrompt, buildGoalContinuePrompt, buildGoalEvalFailedPrompt, formatGoalStatus, goalMaxChecks, goalMaxEvalFailures, type GoalState } from "./goal"
 
 export const autonomousSentinel = "<<autonomous-loop-dynamic>>"
 
@@ -49,8 +50,12 @@ export function loopKindOf(source: string): "interval" | "dynamic" {
   return source === "Schedule" ? "dynamic" : "interval"
 }
 
-export function createRosterHandlers(inject: Injector, log: Log, clock = () => Date.now(), options: { maxBusyMs?: number; probeIdle?: (sessionID: string) => Promise<boolean> } = {}) {
+export function createRosterHandlers(inject: Injector, log: Log, clock = () => Date.now(), options: { maxBusyMs?: number; probeIdle?: (sessionID: string) => Promise<boolean>; evaluate?: (sessionID: string, condition: string) => Promise<{ met: boolean; reason: string }> } = {}) {
   const jobs = new Map<string, Job>()
+  const goals = new Map<string, GoalState>()
+  const goalGenerations = new Map<string, number>()
+  const helpers = new Set<string>()
+  const goalChecks = new Set<Promise<void>>()
   const busy = new Set<string>()
   const pending = new Map<string, { prompt: string; source: string }>()
   const noopStreak = new Map<string, number>()
@@ -118,6 +123,94 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
     return job
   }
 
+  const goalKey = (sessionID: string) => `goal:${sessionID}`
+
+  async function clearGoal(sessionID: string, reason: string, condition?: string) {
+    const existing = goals.get(sessionID)
+    goalGenerations.set(sessionID, (goalGenerations.get(sessionID) ?? 0) + 1)
+    goals.delete(sessionID)
+    await log("goal_cleared", sessionID, { condition: condition ?? existing?.condition, reason })
+  }
+
+  function sessionHasPendingTick(sessionID: string): boolean {
+    if (pending.has(sessionID)) return true
+    for (const item of pendingByKey.values()) if (item.sessionID === sessionID) return true
+    return false
+  }
+
+  async function runGoalCheck(sessionID: string): Promise<void> {
+    const goal = goals.get(sessionID)
+    // Helper sessions run the evaluator itself: they never trigger checks.
+    if (!goal || helpers.has(sessionID)) return
+    if (busy.has(sessionID)) {
+      await log("goal_skipped_busy", sessionID, { condition: goal.condition, reason: "session_busy" })
+      return
+    }
+    if (sessionHasPendingTick(sessionID)) {
+      await log("goal_skipped_busy", sessionID, { condition: goal.condition, reason: "pending_tick" })
+      return
+    }
+    if (goal.evalInFlight) {
+      await log("goal_skipped_busy", sessionID, { condition: goal.condition, reason: "eval_in_flight" })
+      return
+    }
+    const maxChecks = goalMaxChecks()
+    if (goal.checks >= maxChecks) {
+      const condition = goal.condition
+      const checks = goal.checks
+      await clearGoal(sessionID, "cap_reached", condition)
+      await log("goal_cap_reached", sessionID, { condition, checks, max_checks: maxChecks })
+      await deliver(sessionID, buildGoalCapPrompt(condition, checks), "Goal", goalKey(sessionID))
+      return
+    }
+    if (!options.evaluate) {
+      await log("goal_eval_failed", sessionID, { condition: goal.condition, error: "no evaluator configured", failures: goal.checks })
+      return
+    }
+    const generation = goal.generation
+    goal.evalInFlight = true
+    const started = clock()
+    try {
+      const verdict = await options.evaluate(sessionID, goal.condition)
+      const current = goals.get(sessionID)
+      // Clear/replace/stop during the evaluation wins: never inject stale turns.
+      if (!current || current.generation !== generation) return
+      const durationMs = clock() - started
+      if (verdict.met) {
+        goals.delete(sessionID)
+        await log("goal_check", sessionID, { condition: current.condition, met: true, reason: verdict.reason, duration_ms: durationMs, checks: current.checks })
+        await log("goal_achieved", sessionID, { condition: current.condition, reason: verdict.reason, checks: current.checks, elapsed_ms: clock() - current.setAt })
+        return
+      }
+      current.checks += 1
+      current.evalFailures = 0
+      current.lastReason = verdict.reason
+      await log("goal_check", sessionID, { condition: current.condition, met: false, reason: verdict.reason, duration_ms: durationMs, checks: current.checks })
+      await log("goal_continue", sessionID, { condition: current.condition, reason: verdict.reason, checks: current.checks })
+      if (busy.has(sessionID) || sessionHasPendingTick(sessionID) || goals.get(sessionID)?.generation !== generation) {
+        await log("goal_skipped_busy", sessionID, { condition: current.condition, reason: "became_busy_during_eval" })
+        return
+      }
+      await deliver(sessionID, buildGoalContinuePrompt(current.condition, verdict.reason), "Goal", goalKey(sessionID))
+    } catch (error) {
+      const current = goals.get(sessionID)
+      if (!current || current.generation !== generation) return
+      current.evalFailures += 1
+      const message = error instanceof Error ? error.message : String(error)
+      await log("goal_eval_failed", sessionID, { condition: current.condition, error: message, failures: current.evalFailures })
+      if (current.evalFailures >= goalMaxEvalFailures()) {
+        const condition = current.condition
+        const failures = current.evalFailures
+        await clearGoal(sessionID, "eval_failed", condition)
+        await log("goal_cap_reached", sessionID, { condition, reason: "eval_failed", failures })
+        await deliver(sessionID, buildGoalEvalFailedPrompt(condition), "Goal", goalKey(sessionID))
+      }
+    } finally {
+      const current = goals.get(sessionID)
+      if (current && current.generation === generation) current.evalInFlight = false
+    }
+  }
+
   async function schedule(sessionID: string, prompt: string, delaySeconds: number, source: string, noop = false) {
     const delay = clampDelay(delaySeconds)
     // Dynamic wakeups are keyed by prompt text: replacing the pending wakeup
@@ -165,6 +258,10 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
       await log("error", undefined, { source: name, message: "OpenCode session id missing from params._meta[ai.opencode/sessionID]" })
       throw new Error("OpenCode session id missing; this tool must be called from an OpenCode session")
     }
+    if (helpers.has(sessionID)) {
+      await log("error", sessionID, { source: name, message: "goal helper sessions may not call roster tools" })
+      throw new Error("goal helper sessions may not call roster tools")
+    }
     try {
       if (name === "Schedule") {
         if (args.stop) {
@@ -189,6 +286,8 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
             const legacy = pending.get(sessionID)
             if (legacy && legacy.prompt === stopPrompt) pending.delete(sessionID)
           }
+          // A stop ends the session goal too: a goal never outlives Schedule stop.
+          if (goals.has(sessionID)) await clearGoal(sessionID, "schedule_stop")
           if (stopPrompt !== undefined && owned.length === 0) {
             // Also drop a queued-but-fired wakeup of the same prompt that no
             // longer has a timer.
@@ -275,6 +374,36 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
         await log("tool_result", sessionID, { tool: name, result })
         return { content: [{ type: "text", text: result }] }
       }
+      if (name === "Goal") {
+        const condition = typeof args.condition === "string" && args.condition.trim() ? args.condition.trim() : undefined
+        if (args.clear === true) {
+          const existing = goals.get(sessionID)
+          if (!existing) {
+            await log("goal_cleared", sessionID, { cleared: false, reason: "clear" })
+            const empty = "No goal set"
+            await log("tool_result", sessionID, { tool: name, result: empty })
+            return { content: [{ type: "text", text: empty }] }
+          }
+          await clearGoal(sessionID, "clear", existing.condition)
+          const result = `Goal cleared: ${existing.condition}`
+          await log("tool_result", sessionID, { tool: name, result })
+          return { content: [{ type: "text", text: result }] }
+        }
+        if (condition !== undefined) {
+          const replaced = goals.has(sessionID)
+          const generation = (goalGenerations.get(sessionID) ?? 0) + 1
+          goalGenerations.set(sessionID, generation)
+          goals.set(sessionID, { condition, setAt: clock(), checks: 0, evalFailures: 0, evalInFlight: false, generation, lastReason: undefined })
+          await log("goal_set", sessionID, { condition, replaced })
+          await deliver(sessionID, buildGoalAckPrompt(condition), "Goal", goalKey(sessionID))
+          const result = `Goal set: ${condition}`
+          await log("tool_result", sessionID, { tool: name, result })
+          return { content: [{ type: "text", text: result }] }
+        }
+        const result = formatGoalStatus(goals.get(sessionID), clock())
+        await log("tool_result", sessionID, { tool: name, result })
+        return { content: [{ type: "text", text: result }] }
+      }
       throw new Error(`Unknown tool ${name}`)
     } catch (error) {
       await log("error", sessionID, { source: name, params: args, message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined })
@@ -309,6 +438,14 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
         pendingByKey.delete(key)
         await deliver(sessionID, item.prompt, item.source, key)
       }
+      // A loop tick is just another turn: after pending delivery the goal
+      // check either runs (idle) or skips (the tick made us busy again).
+      // Fire-and-forget so slow helper-model evaluations never stall SSE.
+      if (goals.has(sessionID) && !helpers.has(sessionID)) {
+        const check = runGoalCheck(sessionID)
+        goalChecks.add(check)
+        void check.then(() => goalChecks.delete(check), () => goalChecks.delete(check))
+      }
     },
     async onBusy(sessionID?: string, payload?: unknown) {
       await log(frameTypeOf(payload) ?? "session.status", sessionID, { raw_payload: payload })
@@ -322,6 +459,8 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
         removeJob(id)
         noopStreak.delete(id)
       }
+      if (goals.has(sessionID)) await clearGoal(sessionID, "session_deleted")
+      helpers.delete(sessionID)
       await releaseBusy(sessionID, "session_deleted", {})
       pending.delete(sessionID); noopStreak.delete(sessionID)
       for (const [key, item] of pendingByKey) if (item.sessionID === sessionID) pendingByKey.delete(key)
@@ -370,6 +509,11 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
     listForTest(sessionID: string) { return [...jobs.values()].filter((job) => job.sessionID === sessionID) },
     isBusyForTest(sessionID: string) { return busy.has(sessionID) },
     flushForTest(sessionID: string) { return this.onIdle(sessionID, { type: "session.idle" }) },
+    goalForTest(sessionID: string) { return goals.get(sessionID) },
+    isGoalEvalInFlightForTest(sessionID: string) { return goals.get(sessionID)?.evalInFlight ?? false },
+    isHelperForTest(sessionID: string) { return helpers.has(sessionID) },
+    setHelper(sessionID: string, active: boolean) { if (active) helpers.add(sessionID); else helpers.delete(sessionID) },
+    async flushGoalsForTest() { for (let i = 0; i < 50 && goalChecks.size > 0; i++) await Promise.all([...goalChecks]) },
   }
 }
 

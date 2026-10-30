@@ -44,6 +44,12 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 - **Why:** Members that share a port or kill processes by a broad name pattern stop each other's servers and test runs. Each then reports a failure that the other one caused.
 - **Example:** "Your dev server runs on port 8082. Stop it with `kill <pid>` when you are done; never `pkill -f node`."
 
+### Do not give file-writing goals to a member that cannot edit files
+
+- **Situation:** A member whose instructions forbid file edits, such as an OpenCode member set up read-only, receives a goal that needs file writes.
+- **Practice:** Give file-writing goals only to members allowed to edit files; give a member that cannot edit files goals it can satisfy by reading, reporting or reviewing.
+- **Why:** The member cannot do what its instructions forbid, so the goal's evaluator keeps finding the condition unmet and the goal never clears.
+
 ## Step 6: launch the squad
 
 ### Keep the whole squad in one workspace, one tab per member
@@ -63,6 +69,12 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 - **Situation:** The OpenCode background service was started from a non-login shell (such as an hc terminal without `~/.zshrc`), so it lacks a provider API key; an opencode member then fails with "API key is required".
 - **Practice:** Before `launch`, check the service process has each opencode member's provider key (`launch` does this itself and prints a WARN naming the missing variable). When it warns, restart the service from a shell that sets the key (`opencode service stop && opencode service start`), then launch again.
 - **Why:** The member inherits the service's environment, not yours. A key set in your shell never reaches a service started without it.
+
+### Restart the OpenCode service after a sidecar change
+
+- **Situation:** The loop sidecar or plugin was rebuilt, or a sidecar died, and an opencode member's `/loop` or `/goal` tools stop working or behave oddly.
+- **Practice:** Tell the user to run `opencode service stop && opencode service start` from a login shell, then try again.
+- **Why:** The OpenCode background service keeps one MCP sidecar per project and does not restart it when the plugin build changes, so the member keeps talking to the old or dead sidecar until the service restarts.
 
 ### A relaunched member has a new address
 

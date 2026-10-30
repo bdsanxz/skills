@@ -377,6 +377,9 @@ describe("build", () => {
     has("loop plugin is the built file", read(path.join(W, "api", ".opencode", "plugins", "opencode-roster-plugin.js")), "opencode-roster");
     has("loop note in opencode instructions", file("api", "AGENTS.md"), "## Loop");
     has("loop note names the stop command", file("api", "AGENTS.md"), "/loop stop");
+    has("loop note names the goal command", file("api", "AGENTS.md"), "/goal <condition>");
+    has("loop note says a goal never needs Schedule", file("api", "AGENTS.md"), "A goal never needs Schedule");
+    has("loop note prefers the native goal", file("api", "AGENTS.md"), "Prefer this native `/goal` over an agent-job daemon goal");
     lacks("claude members get no loop note", file("lead", "CLAUDE.md"), "## Loop");
     has("opencode records its model", file("api", ".peers.json"), '"model": "opencode/big-pickle"');
     has("squad directory shows the opencode model", file("lead", "CLAUDE.md"), "`api` | opencode | opencode/big-pickle | agent default |");

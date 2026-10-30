@@ -228,3 +228,262 @@ export function resolveDynamicTarget(
   }
   return undefined;
 }
+
+/** One session-scoped completion condition tracked by /goal. */
+export interface GoalState {
+  condition: string;
+  setAtMs: number;
+  checks: number;
+  tokens: number;
+  lastReason?: string;
+  evalFailures: number;
+}
+
+export type ParsedGoalCommand =
+  | { action: "status" }
+  | { action: "clear" }
+  | { action: "set"; condition: string };
+
+/** Parse the raw args of /goal: empty shows status, "clear" clears, else sets. */
+export function parseGoalCommand(input: string): ParsedGoalCommand {
+  const text = input.trim();
+  if (text === "") return { action: "status" };
+  if (text === "clear") return { action: "clear" };
+  return { action: "set", condition: text };
+}
+
+/** Max consecutive unmet checks before the goal stops itself. Default 30. */
+export function goalMaxChecksFromEnv(envValue: string | undefined): number {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isSafeInteger(n) && n > 0) return n;
+  }
+  return 30;
+}
+
+/** Evaluator timeout in ms. Default 60000. */
+export function goalEvalTimeoutFromEnv(envValue: string | undefined): number {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return 60000;
+}
+
+/** Max transcript chars sent to the evaluator. Default 12000. */
+export function goalTranscriptMaxFromEnv(envValue: string | undefined): number {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return 12000;
+}
+
+/** True once the goal has used up its unmet-check budget. */
+export function isGoalCapReached(checks: number, maxChecks: number): boolean {
+  return checks >= maxChecks;
+}
+
+/** Consecutive evaluator failures tolerated before giving up. */
+export const GOAL_MAX_EVAL_FAILURES = 3;
+
+/** True once evaluator failures hit the give-up threshold. */
+export function isGoalEvalGiveUp(failures: number): boolean {
+  return failures >= GOAL_MAX_EVAL_FAILURES;
+}
+
+/**
+ * Skip the evaluation when the agent still has background work pending that
+ * will re-invoke it (a running Monitor means no check at this stop).
+ */
+export function shouldSkipGoalCheck(hasPendingMessages: boolean): boolean {
+  return hasPendingMessages;
+}
+
+/**
+ * A stale evaluation must never inject a turn: only apply the verdict when
+ * the goal is still the one that was evaluated (generation matches) and the
+ * condition text is unchanged.
+ */
+export function shouldApplyEvalResult(input: {
+  goalActive: boolean;
+  evalGeneration: number;
+  currentGeneration: number;
+  evalCondition: string;
+  currentCondition: string | undefined;
+}): boolean {
+  if (!input.goalActive) return false;
+  if (input.evalGeneration !== input.currentGeneration) return false;
+  return input.evalCondition === input.currentCondition;
+}
+
+/** Meta user turn injected once when a goal is set (hidden from the user). */
+export function buildGoalAck(condition: string): string {
+  return `A session-scoped Stop hook is now active with condition: "${condition}". Briefly acknowledge the goal, then immediately start (or continue) working toward it — treat the condition itself as your directive and do not pause to ask the user what to do. The hook will block stopping until the condition holds. It auto-clears once the condition is met — do not tell the user to run \`/goal clear\` after success; that's only for clearing a goal early. Do not use the Schedule tool for this goal; when you stop, the harness checks the condition and continues you if it is not met.`;
+}
+
+/**
+ * True when a Schedule call arrives while a goal is active with a prompt that
+ * is not a user /loop task (goal-driven pacing): the call still runs (loops
+ * must keep working), but the goal logs it so the pacing is visible.
+ */
+export function shouldLogGoalScheduleCall(input: {
+  goalActive: boolean;
+  prompt: string | undefined;
+  loops: readonly LoopSummary[];
+}): boolean {
+  if (!input.goalActive) return false;
+  if (input.prompt === undefined) return false;
+  return findDynamicByTask(input.loops, input.prompt) === undefined;
+}
+
+/** Follow-up user turn injected after each unmet check. */
+export function buildGoalFeedback(condition: string, reason: string): string {
+  return `Stop hook feedback:\n[${condition}]: ${reason}`;
+}
+
+/** System prompt for the separate evaluator call. */
+export function goalEvaluatorSystemPrompt(): string {
+  return [
+    "You are a Stop hook evaluator. Decide whether the session has met its completion condition.",
+    "Reply with strict JSON only: {\"met\": boolean, \"reason\": string}.",
+    "The reason must cite evidence from the transcript.",
+  ].join("\n");
+}
+
+/** User message for the evaluator: condition plus the compact transcript. */
+export function buildEvaluatorPrompt(condition: string, transcript: string): string {
+  return [
+    `Completion condition: ${condition}`,
+    "",
+    "<transcript>",
+    transcript,
+    "</transcript>",
+    "",
+    'Reply with strict JSON only: {"met": boolean, "reason": string}.',
+  ].join("\n");
+}
+
+/** Keep the newest tail of the transcript so the evaluator input stays capped. */
+export function capTranscript(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(text.length - maxChars);
+}
+
+interface GoalTranscriptEntry {
+  type: string;
+  message?: { role?: unknown; content?: unknown };
+}
+
+/**
+ * Render session branch entries as compact "Role: text" lines for the
+ * evaluator. Mirrors the repo's tick text extraction: text blocks joined,
+ * tool calls summarized, other roles skipped.
+ */
+export function transcriptToText(entries: readonly GoalTranscriptEntry[]): string {
+  const sections: string[] = [];
+  for (const entry of entries) {
+    if (entry.type !== "message" || !entry.message) continue;
+    const role = entry.message.role;
+    const content = entry.message.content;
+    const parts: string[] = [];
+    if (typeof content === "string") {
+      parts.push(content);
+    } else if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part !== null && typeof part === "object") {
+          const block = part as { type?: unknown; text?: unknown; name?: unknown; arguments?: unknown };
+          if (block.type === "text" && typeof block.text === "string") parts.push(block.text);
+          else if (block.type === "toolCall" && typeof block.name === "string") {
+            parts.push(`Tool ${block.name} was called with args ${JSON.stringify(block.arguments ?? {})}`);
+          }
+        }
+      }
+    } else {
+      continue;
+    }
+    const text = parts.join("\n").trim();
+    if (!text) continue;
+    if (role === "user") sections.push(`User: ${text}`);
+    else if (role === "assistant") sections.push(`Assistant: ${text}`);
+  }
+  return sections.join("\n\n");
+}
+
+export interface EvaluatorVerdict {
+  met: boolean;
+  reason: string;
+}
+
+function stripCodeFences(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) return (fenced[1] ?? "").trim();
+  return trimmed;
+}
+
+/**
+ * Parse the evaluator reply defensively: plain JSON, fenced JSON, or JSON
+ * embedded in surrounding prose. Returns null when no valid verdict exists.
+ * Never throws.
+ */
+export function parseEvaluatorVerdict(raw: string): EvaluatorVerdict | null {
+  const candidates: string[] = [];
+  const stripped = stripCodeFences(raw);
+  candidates.push(stripped);
+  const first = stripped.indexOf("{");
+  const last = stripped.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) candidates.push(stripped.slice(first, last + 1));
+  for (const candidate of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        if (typeof record.met !== "boolean") continue;
+        const reason = typeof record.reason === "string" ? record.reason : "";
+        return { met: record.met, reason };
+      }
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+/** Short elapsed text for goal status lines, e.g. "24s", "2m 5s". */
+export function formatGoalElapsed(setAtMs: number, nowMs: number): string {
+  const seconds = Math.max(0, Math.floor((nowMs - setAtMs) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
+/** Short token count for goal status lines, e.g. 1800 -> "1.8k". */
+export function formatGoalTokens(tokens: number): string {
+  if (tokens >= 1000) {
+    const rounded = Math.round(tokens / 100) / 10;
+    return `${rounded}k`;
+  }
+  return `${tokens}`;
+}
+
+/** Panel text for /goal with no argument. */
+export function formatGoalStatus(goal: GoalState | undefined, nowMs: number): string {
+  if (!goal) return "No goal set\n/goal <condition> to set one.";
+  const lines = [
+    "Goal active",
+    `running ${formatGoalElapsed(goal.setAtMs, nowMs)} · ${goal.checks} turns · ${formatGoalTokens(goal.tokens)} tokens`,
+    `Goal: ${goal.condition}`,
+    `Last check: ${goal.lastReason ?? "not yet evaluated"}`,
+    "/goal clear to stop early.",
+  ];
+  return lines.join("\n");
+}
+
+/** Create fresh goal state for /goal <condition>, replacing any existing goal. */
+export function applyGoalSet(condition: string, nowMs: number): GoalState {
+  return { condition, setAtMs: nowMs, checks: 0, tokens: 0, evalFailures: 0 };
+}
+
+/** Success line shown when the evaluator confirms the condition. */
+export function formatGoalAchieved(goal: GoalState, nowMs: number): string {
+  return `✔ Goal achieved (${formatGoalElapsed(goal.setAtMs, nowMs)} · ${goal.checks} turns · ${formatGoalTokens(goal.tokens)} tokens)`;
+}
