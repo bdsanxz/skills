@@ -485,6 +485,16 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
     "When you are corrected, or asked to behave in a particular way from now on, add the lesson to " +
       `\`${join(dir, "MEMORY.md")}\` as one short entry. Never record lessons in this file.`,
   );
+  if (m.agent === "pi" || m.agent === "opencode") {
+    lines.push(
+      "",
+      "## Loop",
+      "",
+      "You have a `/loop` command for repeated work: `/loop 5m <prompt>` runs the prompt now and repeats it every 5 minutes, " +
+        "`/loop <prompt>` runs it now and wakes again when the Schedule tool says, and `/loop stop` ends the loop. " +
+        "After a dynamic iteration, call the Schedule tool with the delay, a short reason, and noop true when nothing changed.",
+    );
+  }
   if (anyNamed) {
     lines.push(
       "",

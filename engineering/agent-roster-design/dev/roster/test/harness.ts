@@ -35,7 +35,9 @@ echo "unexpected claude call: $*" >&2; exit 9
 
 /** opencode: lists models and variants, and answers the session API calls launch makes.
  * Its calls also go to HERDR_LOG, to check their order against the herdr calls.
- * OC_WRONG_MODEL=1 makes session.get report another model. */
+ * OC_WRONG_MODEL=1 makes session.get and session.list report another model.
+ * OC_GET_FAIL=1 makes session.get fail like OpenCode 2.0.29 with a body on GET.
+ * OC_LIST_FAIL=1 makes session.list fail the same way. */
 const OPENCODE = `#!/bin/bash
 echo "$*" >>"$OPENCODE_LOG"; echo "opencode $*" >>"$HERDR_LOG"
 case "$*" in
@@ -45,8 +47,13 @@ case "$*" in
   "api session.create"*) echo "{\\"data\\":{\\"id\\":\\"ses_test1\\",\\"cwd\\":\\"$PWD\\"}}" ;;
   "api session.switchModel"*) m=\${@: -1}; m=\${m#\\{\\"model\\": }; echo "\${m%\\}}" >"$OPENCODE_LOG.model" ;;
   "api session.get"*)
+    [ "\${OC_GET_FAIL:-}" = 1 ] && { echo "UnknownError: TypeError: fetch() request with GET/HEAD method cannot have body." >&2; exit 1; }
     [ "\${OC_WRONG_MODEL:-}" = 1 ] && { echo '{"data":{"model":{"providerID":"opencode","id":"other"}}}'; exit 0; }
     echo "{\\"data\\":{\\"id\\":\\"ses_test1\\",\\"model\\":$(cat "$OPENCODE_LOG.model")}}" ;;
+  "api session.list")
+    [ "\${OC_LIST_FAIL:-}" = 1 ] && { echo "UnknownError: TypeError: fetch() request with GET/HEAD method cannot have body." >&2; exit 1; }
+    [ "\${OC_WRONG_MODEL:-}" = 1 ] && { echo '{"data":[{"id":"ses_test1","model":{"providerID":"opencode","id":"other"}}]}'; exit 0; }
+    echo "{\\"data\\":[{\\"id\\":\\"ses_test1\\",\\"model\\":$(cat "$OPENCODE_LOG.model")}]}" ;;
   "api get /api/session") cat "$HOME/opencode-sessions.json" 2>/dev/null || echo '{"data":[]}' ;;
   *) echo "unexpected opencode call: $*" >&2; exit 9 ;;
 esac

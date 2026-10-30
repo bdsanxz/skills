@@ -1,0 +1,8 @@
+{
+  "name": "opencode-roster",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "bun run build.ts", "test": "bun test", "typecheck": "tsc --noEmit", "mcp": "bun run src/mcp/server.ts" },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.12.1", "@opencode-ai/sdk": "^1.19.5", "zod": "^3.25.0" },
+  "devDependencies": { "@opencode-ai/plugin": "^1.19.5", "bun-types": "^1.2.16", "typescript": "^5.8.3" }
+}

@@ -4,29 +4,34 @@ import fs from "node:fs";
 import {
   Exit,
   LaunchError,
+  PI_ROSTER,
   SCRIPT,
   type JsonObject,
   type SkillSources,
   display,
   dumps,
   fail,
+  home,
   isFile,
   isObject,
   join,
   parseJsonFile,
   print,
   partition,
+  readText,
   reason,
   repr,
+  run,
   sessionLabel,
   shown,
+  strip,
   tail,
   which,
 } from "./core";
 import { type Member, agent, agyArgv, claudeBaseArgv, museArgv, piArgv } from "./agents";
 import { agentJobPiExtension } from "./agentjob";
 import { Hc, appSpaces, haveApp, hcSpaceName, hcTerminals } from "./hc";
-import { FIRST_PROMPT, Herdr, field, herdrSession, text } from "./herdr";
+import { FIRST_PROMPT, Herdr, field, herdrSession, list, text } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
 import { peersInstalled } from "./peers";
 import { agentJobInstalled } from "./agentjob";
@@ -112,13 +117,42 @@ function hcMemberArgv(h: Hc, m: Member, dir: string, label: string): { argv: str
       return { argv: ["opencode", "--session", session], session: session || null };
     }
     case "pi":
-      return { argv: piArgv(m, label, agentJobPiExtension()), session: null };
+      return { argv: piArgv(m, label, [agentJobPiExtension(), PI_ROSTER]), session: null };
     case "agy":
       return { argv: agyArgv(m), session: null };
     case "muse":
       return { argv: museArgv(m), session: null };
     default:
       throw new LaunchError(`unknown agent ${repr(m.agent)} for member ${repr(m.name)}`);
+  }
+}
+
+/** Read an OpenCode session's model back after switchModel: session.get first, then the
+ * session.list entry, which carries the same model. Returns null when neither read-back
+ * works, after a WARN that names the failed commands; the caller then carries on. */
+function readOpencodeModelHc(h: Hc, dir: string, member: string, session: string): JsonObject | null {
+  try {
+    return field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+  } catch (getError) {
+    const getMsg = getError instanceof Error ? getError.message : String(getError);
+    try {
+      const found = list(h.opencodeApi(dir, "session.list"), "data").find((s) => text(s, "id") === session);
+      if (found) return field(found, "model");
+      print(
+        `WARN opencode member ${repr(member)}: could not verify the model switch: ` +
+          `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` +
+          `has no session ${session}. Carrying on with the member's first prompt.`,
+      );
+      return null;
+    } catch (listError) {
+      const listMsg = listError instanceof Error ? listError.message : String(listError);
+      print(
+        `WARN opencode member ${repr(member)}: could not verify the model switch: ` +
+          `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` +
+          `failed (${tail(strip(listMsg), 300)}). Carrying on with the member's first prompt.`,
+      );
+      return null;
+    }
   }
 }
 
@@ -138,13 +172,17 @@ function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session:
     const [provider, , modelId] = partition(m.model ?? "", "/");
     const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
     h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
-    const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
-    const variant = m.effort || "default";
-    const same = now.providerID === provider && now.id === modelId && ((now.variant as string) || "default") === variant;
-    if (!h.dryRun && !same) {
-      throw new LaunchError(
-        `OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`,
-      );
+    // session.get on OpenCode 2.0.29 can fail with a GET-body TypeError; fall back to the
+    // session.list entry. A read-back that fails on its own never aborts the launch.
+    const now = readOpencodeModelHc(h, dir, m.name, session);
+    if (now !== null) {
+      const variant = m.effort || "default";
+      const same = now.providerID === provider && now.id === modelId && ((now.variant as string) || "default") === variant;
+      if (!h.dryRun && !same) {
+        throw new LaunchError(
+          `OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`,
+        );
+      }
     }
   }
   h.firstPrompt(terminal, dialogs);
@@ -174,6 +212,145 @@ function recordSession(
     fail(`cannot record ${m.name}'s session in roster.json: ${reason(error)}`);
   }
   print(`RECORDED ${m.name}: session ${m.agent}:${id} in roster.json`);
+}
+
+/** The OpenCode background-service pid from its state file, or null. */
+function opencodeServicePid(): number | null {
+  try {
+    const pid = (JSON.parse(readText(join(home(), ".local", "state", "opencode", "service.json"))) as JsonObject).pid;
+    return typeof pid === "number" && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse an opencode.json file that may have trailing commas; null when unreadable. */
+function readOpencodeConfig(file: string): JsonObject | null {
+  let text: string;
+  try {
+    text = readText(file);
+  } catch {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    try {
+      const parsed: unknown = JSON.parse(text.replace(/,\s*([}\]])/g, "$1"));
+      return isObject(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** The env name in a provider's options.apiKey: {env: NAME} or the string "{env:NAME}". */
+function apiKeyEnv(value: unknown): string | null {
+  if (isObject(value)) {
+    const env = (value as JsonObject).env;
+    return typeof env === "string" && env !== "" ? env : null;
+  }
+  if (typeof value === "string") {
+    const found = /^\{env:([^}]+)\}$/.exec(strip(value));
+    return found ? strip(found[1]!) : null;
+  }
+  return null;
+}
+
+/** Env names a provider entry declares: its env list, its options.apiKey, and the model's own. */
+function providerEnvNames(provider: unknown, modelId: string): string[] {
+  const names: string[] = [];
+  const take = (value: unknown) => {
+    if (typeof value === "string" && value !== "" && !names.includes(value)) names.push(value);
+  };
+  if (!isObject(provider)) return names;
+  const entry = provider as JsonObject;
+  if (Array.isArray(entry.env)) for (const name of entry.env) take(name);
+  if (isObject(entry.options)) take(apiKeyEnv((entry.options as JsonObject).apiKey));
+  if (isObject(entry.models)) {
+    const model = (entry.models as JsonObject)[modelId];
+    if (isObject(model)) {
+      if (Array.isArray((model as JsonObject).env)) for (const name of (model as JsonObject).env as unknown[]) take(name);
+      if (isObject((model as JsonObject).options)) take(apiKeyEnv(((model as JsonObject).options as JsonObject).apiKey));
+    }
+  }
+  return names;
+}
+
+/** Env names the provider needs, from the global and the member's opencode.json files. */
+function requiredServiceEnv(provider: string, modelId: string, workspace: string, memberCwd: string): string[] {
+  const names: string[] = [];
+  for (const file of [join(home(), ".config", "opencode", "opencode.json"), join(workspace, memberCwd, "opencode.json")]) {
+    const config = readOpencodeConfig(file);
+    const providers = config ? (config as JsonObject).providers : null;
+    if (isObject(providers)) {
+      for (const name of providerEnvNames((providers as JsonObject)[provider], modelId)) {
+        if (!names.includes(name)) names.push(name);
+      }
+    }
+  }
+  return names;
+}
+
+/** Whether pid's environment holds NAME (name only; the value is never read out). Null when unreadable. */
+function serviceEnvHas(pid: number, name: string): boolean | null {
+  try {
+    const proc = join("/proc", String(pid), "environ");
+    if (isFile(proc)) {
+      return readText(proc)
+        .split("\0")
+        .some((entry) => entry.startsWith(`${name}=`));
+    }
+  } catch {
+    // fall through to ps
+  }
+  if (!which("ps")) return null;
+  const done = run(["ps", "eww", "-p", String(pid)], { timeoutMs: 15000 });
+  if (done.timedOut || done.code !== 0) return null;
+  return new RegExp(`(^|\\s)${name}=`).test(done.stdout + done.stderr);
+}
+
+/** Check the OpenCode background service has each opencode member's provider API-key
+ * variables before launch. The names come only from opencode.json provider entries
+ * (never guessed); `opencode api provider.list` names no variables, so it is not used.
+ * Prints one WARN per missing variable (its name only, never its value) and carries on,
+ * or one NOTE when the check cannot be done. Only reads; never starts or stops anything. */
+function checkOpencodeServiceEnv(members: Member[], workspace: string): void {
+  const wanted = new Map<string, string>();
+  for (const m of members) {
+    if (m.agent !== "opencode" || !m.model) continue;
+    const [provider, , modelId] = partition(m.model, "/");
+    if (!provider || !modelId) continue;
+    for (const name of requiredServiceEnv(provider, modelId, workspace, m.cwd)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+      if (!wanted.has(name)) wanted.set(name, provider);
+    }
+  }
+  if (!wanted.size) return;
+  const pid = opencodeServicePid();
+  if (pid === null) {
+    print("NOTE could not check the OpenCode service environment (no service pid found); skipping the API-key check.");
+    return;
+  }
+  if (!isFile(join("/proc", String(pid), "environ")) && !which("ps")) {
+    print("NOTE could not check the OpenCode service environment (neither /proc nor ps is available); skipping the API-key check.");
+    return;
+  }
+  for (const [name, provider] of wanted) {
+    const has = serviceEnvHas(pid, name);
+    if (has === null) {
+      print(`NOTE could not check the OpenCode service environment (pid ${pid} is unreadable); skipping the API-key check.`);
+      return;
+    }
+    if (!has) {
+      print(
+        `WARN the OpenCode background service (pid ${pid}) is missing ${name}, which the ${repr(provider)} provider needs: ` +
+          `an opencode member may fail with 'API key is required'. Restart it from a shell that sets it ` +
+          `(\`opencode service stop && opencode service start\`), then launch again. Carrying on with the launch.`,
+      );
+    }
+  }
 }
 
 export function cmdLaunchHc(
@@ -252,6 +429,7 @@ export function cmdLaunchHc(
     throw new Exit(1);
   }
   const targets = selected(members, args.member);
+  checkOpencodeServiceEnv(targets, workspace);
   print(`OK ${targets.length} of ${members.length} members, herdr-core (hc)`);
   for (const e of targets) print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
   for (const line of layoutLines(tabs, byName)) print(line);
@@ -401,6 +579,7 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
   }
   const targets = selected(members, args.member);
   const byName = new Map(members.map((m) => [m.name, m]));
+  checkOpencodeServiceEnv(targets, workspace);
   print(`OK ${targets.length} of ${members.length} members, herdr session ${session}`);
   for (const e of targets) print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
   for (const line of layoutLines(tabs, byName)) print(line);

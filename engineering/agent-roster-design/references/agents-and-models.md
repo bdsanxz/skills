@@ -7,7 +7,7 @@ Each member runs one agent with one model at one effort level, set on its own, i
 | `claude` | Claude Code | an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full name such as `claude-sonnet-5-5` | no list; `check` checks the form | `claude --model <model> --effort <level>` |
 | `opencode` | OpenCode | `provider/model`, such as `opencode/beam-free` | `opencode models` | through OpenCode's API, since the TUI takes no model or effort flag (below) |
 | `agy` | Antigravity CLI | a model id, such as `gemini-3.8-flash`, or one fixed to a level, such as `gemini-3.8-flash-low` | `agy models` | `agy --model <model> --effort <level>` |
-| `pi` | pi | `provider/model` or the bare model, as `pi --list-models` lists them, such as `anthropic/claude-opus-4-8` | `pi --list-models` | `pi --model <model> --thinking <level>`, with `--approve` and the peers extension (`-e`) |
+| `pi` | pi | `provider/model` or the bare model, as `pi --list-models` lists them, such as `anthropic/claude-opus-4-8` | `pi --list-models` | `pi --model <model> --thinking <level>`, with `--approve` and two extensions (`-e` twice: agent-job and loop) |
 | `muse` | Muse Code | a model id such as `muse-spark-1.3` | no list; `check` checks the form | `muse --yolo --model <model> --effort <level>` |
 
 ## OpenCode: model and effort through its API
@@ -17,12 +17,16 @@ For an opencode member with a model, `launch`:
 1. creates the member's session with `opencode api session.create`, located in the member's cwd;
 2. opens the OpenCode TUI on that session (`opencode --session <id>`);
 3. once herdr reports the TUI settled, sets the model, with the effort as its variant, with `opencode api session.switchModel`;
-4. reads the session back with `opencode api session.get`, and stops the launch if it reports another model or variant;
+4. reads the session back with `opencode api session.get`, falling back to the `session.list` entry when `session.get` fails on OpenCode 2.0.29; stops the launch if it reports another model or variant, but warns and carries on with the first prompt when no read-back works;
 5. sends the first prompt, so every turn runs on the chosen model.
 
-This needs OpenCode's background service; `opencode service status` shows whether it runs. `switchModel` accepts any name, so `check` validates the model against `opencode models` and the effort against the model's variants before anything starts.
+This needs OpenCode's background service; `opencode service status` shows whether it runs. Before anything starts, `launch` also checks the service process has each opencode member's provider API-key variable (from the `env` and `options.apiKey` entries in `~/.config/opencode/opencode.json` and the member's `opencode.json`): a missing variable prints a WARN naming it and the fix, and the launch carries on. `switchModel` accepts any name, so `check` validates the model against `opencode models` and the effort against the model's variants before anything starts.
 
-An opencode member with no model in the roster starts plain and uses the model and effort set in its own `opencode.json` or chosen with `/models`. `roster.js` never writes `opencode.json`.
+An opencode member with no model in the roster starts plain and uses the model and effort set in its own `opencode.json` or chosen with `/models`. `roster.js` only merges the loop entry (`mcp.servers.roster`) into `opencode.json` and never writes a model or effort there.
+
+## Loop for pi and opencode members
+
+A pi or opencode member gets `/loop` for repeated work, the same loop Claude Code members get through `agent-job`: `/loop 5m <prompt>` runs the prompt now and repeats it every 5 minutes, `/loop <prompt>` runs it now and wakes again when the Schedule tool says, and `/loop stop` ends the loop. In a dynamic loop the member calls the Schedule tool once per iteration with the delay, a short reason, and noop true when nothing changed; in an interval loop the opencode member calls `roster_ScheduleCreate` once with the interval and the task text only. A pi member loads the loop extension with a second `-e` at launch. An opencode member's loop tools come from the sidecar (the `mcp.servers.roster` entry the build merges into its `opencode.json`) and the plugin the build places under `.opencode/plugins/`. The sidecar finds the OpenCode background service itself, and the member's instruction file carries the short usage note.
 
 ## Effort levels
 

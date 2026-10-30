@@ -6,11 +6,12 @@
 // The tests run in order and share one squad workspace, as the smoke test does: each step
 // builds on the files and logs the steps before it left.
 
-import { afterAll, beforeAll, describe, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { AGENTS } from "../src/agents";
+import { OPENCODE_ROSTER_MCP, OPENCODE_ROSTER_PLUGIN } from "../src/core";
 import { findSession, sessionLive } from "../src/sessions";
 import {
   AGENT_JOB_INSTALLER,
@@ -364,7 +365,19 @@ describe("build", () => {
     has("agent-job skill installed for opencode", String(exists(path.join(W, "api/.agents/skills/agent-job/SKILL.md"))), "true");
     has("agent-shell skill installed for claude", String(exists(path.join(W, "lead/.claude/skills/agent-shell/SKILL.md"))), "true");
     has("agent-shell skill installed for opencode", String(exists(path.join(W, "api/.agents/skills/agent-shell/SKILL.md"))), "true");
-    lacks("build writes no opencode.json", String(exists(path.join(W, "api", "opencode.json"))), "true");
+    has("build merges the loop entry into opencode.json", file("api", "opencode.json"), '"roster"');
+    has("loop entry runs the built sidecar", file("api", "opencode.json"), OPENCODE_ROSTER_MCP);
+    has("loop log in the member directory", file("api", "opencode.json"), `${W}/api/logs/roster.jsonl`);
+    has("loop entry is local without codemode", file("api", "opencode.json"), '"codemode": false');
+    has(
+      "build places the loop plugin",
+      String(exists(path.join(W, "api", ".opencode", "plugins", "opencode-roster-plugin.js"))),
+      "true",
+    );
+    has("loop plugin is the built file", read(path.join(W, "api", ".opencode", "plugins", "opencode-roster-plugin.js")), "opencode-roster");
+    has("loop note in opencode instructions", file("api", "AGENTS.md"), "## Loop");
+    has("loop note names the stop command", file("api", "AGENTS.md"), "/loop stop");
+    lacks("claude members get no loop note", file("lead", "CLAUDE.md"), "## Loop");
     has("opencode records its model", file("api", ".peers.json"), '"model": "opencode/big-pickle"');
     has("squad directory shows the opencode model", file("lead", "CLAUDE.md"), "`api` | opencode | opencode/big-pickle | agent default |");
     has("role file for each member", file("api", ".peers.json"), '"role": "api"');
@@ -392,11 +405,36 @@ describe("build", () => {
     has("rebuild keeps one SessionStart hook", String(hooks.SessionStart.length), "1");
     write(path.join(W, "api", "opencode.json"), '{"model":"opencode/beam-free#high"}\n');
     await roster(["build", W, "--member", "api"]);
-    has("build keeps the member's own opencode.json", file("api", "opencode.json"), '{"model":"opencode/beam-free#high"}');
+    has("build keeps the member's own opencode.json keys", file("api", "opencode.json"), '"model": "opencode/beam-free#high"');
+    has("rebuild keeps the merged loop entry", file("api", "opencode.json"), '"roster"');
     clear(s.npxLog);
     await check("assemble writes only instructions", "ASSEMBLED api", ["assemble", W, "--member", "api"]);
     has("assemble installs nothing", String(read(s.npxLog).length), "0");
     await check("unknown member", "no member named 'nope'", ["assemble", W, "--member", "nope"]);
+  });
+
+  test("an opencode.json that is not JSON names the file", async () => {
+    write(path.join(W, "api", "opencode.json"), "{nope");
+    const bad = await roster(["build", W, "--member", "api"]);
+    exits("invalid opencode.json exits 1", bad.code, 1);
+    has("invalid opencode.json names the file", bad.out, "api/opencode.json is not valid JSON");
+  });
+
+  test("opencode setup merges every existing key and a second build changes nothing", async () => {
+    write(
+      path.join(W, "api", "opencode.json"),
+      JSON.stringify({ model: "opencode/beam-free#high", mcp: { servers: { other: { type: "local", command: ["other"] } } } }),
+    );
+    await roster(["build", W, "--member", "api"]);
+    const config = file("api", "opencode.json");
+    has("existing model key kept", config, '"model": "opencode/beam-free#high"');
+    has("existing mcp server kept", config, '"other"');
+    has("loop command runs the built sidecar", config, OPENCODE_ROSTER_MCP);
+    const plugin = path.join(W, "api", ".opencode", "plugins", "opencode-roster-plugin.js");
+    expect(read(plugin)).toBe(read(OPENCODE_ROSTER_PLUGIN));
+    const before = `${config}\n${read(plugin)}`;
+    await roster(["build", W, "--member", "api"]);
+    expect(`${file("api", "opencode.json")}\n${read(plugin)}`).toBe(before);
   });
 });
 
@@ -460,6 +498,27 @@ describe("launch", () => {
     const at = (pattern: RegExp) => lines.findIndex((line) => pattern.test(line));
     const order = [/agent start demo-api/, /agent wait demo-api/, /session\.switchModel/, /session\.get/, /agent prompt demo-api/].map(at);
     has("model set after start, before the first prompt", String(order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1]!))), "true");
+  });
+
+  test("a session.get failure falls back to session.list", async () => {
+    clear(s.herdrLog);
+    const done = await roster(["launch", W, "--member", "api"], { OC_GET_FAIL: "1" });
+    exits("fallback launch passes", done.code, 0);
+    has("fallback launches", done.out, "LAUNCHED api (opencode");
+    lacks("fallback warns nothing", done.out, "could not verify the model switch");
+    has("fallback reads session.list", read(s.opencodeLog), "api session.list");
+    has("fallback sends the first prompt", read(s.herdrLog), "agent prompt demo-api Read your instructions");
+  });
+
+  test("a read-back that fails everywhere warns and still launches", async () => {
+    clear(s.herdrLog);
+    const done = await roster(["launch", W, "--member", "api"], { OC_GET_FAIL: "1", OC_LIST_FAIL: "1" });
+    exits("unverified launch still passes", done.code, 0);
+    has("unverified launch warns", done.out, "WARN opencode member 'api': could not verify the model switch");
+    has("warn names session.get", done.out, "opencode api session.get");
+    has("warn names session.list", done.out, "opencode api session.list");
+    has("unverified launch still launches", done.out, "LAUNCHED api (opencode");
+    has("unverified launch sends the first prompt", read(s.herdrLog), "agent prompt demo-api Read your instructions");
   });
 
   test("overrides rebuild and retune the member", async () => {
@@ -998,5 +1057,84 @@ describe("runtime session lookup", () => {
   test("unknown runtimes resolve to nothing", () => {
     if (findSession("nope", s.tmp) !== null) throw new Error("unknown runtime has no sessions");
     if (sessionLive("nope", "x") !== null) throw new Error("unknown runtime liveness is unknown");
+  });
+});
+
+describe("opencode service environment", () => {
+  const secret = "roster-test-secret-123";
+  // A fake ps: runtime-set variables are invisible to the real ps, so the stub
+  // reports the service environment from the test's own variables, by name only.
+  const PS = `#!/bin/bash
+echo "  PID   TT  STAT      TIME COMMAND"
+echo "  999999999   ??  Ss    0:00.01 opencode service"
+[ -n "\${ROSTER_TEST_API_KEY:-}" ] && echo "ROSTER_TEST_API_KEY=present"
+exit 0
+`;
+  const tools = ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "peers", "agent-job", "agent-shell"];
+
+  function fakeHome(name: string, withPid: boolean) {
+    const home = path.join(s.tmp, name);
+    write(
+      path.join(home, ".config", "opencode", "opencode.json"),
+      JSON.stringify({ providers: { opencode: { env: ["ROSTER_TEST_API_KEY"] } } }),
+    );
+    if (withPid) {
+      write(path.join(home, ".local", "state", "opencode", "service.json"), JSON.stringify({ pid: 999999999 }));
+    }
+    return home;
+  }
+
+  function fakeEnv(home: string) {
+    const dir = partialBin(s, "envps", tools);
+    write(path.join(dir, "ps"), PS);
+    fs.chmodSync(path.join(dir, "ps"), 0o755);
+    return { PATH: `${dir}:/usr/bin:/bin`, HOME: home };
+  }
+
+  function fakeTeam() {
+    setRoster(s, {
+      squad: "demo",
+      goal: "Ship it.",
+      members: [
+        { name: "lead", agent: "claude", model: "haiku", cwd: "lead", summary: "Leads", reports_to: "user", talks_to: ["api"] },
+        { name: "api", agent: "opencode", model: "opencode/big-pickle", cwd: "api", summary: "Builds the API", reports_to: "lead" },
+      ],
+    });
+    member(s, "lead", "Assign work to api. Report to the user.");
+    member(s, "api", "Report to lead.");
+  }
+
+  test("a key the service has warns nothing and leaks no value", async () => {
+    fakeTeam();
+    await roster(["build", W]);
+    const done = await roster(["launch", W, "--dry-run", "--member", "api"], {
+      ...fakeEnv(fakeHome("env-present", true)),
+      ROSTER_TEST_API_KEY: secret,
+    });
+    exits("present key passes", done.code, 0);
+    lacks("present key warns nothing", done.out, "WARN");
+    lacks("present key leaks no value", done.out, secret);
+  });
+
+  test("a key the service misses warns without the value and carries on", async () => {
+    const done = await roster(["launch", W, "--dry-run", "--member", "api"], {
+      ...fakeEnv(fakeHome("env-missing", true)),
+      ROSTER_TEST_API_KEY: undefined,
+    });
+    exits("missing key still passes", done.code, 0);
+    has("missing key warns", done.out, "WARN the OpenCode background service (pid 999999999)");
+    has("warn names the variable", done.out, "ROSTER_TEST_API_KEY");
+    has("warn names the fix", done.out, "opencode service stop && opencode service start");
+    lacks("warn leaks no value", done.out, secret);
+  });
+
+  test("no service pid notes and carries on", async () => {
+    const done = await roster(["launch", W, "--dry-run", "--member", "api"], {
+      ...fakeEnv(fakeHome("env-nopid", false)),
+      ROSTER_TEST_API_KEY: undefined,
+    });
+    exits("missing pid still passes", done.code, 0);
+    has("missing pid notes", done.out, "NOTE could not check the OpenCode service environment");
+    lacks("missing pid warns nothing", done.out, "WARN");
   });
 });
