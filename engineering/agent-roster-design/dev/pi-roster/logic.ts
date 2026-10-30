@@ -448,9 +448,15 @@ export function parseEvaluatorVerdict(raw: string): EvaluatorVerdict | null {
   return null;
 }
 
+/** Whole-goal elapsed time in ms (goal set -> now). Clamped at 0. */
+export function goalElapsedMs(setAtMs: number, nowMs: number): number {
+  if (!Number.isFinite(setAtMs) || !Number.isFinite(nowMs)) return 0;
+  return Math.max(0, nowMs - setAtMs);
+}
+
 /** Short elapsed text for goal status lines, e.g. "24s", "2m 5s". */
 export function formatGoalElapsed(setAtMs: number, nowMs: number): string {
-  const seconds = Math.max(0, Math.floor((nowMs - setAtMs) / 1000));
+  const seconds = Math.floor(goalElapsedMs(setAtMs, nowMs) / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes}m ${seconds % 60}s`;

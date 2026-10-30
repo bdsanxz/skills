@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget, parseGoalCommand, goalMaxChecksFromEnv, goalEvalTimeoutFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, shouldSkipGoalCheck, shouldApplyEvalResult, applyGoalSet, buildGoalAck, buildGoalFeedback, goalEvaluatorSystemPrompt, buildEvaluatorPrompt, capTranscript, transcriptToText, parseEvaluatorVerdict, formatGoalElapsed, formatGoalTokens, formatGoalStatus, formatGoalAchieved, shouldLogGoalScheduleCall, GOAL_MAX_EVAL_FAILURES } from "./logic.ts";
+import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget, parseGoalCommand, goalMaxChecksFromEnv, goalEvalTimeoutFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, shouldSkipGoalCheck, shouldApplyEvalResult, applyGoalSet, buildGoalAck, buildGoalFeedback, goalEvaluatorSystemPrompt, buildEvaluatorPrompt, capTranscript, transcriptToText, parseEvaluatorVerdict, formatGoalElapsed, formatGoalTokens, formatGoalStatus, formatGoalAchieved, goalElapsedMs, shouldLogGoalScheduleCall, GOAL_MAX_EVAL_FAILURES } from "./logic.ts";
 import type { LoopSummary } from "./logic.ts";
 assert.deepEqual(parseInterval("30s hello"), { milliseconds: 30000, prompt: "hello" });
 assert.deepEqual(parseInterval("5m /check now"), { milliseconds: 300000, prompt: "/check now" });
@@ -215,6 +215,12 @@ assert.match(formatGoalStatus(shown, 24000), /Last check: waiting on suites/);
 assert.match(formatGoalStatus(shown, 24000), /\/goal clear to stop early/);
 assert.equal(formatGoalElapsed(0, 5000), "5s");
 assert.equal(formatGoalElapsed(0, 125000), "2m 5s");
+// Goal: whole-goal elapsed_ms (set -> now) for terminal goal events.
+assert.equal(goalElapsedMs(1000, 3594), 2594);
+assert.equal(goalElapsedMs(1000, 1000), 0);
+assert.equal(goalElapsedMs(2000, 1000), 0);
+assert.equal(goalElapsedMs(0, 125000), 125000);
+assert.equal(formatGoalElapsed(0, goalElapsedMs(0, 125000)), "2m 5s");
 assert.equal(formatGoalTokens(999), "999");
 assert.equal(formatGoalTokens(1800), "1.8k");
 assert.match(formatGoalAchieved(shown, 24000), /✔ Goal achieved \(24s · 7 turns · 1\.8k tokens\)/);

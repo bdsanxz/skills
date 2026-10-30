@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { applyGoalSet, buildEvaluatorPrompt, buildGoalAck, buildGoalFeedback, capTranscript, formatGoalAchieved, formatGoalElapsed, formatGoalStatus, goalEvalTimeoutFromEnv, goalEvaluatorSystemPrompt, goalMaxChecksFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, parseEvaluatorVerdict, parseGoalCommand, shouldApplyEvalResult, shouldSkipGoalCheck, transcriptToText, clampDelay, decideTick, earliestDueMs, findDynamicByTask, findIntervalDuplicate, findLoopById, formatLoopList, isCapReached, isPendingExpired, maxLoopsFromEnv, nextLoopId, parseInterval, parseLoopCommand, pendingMaxMsFromEnv, replaceTimer, resolveDynamicTarget, shouldClearOnIdle, statusText, tickMessage, userMessageText, shouldLogGoalScheduleCall } from "./logic";
+import { applyGoalSet, buildEvaluatorPrompt, buildGoalAck, buildGoalFeedback, capTranscript, formatGoalAchieved, formatGoalElapsed, formatGoalStatus, goalElapsedMs, goalEvalTimeoutFromEnv, goalEvaluatorSystemPrompt, goalMaxChecksFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, parseEvaluatorVerdict, parseGoalCommand, shouldApplyEvalResult, shouldSkipGoalCheck, transcriptToText, clampDelay, decideTick, earliestDueMs, findDynamicByTask, findIntervalDuplicate, findLoopById, formatLoopList, isCapReached, isPendingExpired, maxLoopsFromEnv, nextLoopId, parseInterval, parseLoopCommand, pendingMaxMsFromEnv, replaceTimer, resolveDynamicTarget, shouldClearOnIdle, statusText, tickMessage, userMessageText, shouldLogGoalScheduleCall } from "./logic";
 import type { GoalState, LoopMode, LoopSummary } from "./logic";
 
 export default function (pi: ExtensionAPI) {
@@ -288,7 +288,7 @@ export default function (pi: ExtensionAPI) {
         active.evalFailures++;
         log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures }, ctx);
         if (isGoalEvalGiveUp(active.evalFailures)) {
-          clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup" }, `Goal cleared after ${active.evalFailures} failed evaluations: ${condition}`, "error");
+          clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup", elapsed_ms: goalElapsedMs(active.setAtMs, Date.now()), eval_failures: active.evalFailures }, `Goal cleared after ${active.evalFailures} failed evaluations: ${condition}`, "error");
         }
         return;
       }
@@ -299,7 +299,7 @@ export default function (pi: ExtensionAPI) {
       if (!verdict.met) {
         log("goal_check", { met: false, condition, reason: verdict.reason, duration_ms: durationMs }, ctx);
         if (isGoalCapReached(active.checks, goalMaxChecks())) {
-          clearActiveGoal("goal_cap_reached", { condition, checks: active.checks, max_checks: goalMaxChecks() }, `Goal stopped after ${active.checks} checks without success: ${condition}`, "error");
+          clearActiveGoal("goal_cap_reached", { condition, checks: active.checks, max_checks: goalMaxChecks(), elapsed_ms: goalElapsedMs(active.setAtMs, Date.now()) }, `Goal stopped after ${active.checks} checks without success: ${condition}`, "error");
           return;
         }
         refreshGoalStatus(ctx);
@@ -311,8 +311,9 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       log("goal_check", { met: true, condition, reason: verdict.reason, duration_ms: durationMs, iterations: active.checks, tokens: active.tokens }, ctx);
-      const achieved = formatGoalAchieved(active, Date.now());
-      clearActiveGoal("goal_achieved", { condition, iterations: active.checks, duration_ms: durationMs, tokens: active.tokens }, achieved, "info");
+      const achievedAt = Date.now();
+      const achieved = formatGoalAchieved(active, achievedAt);
+      clearActiveGoal("goal_achieved", { condition, iterations: active.checks, elapsed_ms: goalElapsedMs(active.setAtMs, achievedAt), tokens: active.tokens }, achieved, "info");
     } catch (error) {
       const durationMs = Date.now() - started;
       if (!shouldApplyEvalResult({ goalActive: goal !== undefined, evalGeneration: generation, currentGeneration: goalGeneration, evalCondition: condition, currentCondition: goal?.condition })) {
@@ -323,7 +324,7 @@ export default function (pi: ExtensionAPI) {
       goal.evalFailures++;
       log("goal_eval_failed", { reason: error instanceof Error ? error.message : String(error), condition, duration_ms: durationMs, eval_failures: goal.evalFailures }, ctx);
       if (isGoalEvalGiveUp(goal.evalFailures)) {
-        clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup" }, `Goal cleared after ${goal.evalFailures} failed evaluations: ${condition}`, "error");
+        clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup", elapsed_ms: goalElapsedMs(goal.setAtMs, Date.now()), eval_failures: goal.evalFailures }, `Goal cleared after ${goal.evalFailures} failed evaluations: ${condition}`, "error");
       }
     } finally {
       clearTimeout(timer);
@@ -346,12 +347,13 @@ export default function (pi: ExtensionAPI) {
         if (command.action === "clear") {
           if (!goal) { ctx.ui.notify("No goal set.", "info"); return; }
           const condition = goal.condition;
+          const elapsedMs = goalElapsedMs(goal.setAtMs, Date.now());
           goal = undefined;
           goalGeneration++;
           abortGoalEval();
           stopGoalTimer();
           refreshGoalStatus(ctx);
-          log("goal_cleared", { condition, reason: "user /goal clear" }, ctx);
+          log("goal_cleared", { condition, reason: "user /goal clear", elapsed_ms: elapsedMs }, ctx);
           ctx.ui.notify(`Goal cleared: ${condition}`, "info");
           return;
         }
@@ -506,7 +508,7 @@ export default function (pi: ExtensionAPI) {
     loops.clear();
     lastDynamicId = undefined;
     refreshStatus(ctx);
-    if (goal) log("goal_cleared", { condition: goal.condition, reason: "session_shutdown" }, ctx);
+    if (goal) log("goal_cleared", { condition: goal.condition, reason: "session_shutdown", elapsed_ms: goalElapsedMs(goal.setAtMs, Date.now()) }, ctx);
     goal = undefined;
     goalGeneration++;
     abortGoalEval();
