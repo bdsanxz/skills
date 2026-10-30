@@ -441,6 +441,16 @@ edit 'r["members"][0]["display_name"] = "Lena | lead"'
 check "display name rejects |" "\"display_name\" must be a human-readable name" bun "$SCRIPT" check "$W"
 edit 'r["members"][0]["display_name"] = "x" * 49'
 check "display name too long" "\"display_name\" must be a human-readable name" bun "$SCRIPT" check "$W"
+edit 'r["members"][0]["display_name"] = "Rina Putri"'
+check "display name rejects a space" "\"display_name\" must be a human-readable name" bun "$SCRIPT" check "$W"
+edit 'r["members"][0]["display_name"] = "Rina\tP"'
+check "display name rejects a tab" "\"display_name\" must be a human-readable name" bun "$SCRIPT" check "$W"
+edit 'r["members"][0]["display_name"] = "Rina (lead)"'
+check "display name rejects a role" "\"display_name\" must be a human-readable name" bun "$SCRIPT" check "$W"
+edit 'r["members"][0]["display_name"] = "Rina\u00a0Putri"'
+check "display name rejects unicode whitespace" "\"display_name\" must be a human-readable name" bun "$SCRIPT" check "$W"
+edit 'r["members"][0]["display_name"] = " Rina "; r["members"][1]["display_name"] = "Mary-Ann"'
+check "surrounding spaces are stripped, hyphenated name accepted" "OK 3 members" bun "$SCRIPT" check "$W"
 edit 'r["members"][0]["display_name"] = "Rina"; r["members"][1]["display_name"] = "rina"'
 check "display name must be unique" "display_name 'rina' is used by another member" bun "$SCRIPT" check "$W"
 edit 'r["members"][0]["display_name"] = "Lena"; r["members"][1]["display_name"] = "Rina"'

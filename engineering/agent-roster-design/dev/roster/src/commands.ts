@@ -366,10 +366,13 @@ files:
 member names:
   Each member has a member name ("name": kebab-case, also its cwd, and what reports_to,
   talks_to, --member and its peers role use) and may have a human-readable
-  "display_name" (1-48 characters on one line, unique in the squad, such as "Rina").
-  Write it without the role: peers adds the member name as the role, so receivers see
-  "Rina (api)", and "Rina (backend)" would show it twice. Without a display name, the
-  member name is shown. The display name appears in each member's instruction file and
+  "display_name" (1-48 characters on one line, one word without whitespace,
+  unique in the squad, such as "Rina"). Write it without the role: peers adds the
+  member name as the role, so receivers see "Rina (api)", and "Rina (backend)"
+  would show it twice. Join parts with a hyphen ("Mary-Ann", not "Mary Ann"):
+  squad tabs and addresses are built from the name, so whitespace breaks
+  peers open. Without a display name, the member name is shown. The display name
+  appears in each member's instruction file and
   squad directory, in .peers.json (peers sends it with every message), in check's
   MEMBER lines, and at launch as the herdr pane label and the session's title.
 

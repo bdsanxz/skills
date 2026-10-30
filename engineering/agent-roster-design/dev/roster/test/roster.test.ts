@@ -766,6 +766,19 @@ describe("display names", () => {
     await check("display name rejects |", '"display_name" must be a human-readable name', ["check", W]);
     edit(s, (r) => (m(r, 0).display_name = "x".repeat(49)));
     await check("display name too long", '"display_name" must be a human-readable name', ["check", W]);
+    edit(s, (r) => (m(r, 0).display_name = "Rina Putri"));
+    await check("display name rejects a space", '"display_name" must be a human-readable name', ["check", W]);
+    edit(s, (r) => (m(r, 0).display_name = "Rina\tP"));
+    await check("display name rejects a tab", '"display_name" must be a human-readable name', ["check", W]);
+    edit(s, (r) => (m(r, 0).display_name = "Rina (lead)"));
+    await check("display name rejects a role", '"display_name" must be a human-readable name', ["check", W]);
+    edit(s, (r) => (m(r, 0).display_name = "Rina\u00a0Putri"));
+    await check("display name rejects unicode whitespace", '"display_name" must be a human-readable name', ["check", W]);
+    edit(s, (r) => {
+      m(r, 0).display_name = " Rina ";
+      m(r, 1).display_name = "Mary-Ann";
+    });
+    await check("surrounding spaces are stripped, hyphenated name accepted", "OK 3 members", ["check", W]);
     edit(s, (r) => {
       m(r, 0).display_name = "Rina";
       m(r, 1).display_name = "rina";
