@@ -2088,8 +2088,8 @@ function structureProblems(roster, overrides) {
       problems.push(`${where}: "summary" must be a one-line description of the role`);
     if ("display_name" in m) {
       const given = m.display_name;
-      if (!isFilled(given) || length(strip(given)) > 48 || /[\n\r|`]/.test(given)) {
-        problems.push(`${where}: "display_name" must be a human-readable name of 1-48 characters ` + 'on one line, without | or ` and without the role, such as "Rina"; or leave it out');
+      if (!isFilled(given) || length(strip(given)) > 48 || /[\n\r|`]/.test(given) || isText(given) && /[\s\x1c-\x1f\x85]/.test(strip(given))) {
+        problems.push(`${where}: "display_name" must be a human-readable name of 1-48 characters ` + 'on one line, one word without whitespace, | or ` and without the role, such as "Rina" ' + '(join parts with a hyphen, such as "Mary-Ann"); or leave it out');
       } else if (shownNames.has(strip(given).toLowerCase())) {
         problems.push(`${where}: display_name ${repr(strip(given))} is used by another member`);
       } else {
@@ -3273,10 +3273,13 @@ files:
 member names:
   Each member has a member name ("name": kebab-case, also its cwd, and what reports_to,
   talks_to, --member and its peers role use) and may have a human-readable
-  "display_name" (1-48 characters on one line, unique in the squad, such as "Rina").
-  Write it without the role: peers adds the member name as the role, so receivers see
-  "Rina (api)", and "Rina (backend)" would show it twice. Without a display name, the
-  member name is shown. The display name appears in each member's instruction file and
+  "display_name" (1-48 characters on one line, one word without whitespace,
+  unique in the squad, such as "Rina"). Write it without the role: peers adds the
+  member name as the role, so receivers see "Rina (api)", and "Rina (backend)"
+  would show it twice. Join parts with a hyphen ("Mary-Ann", not "Mary Ann"):
+  squad tabs and addresses are built from the name, so whitespace breaks
+  peers open. Without a display name, the member name is shown. The display name
+  appears in each member's instruction file and
   squad directory, in .peers.json (peers sends it with every message), in check's
   MEMBER lines, and at launch as the herdr pane label and the session's title.
 

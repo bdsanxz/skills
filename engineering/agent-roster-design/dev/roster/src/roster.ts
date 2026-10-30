@@ -181,10 +181,16 @@ export function structureProblems(roster: Json, overrides: Overrides) {
     if (!isFilled(m.summary)) problems.push(`${where}: "summary" must be a one-line description of the role`);
     if ("display_name" in m) {
       const given = m.display_name;
-      if (!isFilled(given) || length(strip(given)) > 48 || /[\n\r|`]/.test(given)) {
+      if (
+        !isFilled(given) ||
+        length(strip(given)) > 48 ||
+        /[\n\r|`]/.test(given as string) ||
+        (isText(given) && /[\s\x1c-\x1f\x85]/.test(strip(given)))
+      ) {
         problems.push(
           `${where}: "display_name" must be a human-readable name of 1-48 characters ` +
-            'on one line, without | or ` and without the role, such as "Rina"; or leave it out',
+            'on one line, one word without whitespace, | or ` and without the role, such as "Rina" ' +
+            '(join parts with a hyphen, such as "Mary-Ann"); or leave it out',
         );
       } else if (shownNames.has(strip(given).toLowerCase())) {
         problems.push(`${where}: display_name ${repr(strip(given))} is used by another member`);
