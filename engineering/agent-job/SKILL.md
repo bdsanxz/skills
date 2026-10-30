@@ -49,7 +49,7 @@ Prints your address. If it fails, you are not inside a known session; use `--ses
 
 ## Step 2: Send a repeat
 
-Native (Claude or Muse TUI in herdr):
+Native (Claude or Muse TUI in herdr — or `hc send <terminal> "..."` when the old herdr server is stopped):
 
 ```bash
 herdr agent prompt <member> "/loop every 10m Run the build. If it is still red, report the first failing test; if green, tell me and stop."
@@ -67,7 +67,7 @@ A long instruction goes on stdin instead of `--prompt`. Add `--max-runs <n>` or 
 
 ## Step 3: Send a goal
 
-Native (Claude, Antigravity or Muse TUI in herdr):
+Native (Claude, Antigravity or Muse TUI in herdr — or `hc send <terminal> "..."` when the old herdr server is stopped):
 
 ```bash
 herdr agent prompt <member> "/goal All tests under test/ pass with `bun test`, and no test is skipped or deleted to get there."
