@@ -178,6 +178,16 @@ if [ "$1" = keys ]; then exit 0; fi
 echo "unexpected hc call: $*" >&2; exit 9
 `;
 
+/** hcx: logs every call; HCX_FAIL=1 makes `hcx send` fail, so launch falls back to `hc send`. */
+const HCX = `#!/bin/bash
+echo "$*" >>"$HCX_LOG"
+if [ "$1" = send ]; then
+  [ "\${HCX_FAIL:-}" = 1 ] && { echo "hcx send failed" >&2; exit 1; }
+  exit 0
+fi
+echo "unexpected hcx call: $*" >&2; exit 9
+`;
+
 /** The agent-job install script build fetches; INSTALLER_FAIL=1 makes it fail. */
 export const AGENT_JOB_INSTALLER = `[ "\${INSTALLER_FAIL:-}" = 1 ] && { echo "agent-job-install: error: no release" >&2; exit 1; }
 dir="\${AGENT_JOB_INSTALL_DIR:-$HOME/.local/bin}"
@@ -204,10 +214,11 @@ export type Squad = {
   herdrLog: string;
   opencodeLog: string;
   hcLog: string;
+  hcxLog: string;
   hcappLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, "herdr-app": HCAPP, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, hcx: HCX, "herdr-app": HCAPP, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
@@ -224,6 +235,7 @@ export function setUp(): Squad {
     herdrLog: path.join(tmp, "herdr.log"),
     opencodeLog: path.join(tmp, "opencode.log"),
     hcLog: path.join(tmp, "hc.log"),
+    hcxLog: path.join(tmp, "hcx.log"),
     hcappLog: path.join(tmp, "hcapp.log"),
   };
   fs.mkdirSync(squad.w);
@@ -234,6 +246,7 @@ export function setUp(): Squad {
     HERDR_LOG: squad.herdrLog,
     OPENCODE_LOG: squad.opencodeLog,
     HC_LOG: squad.hcLog,
+    HCX_LOG: squad.hcxLog,
     HCAPP_LOG: squad.hcappLog,
     PEERS_CACHE: path.join(tmp, "cache"),
     AGENT_JOB_INSTALL_DIR: path.join(tmp, "agent-job-bin"),

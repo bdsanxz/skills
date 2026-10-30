@@ -663,8 +663,10 @@ describe("herdr-core launch", () => {
     const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]) };
     const dry = (await roster(["launch", W, "--dry-run", "--member", "lead"], env)).out;
     has("hc fallback is announced", dry, "launching with herdr-core instead");
+    has("hcx named in fallback note", dry, "notified with `hcx send`");
     has("tab opens via herdr-app", dry, "RUN herdr-app do tab.new --space sp-test");
     has("tab carries the agent argv", dry, "claude");
+    has("first prompt sent untagged in dry run", dry, "RUN hcx send");
     has("hc launch reported", dry, "WOULD LAUNCH lead (claude");
     has("terminal named in output", dry, "terminal <lead>");
     has("space named in output", dry, "in Herdr app space squad-demo");
@@ -680,8 +682,9 @@ describe("herdr-core launch", () => {
     has("hc backend named", dry, "OK 3 of 3 members, herdr-core (hc)");
   });
 
-  test("a real run against the stubs notifies over hc", async () => {
+  test("a real run against the stubs notifies untagged over hcx", async () => {
     clear(s.hcLog);
+    clear(s.hcxLog);
     clear(s.hcappLog);
     clear(s.herdrLog);
     const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]) };
@@ -691,10 +694,41 @@ describe("herdr-core launch", () => {
       ["launch", W, "--member", "docs"],
       env,
     );
-    const log = read(s.hcLog);
     has("tab opens via herdr-app", read(s.hcappLog), "do tab.new --space sp-test");
-    has("first prompt sent over hc", log, "send t-test2 Read your instructions");
+    has("first prompt sent untagged over hcx", read(s.hcxLog), "send t-test2 Read your instructions");
+    lacks("hcx run sends no tagged prompt", read(s.hcLog), "send t-test2");
     lacks("real run touches no old pane", read(s.herdrLog), "agent start demo-docs");
+  });
+
+  test("without hcx the first prompt falls back to hc send", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    clear(s.hcappLog);
+    clear(s.herdrLog);
+    const noHcx = `${partialBin(s, "nohcx", ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "hc", "herdr-app", "peers", "agent-job", "agent-shell"])}:/usr/bin:/bin`;
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), PATH: noHcx };
+    await check(
+      "hc fallback launch starts the member",
+      "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in Herdr app space squad-demo",
+      ["launch", W, "--member", "docs"],
+      env,
+    );
+    has("first prompt sent over hc without hcx", read(s.hcLog), "send t-test2 Read your instructions");
+    lacks("no hcx call without hcx", read(s.hcxLog), "send t-test2");
+  });
+
+  test("a failing hcx send falls back to hc send with a WARN", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    clear(s.hcappLog);
+    clear(s.herdrLog);
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), HCX_FAIL: "1" };
+    const done = await roster(["launch", W, "--member", "docs"], env);
+    has("launch carries on after hcx fails", done.out, "LAUNCHED docs (agy, model gem-fast");
+    has("hcx failure warns", done.out, "WARN `hcx send t-test2` failed (exit 1)");
+    has("hcx names the fallback", done.out, "falling back to `hc send`");
+    has("hcx was tried first", read(s.hcxLog), "send t-test2 Read your instructions");
+    has("first prompt still sent over hc", read(s.hcLog), "send t-test2 Read your instructions");
   });
 
   test("a member launch needs its squad space", async () => {

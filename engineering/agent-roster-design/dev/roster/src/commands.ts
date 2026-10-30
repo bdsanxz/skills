@@ -248,8 +248,8 @@ when the session already holds the squad's workspace; with --member, a member th
 has a pane there is refused. When no herdr session runs but herdr-core (hc) does, it
 launches there instead: each member opens its own tab in a new Herdr app space
 named \`squad-<squad>\` via \`herdr-app do\` (never \`hc run\`, so no member sticks
-to the runner's tab), notified with \`hc send\`. With --member the tab opens in
-the squad's existing space.
+to the runner's tab), notified with \`hcx send\` (untagged; \`hc send\` when hcx is
+missing or fails). With --member the tab opens in the squad's existing space.
 
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's

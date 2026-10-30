@@ -1286,6 +1286,9 @@ function haveHc() {
 function haveApp() {
   return which("herdr-app") !== null;
 }
+function haveHcx() {
+  return which("hcx") !== null;
+}
 function appSpaces() {
   if (!haveApp())
     return null;
@@ -1435,6 +1438,20 @@ class Hc {
     return output;
   }
   sendPrompt(name, promptText) {
+    if (!haveHcx()) {
+      this.run(["send", name, promptText]);
+      return;
+    }
+    const hcxCmd = ["hcx", "send", name, promptText];
+    if (this.dryRun) {
+      print("RUN " + shlexJoin(hcxCmd));
+      return;
+    }
+    const done = run(hcxCmd, { timeoutMs: TIMEOUT_MS2 });
+    if (!done.timedOut && done.code === 0)
+      return;
+    const detail = done.timedOut ? "`hcx send` did not answer within 120 s" : `\`hcx send ${name}\` failed (exit ${done.code}): ${tail(strip(done.stdout + done.stderr), 400)}`;
+    print(`WARN ${detail}; falling back to \`hc send\``);
     this.run(["send", name, promptText]);
   }
   sendKeys(name, keys, note) {
@@ -2674,7 +2691,7 @@ function cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultS
     const dir = join(workspace, m.cwd);
     return terminals.find((t) => t.cwd !== "" && t.cwd === dir) ?? null;
   };
-  notes.push(`old herdr ${herdrWhy ?? "session is not running"}; launching with herdr-core instead: ` + `each member opens its own tab in Herdr app space ${space} via \`herdr-app do\` (no parent terminal), notified with \`hc send\``);
+  notes.push(`old herdr ${herdrWhy ?? "session is not running"}; launching with herdr-core instead: ` + `each member opens its own tab in Herdr app space ${space} via \`herdr-app do\` (no parent terminal), notified with \`hcx send\` (untagged; \`hc send\` fallback)`);
   if (!haveApp()) {
     problems.push("the Herdr app CLI (herdr-app) is not on PATH; install it before launching to herdr-core");
   }
@@ -3144,8 +3161,8 @@ when the session already holds the squad's workspace; with --member, a member th
 has a pane there is refused. When no herdr session runs but herdr-core (hc) does, it
 launches there instead: each member opens its own tab in a new Herdr app space
 named \`squad-<squad>\` via \`herdr-app do\` (never \`hc run\`, so no member sticks
-to the runner's tab), notified with \`hc send\`. With --member the tab opens in
-the squad's existing space.
+to the runner's tab), notified with \`hcx send\` (untagged; \`hc send\` when hcx is
+missing or fails). With --member the tab opens in the squad's existing space.
 
 Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per member in
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
