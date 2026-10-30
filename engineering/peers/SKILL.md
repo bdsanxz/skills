@@ -153,7 +153,7 @@ EOF
 Always send with `peers send`: a message sent any other way, such as with a bare `herdr agent prompt`, is missing from the chat history. The command stores the message, then notifies the peer with one fire-and-forget turn — no `--wait`, no polling — and prints one `SENT ...` line saying how it went:
 
 - Peer live: `SENT <member>: stored in its inbox (...); notified via herdr agent prompt to <member>` (or `notified via hc send to <member>` when the old server is stopped). The peer gets it as a user turn; while it is busy it waits in its input queue.
-- Peer not live: `queued, not delivered yet: <member> is not a live agent. ... No prompt was sent.` That is not a failure: the message is in its inbox, and the next notification after it runs carries every waiting message's count. Do not send it again.
+- Peer not live: `queued, not delivered yet: <member> is not a live agent. ... No prompt was sent.` That is not a failure: the message is in its inbox, and the next notification after it runs carries every waiting message's count. Do not send it again. When the target is a stale member address (e.g. after a relaunch under fresh terminal ids), `peers` instead delivers to the unique live terminal that runs it now and says so (`... is not live, but <terminal> runs it now`); if several terminals match, it stays queued and names them.
 
 A peer without this skill answers only if the message tells it how. In a first request to such a peer, give it two exact commands and say plainly that it must run them: `peers open <your address>` to read your messages, and `peers send <your address> --seq <n> --kind <kind> --role <its role> --body "<text>"` to reply. Add `--squad <dir>` to both when the notification to it carried one (operating rule 5).
 
