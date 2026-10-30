@@ -52,7 +52,7 @@ The footer is added when your own session is known; without it the text arrives 
 ## Step 3: Spawn an agent
 
 ```bash
-hcx spawn <muse|pi|claude|opencode> [--name N] [--folder DIR] [--task TEXT] [agent flags...]
+hcx spawn <muse|pi|claude|opencode> [--name N] [--space S] [--folder DIR] [--task TEXT] [agent flags...]
 ```
 
 The agent starts in a tab of its own, so it has **no parent terminal**: it does not
@@ -62,11 +62,12 @@ hang under the session that started it and is not ended with it.
 hcx spawn muse --yolo
 hcx spawn claude --dangerously-skip-permissions
 hcx spawn pi --task "review src/"
+hcx spawn pi --space SWE --name reviewer   # open the tab in another space
 ```
 
 1. Create the project folder first, then spawn with `--folder` pointing at it
    (`-C` is the short form). The agent starts in that folder.
-2. Only `--name`, `--folder` (`-C`) and `--task` are `hcx`'s own; every other flag
+2. Only `--name`, `--space`, `--folder` (`-C`) and `--task` are `hcx`'s own; every other flag
    goes to the agent, and `--` forces the rest to the agent. A muse agent always
    gets `--yolo` so it asks no approval prompts; a claude agent gets
    `--dangerously-skip-permissions` (the singular `--dangerously-skip-permission`
@@ -76,10 +77,15 @@ hcx spawn pi --task "review src/"
    (`tab name "Zytra" is already used by t3; pick another --name`). Never reuse
    the name of an existing tab. Without `--name` the tab gets an auto-generated
    robot name.
-4. The command prints the tab name once it is known
+4. The tab opens in the **space of the terminal that runs `hcx spawn`**, not in
+   whichever space is active on screen. `--space` takes a space name (any case) or
+   id to put it elsewhere; an unknown or ambiguous space is refused. `--folder`
+   only sets the working folder, it does not choose the space. A tab cannot be
+   moved to another space after it exists, so pass `--space` when spawning.
+5. The command prints the tab name once it is known
    (`spawned <name> (<terminal>, <agent>) · message it: hcx send <name> "..."`),
    so you can reach the agent with `hcx send <name> "..."`.
-5. `spawn` has no `--help`: a first argument that is not a known agent is refused.
+6. `spawn` has no `--help`: a first argument that is not a known agent is refused.
 
 ## Step 4: Run and everything else
 
