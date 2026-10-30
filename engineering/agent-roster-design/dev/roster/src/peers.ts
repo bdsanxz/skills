@@ -24,7 +24,8 @@ import {
 // PEERS_INSTALLER_URL names another one, such as a fork's.
 export const PEERS_INSTALLER = "https://raw.githubusercontent.com/bdsanxz/peers/main/install.sh";
 
-/** Update a JSON object file in place: keep what is there, change what update changes. */
+/** Update a JSON object file in place: keep what is there, change what update changes.
+ * A run that changes nothing writes nothing, so a second build leaves the file alone. */
 export function mergeJson(file: string, update: (data: JsonObject) => void) {
   let data: JsonObject = {};
   if (isFile(file)) {
@@ -33,8 +34,16 @@ export function mergeJson(file: string, update: (data: JsonObject) => void) {
     data = parsed;
   }
   update(data);
+  const next = dumps(data, 2) + "\n";
+  if (isFile(file)) {
+    try {
+      if (fs.readFileSync(file, "utf8") === next) return;
+    } catch {
+      // The file changed under us; fall through and rewrite it.
+    }
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file + ".tmp", dumps(data, 2) + "\n");
+  fs.writeFileSync(file + ".tmp", next);
   fs.renameSync(file + ".tmp", file);
 }
 

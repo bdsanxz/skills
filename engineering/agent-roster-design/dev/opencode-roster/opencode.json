@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "roster": {
+        "type": "local",
+        "command": [
+          "bun",
+          "run",
+          "/Users/budisantoso/Dev/bdsanxz/SWE/skills/engineering/agent-roster-design/dev/opencode-roster/src/mcp/server.ts"
+        ],
+        "cwd": "/Users/budisantoso/Dev/bdsanxz/SWE/skills/engineering/agent-roster-design/dev/opencode-roster",
+        "environment": {
+          "ROSTER_LOG": "/Users/budisantoso/Dev/bdsanxz/SWE/skills/engineering/agent-roster-design/dev/opencode-roster/logs/roster.jsonl",
+          "OPENCODE_URL": "http://127.0.0.1:4097",
+          "OPENCODE_SERVER_PASSWORD": "roster-local-test"
+        },
+        "codemode": false
+      }
+    }
+  }
+}

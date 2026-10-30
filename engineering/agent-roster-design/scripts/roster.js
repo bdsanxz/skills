@@ -46,6 +46,9 @@ var DEFAULT_PEERS = path.resolve(SKILL_DIR, "..", "peers");
 var DEFAULT_AGENT_JOB = path.resolve(SKILL_DIR, "..", "agent-job");
 var DEFAULT_AGENT_SHELL = path.resolve(SKILL_DIR, "..", "agent-shell");
 var DEFAULT_SOURCES = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB, agentShell: DEFAULT_AGENT_SHELL };
+var PI_ROSTER = join(SKILL_DIR, "scripts", "pi-roster.js");
+var OPENCODE_ROSTER_MCP = join(SKILL_DIR, "scripts", "opencode-roster-mcp.js");
+var OPENCODE_ROSTER_PLUGIN = join(SKILL_DIR, "scripts", "opencode-roster-plugin.js");
 function join(first, ...rest) {
   let joined = first;
   for (const part of rest) {
@@ -722,9 +725,16 @@ function mergeJson(file, update) {
     data = parsed;
   }
   update(data);
+  const next = dumps(data, 2) + `
+`;
+  if (isFile(file)) {
+    try {
+      if (fs2.readFileSync(file, "utf8") === next)
+        return;
+    } catch {}
+  }
   fs2.mkdirSync(path2.dirname(file), { recursive: true });
-  fs2.writeFileSync(file + ".tmp", dumps(data, 2) + `
-`);
+  fs2.writeFileSync(file + ".tmp", next);
   fs2.renameSync(file + ".tmp", file);
 }
 function peersDir() {
@@ -888,6 +898,45 @@ function agentJobPiExtension() {
   return file;
 }
 
+// src/opencode.ts
+import fs3 from "fs";
+var ROSTER_PLUGIN_FILE = "opencode-roster-plugin.js";
+function configureOpencode(_workspace, dir) {
+  if (!isFile(OPENCODE_ROSTER_MCP)) {
+    fail(`${OPENCODE_ROSTER_MCP} is missing; build the loop sidecar first (in dev/opencode-roster: bun run build), then build again`);
+  }
+  if (!isFile(OPENCODE_ROSTER_PLUGIN)) {
+    fail(`${OPENCODE_ROSTER_PLUGIN} is missing; build the loop plugin first (in dev/opencode-roster: bun run build), then build again`);
+  }
+  const config = join(dir, "opencode.json");
+  mergeJson(config, (data) => {
+    if (!isObject(data.mcp))
+      data.mcp = {};
+    const mcp = data.mcp;
+    if (!isObject(mcp.servers))
+      mcp.servers = {};
+    const servers = mcp.servers;
+    const kept = isObject(servers.roster) ? servers.roster : {};
+    const environment = isObject(kept.environment) ? { ...kept.environment } : {};
+    environment.ROSTER_LOG = join(dir, "logs", "roster.jsonl");
+    servers.roster = {
+      ...kept,
+      type: "local",
+      command: [process.execPath, "run", OPENCODE_ROSTER_MCP],
+      environment,
+      codemode: false
+    };
+  });
+  const plugin = readText(OPENCODE_ROSTER_PLUGIN);
+  const dest = join(dir, ".opencode", "plugins", ROSTER_PLUGIN_FILE);
+  if (!isFile(dest) || readText(dest) !== plugin) {
+    fs3.mkdirSync(join(dir, ".opencode", "plugins"), { recursive: true });
+    fs3.writeFileSync(dest + ".tmp", plugin);
+    fs3.renameSync(dest + ".tmp", dest);
+  }
+  return `merged mcp.servers.roster into ${config} and placed the loop plugin in ${dest}`;
+}
+
 // src/agents.ts
 var LEVELS = ["low", "medium", "high", "xhigh", "max"];
 var DEFAULT_AGENT = "claude";
@@ -898,9 +947,6 @@ function configureAgy(_workspace, dir) {
   return configureAgentJobAgy(dir);
 }
 function configureMuse() {
-  return null;
-}
-function configureNothing() {
   return null;
 }
 function claudeBaseArgv(m, label) {
@@ -916,8 +962,11 @@ function claudeArgv(m, label) {
   cmd.push("--", FIRST_PROMPT);
   return cmd;
 }
-function piArgv(m, label, ext) {
-  const args = ["pi", "--approve", "-e", ext, "--name", label];
+function piArgv(m, label, exts) {
+  const args = ["pi", "--approve"];
+  for (const ext of exts)
+    args.push("-e", ext);
+  args.push("--name", label);
   if (m.model)
     args.push("--model", m.model);
   if (m.effort)
@@ -949,6 +998,24 @@ function launchClaude(h, m, pane, name) {
   h.settle(name, pane);
   return null;
 }
+function readOpencodeModel(h, dir, member, session) {
+  try {
+    return field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+  } catch (getError) {
+    const getMsg = getError instanceof Error ? getError.message : String(getError);
+    try {
+      const found = list(h.opencodeApi(dir, "session.list"), "data").find((s) => text(s, "id") === session);
+      if (found)
+        return field(found, "model");
+      print(`WARN opencode member ${repr(member)}: could not verify the model switch: ` + `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` + `has no session ${session}. Carrying on with the member's first prompt.`);
+      return null;
+    } catch (listError) {
+      const listMsg = listError instanceof Error ? listError.message : String(listError);
+      print(`WARN opencode member ${repr(member)}: could not verify the model switch: ` + `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` + `failed (${tail(strip(listMsg), 300)}). Carrying on with the member's first prompt.`);
+      return null;
+    }
+  }
+}
 function launchOpencode(h, m, pane, name, dir) {
   const dialogs = AGENTS.opencode.dialogs;
   if (!m.model) {
@@ -969,7 +1036,11 @@ function launchOpencode(h, m, pane, name, dir) {
   const [provider, , modelId] = partition(m.model, "/");
   const model = { providerID: provider, id: modelId, ...m.effort ? { variant: m.effort } : {} };
   h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
-  const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+  const now = readOpencodeModel(h, dir, m.name, session);
+  if (now === null) {
+    h.firstPrompt(name, pane, dialogs);
+    return session || null;
+  }
   const variant = m.effort || "default";
   const same = now.providerID === provider && now.id === modelId && (now.variant || "default") === variant;
   if (!h.dryRun && !same) {
@@ -979,7 +1050,7 @@ function launchOpencode(h, m, pane, name, dir) {
   return session || null;
 }
 function configurePi() {
-  return "pi loads the agent-job extension from `agent-job pi-extension --path` at launch";
+  return "pi loads the agent-job extension from `agent-job pi-extension --path` and the loop extension (scripts/pi-roster.js) at launch";
 }
 function parsePiModels(output) {
   const ids = [];
@@ -991,7 +1062,7 @@ function parsePiModels(output) {
   return ids;
 }
 function launchPi(h, m, pane, name) {
-  const args = piArgv(m, sessionLabel(m, name), agentJobPiExtension()).slice(1);
+  const args = piArgv(m, sessionLabel(m, name), [agentJobPiExtension(), PI_ROSTER]).slice(1);
   h.startAgent(name, "pi", pane, args);
   h.firstPrompt(name, pane, AGENTS.pi.dialogs);
   return null;
@@ -1036,7 +1107,7 @@ var AGENTS = {
     listModels: ["opencode", "models"],
     launchSettings: true,
     dialogs: [],
-    configure: configureNothing,
+    configure: configureOpencode,
     launch: launchOpencode
   },
   agy: {
@@ -1205,7 +1276,7 @@ function nearest(level, supported) {
 }
 
 // src/launch.ts
-import fs5 from "fs";
+import fs6 from "fs";
 
 // src/hc.ts
 var TIMEOUT_MS2 = 120000;
@@ -1369,7 +1440,7 @@ class Hc {
   sendKeys(name, keys, note) {
     this.run(["keys", name, ...keys], note);
   }
-  opencodeApi(cwd, operation, params = {}, data = {}) {
+  opencodeApi(cwd, operation, params = {}, data) {
     const cmd = ["opencode", "api", operation];
     for (const [key, value] of Object.entries(params))
       cmd.push("--param", `${key}=${value}`);
@@ -1564,11 +1635,11 @@ ${tail(log, 1500)}
 }
 
 // src/roster.ts
-import fs4 from "fs";
+import fs5 from "fs";
 
 // src/sessions.ts
 import { Database } from "bun:sqlite";
-import fs3 from "fs";
+import fs4 from "fs";
 import os2 from "os";
 import path3 from "path";
 function validSession(value) {
@@ -1587,7 +1658,7 @@ function envNonempty(key) {
 }
 function canonical(p) {
   try {
-    return fs3.realpathSync(p);
+    return fs4.realpathSync(p);
   } catch {
     return path3.resolve(p);
   }
@@ -1650,7 +1721,7 @@ function agyHome() {
 }
 function agyConversations() {
   const db = path3.join(agyHome(), "conversation_summaries.db");
-  if (!fs3.existsSync(db))
+  if (!fs4.existsSync(db))
     return [];
   let conn;
   try {
@@ -1686,7 +1757,7 @@ function piSessions() {
   const root = piSessionsDir();
   let entries = [];
   try {
-    entries = fs3.readdirSync(root, { withFileTypes: true });
+    entries = fs4.readdirSync(root, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -1696,7 +1767,7 @@ function piSessions() {
     if (e.isDirectory()) {
       let inner = [];
       try {
-        inner = fs3.readdirSync(p, { withFileTypes: true });
+        inner = fs4.readdirSync(p, { withFileTypes: true });
       } catch {
         continue;
       }
@@ -1712,10 +1783,10 @@ function piSessions() {
   for (const file of files) {
     let head = "";
     try {
-      const fd = fs3.openSync(file, "r");
+      const fd = fs4.openSync(file, "r");
       const buf = Buffer.alloc(4096);
-      const n = fs3.readSync(fd, buf, 0, buf.length, 0);
-      fs3.closeSync(fd);
+      const n = fs4.readSync(fd, buf, 0, buf.length, 0);
+      fs4.closeSync(fd);
       head = buf.subarray(0, n).toString("utf8").split(`
 `)[0] ?? "";
     } catch {
@@ -1726,7 +1797,7 @@ function piSessions() {
       continue;
     let modified = 0;
     try {
-      modified = fs3.statSync(file).mtimeMs;
+      modified = fs4.statSync(file).mtimeMs;
     } catch {
       continue;
     }
@@ -1740,7 +1811,7 @@ function museHome() {
 }
 function museSessions() {
   const db = path3.join(museHome(), "session-index.db");
-  if (!fs3.existsSync(db))
+  if (!fs4.existsSync(db))
     return [];
   let conn;
   try {
@@ -1761,7 +1832,7 @@ function museLive(id) {
   const rec = path3.join(museHome(), "runtime", "muse", "sessions", `${id}.json`);
   let hint = "";
   try {
-    hint = parseJson(fs3.readFileSync(rec, "utf8"))?.endpoint_hint;
+    hint = parseJson(fs4.readFileSync(rec, "utf8"))?.endpoint_hint;
   } catch {
     return null;
   }
@@ -1769,7 +1840,7 @@ function museLive(id) {
     return null;
   let pid = 0;
   try {
-    pid = parseJson(fs3.readFileSync(path3.join(museHome(), "runtime", "muse", `${hint}.lease`), "utf8"))?.pid;
+    pid = parseJson(fs4.readFileSync(path3.join(museHome(), "runtime", "muse", `${hint}.lease`), "utf8"))?.pid;
   } catch {
     return null;
   }
@@ -1845,7 +1916,7 @@ function sessionLive(runtime, id) {
         return null;
       case "muse": {
         if (!museSessions().some((s) => s.id === id)) {
-          return fs3.existsSync(path3.join(museHome(), "session-index.db")) ? false : null;
+          return fs4.existsSync(path3.join(museHome(), "session-index.db")) ? false : null;
         }
         return museLive(id);
       }
@@ -2239,6 +2310,9 @@ function assemble(workspace, roster, members, m) {
     lines.push("These files are your instructions, and the only place they are kept. Read all four, in this order, " + "at the start of every session, before you answer the first message or do anything else, and follow " + "them as if they were written here. Read a file again whenever someone tells you it changed.", "", ...PARTS.map(([name, title]) => `- ${title}: \`${join(dir, name)}\``));
   }
   lines.push("", "When you are corrected, or asked to behave in a particular way from now on, add the lesson to " + `\`${join(dir, "MEMORY.md")}\` as one short entry. Never record lessons in this file.`);
+  if (m.agent === "pi" || m.agent === "opencode") {
+    lines.push("", "## Loop", "", "You have a `/loop` command for repeated work: `/loop 5m <prompt>` runs the prompt now and repeats it every 5 minutes, " + "`/loop <prompt>` runs it now and wakes again when the Schedule tool says, and `/loop stop` ends the loop. " + "After a dynamic iteration, call the Schedule tool with the delay, a short reason, and noop true when nothing changed.");
+  }
   if (anyNamed) {
     lines.push("", "Each member has a member name (in backticks below), which `roster.json`, `reports_to`, " + "`talks_to` and peers use as its role, and a human-readable name, which peers shows with the " + "role, as in `Rina (api)`. Call members by their human-readable name when you write to or " + "about them; use the member name wherever a file or command asks for one.");
   }
@@ -2285,12 +2359,12 @@ ${log}`);
 function writeInstructions(workspace, roster, members, m) {
   const dir = join(workspace, m.cwd);
   const target = join(dir, agent(m.agent).instructions);
-  fs4.writeFileSync(target + ".tmp", assemble(workspace, roster, members, m));
-  fs4.renameSync(target + ".tmp", target);
+  fs5.writeFileSync(target + ".tmp", assemble(workspace, roster, members, m));
+  fs5.renameSync(target + ".tmp", target);
   for (const name of new Set(Object.values(AGENTS).map((spec) => spec.instructions))) {
     const stale = join(dir, name);
     if (stale !== target && isFile(stale) && readText(stale).includes(MARKER))
-      fs4.rmSync(stale);
+      fs5.rmSync(stale);
   }
   return target;
 }
@@ -2389,13 +2463,31 @@ function hcMemberArgv(h, m, dir, label) {
       return { argv: ["opencode", "--session", session], session: session || null };
     }
     case "pi":
-      return { argv: piArgv(m, label, agentJobPiExtension()), session: null };
+      return { argv: piArgv(m, label, [agentJobPiExtension(), PI_ROSTER]), session: null };
     case "agy":
       return { argv: agyArgv(m), session: null };
     case "muse":
       return { argv: museArgv(m), session: null };
     default:
       throw new LaunchError(`unknown agent ${repr(m.agent)} for member ${repr(m.name)}`);
+  }
+}
+function readOpencodeModelHc(h, dir, member, session) {
+  try {
+    return field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+  } catch (getError) {
+    const getMsg = getError instanceof Error ? getError.message : String(getError);
+    try {
+      const found = list(h.opencodeApi(dir, "session.list"), "data").find((s) => text(s, "id") === session);
+      if (found)
+        return field(found, "model");
+      print(`WARN opencode member ${repr(member)}: could not verify the model switch: ` + `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` + `has no session ${session}. Carrying on with the member's first prompt.`);
+      return null;
+    } catch (listError) {
+      const listMsg = listError instanceof Error ? listError.message : String(listError);
+      print(`WARN opencode member ${repr(member)}: could not verify the model switch: ` + `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` + `failed (${tail(strip(listMsg), 300)}). Carrying on with the member's first prompt.`);
+      return null;
+    }
   }
 }
 function launchHcAgent(h, m, dir, terminal, session) {
@@ -2413,11 +2505,13 @@ function launchHcAgent(h, m, dir, terminal, session) {
     const [provider, , modelId] = partition(m.model ?? "", "/");
     const model = { providerID: provider, id: modelId, ...m.effort ? { variant: m.effort } : {} };
     h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
-    const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
-    const variant = m.effort || "default";
-    const same = now.providerID === provider && now.id === modelId && (now.variant || "default") === variant;
-    if (!h.dryRun && !same) {
-      throw new LaunchError(`OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`);
+    const now = readOpencodeModelHc(h, dir, m.name, session);
+    if (now !== null) {
+      const variant = m.effort || "default";
+      const same = now.providerID === provider && now.id === modelId && (now.variant || "default") === variant;
+      if (!h.dryRun && !same) {
+        throw new LaunchError(`OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`);
+      }
     }
   }
   h.firstPrompt(terminal, dialogs);
@@ -2436,12 +2530,141 @@ function recordSession(args, roster, m, dir, established) {
     return;
   raw.session = { runtime: m.agent, id };
   try {
-    fs5.writeFileSync(join(args.workspace, "roster.json"), JSON.stringify(roster, null, 2) + `
+    fs6.writeFileSync(join(args.workspace, "roster.json"), JSON.stringify(roster, null, 2) + `
 `);
   } catch (error) {
     fail(`cannot record ${m.name}'s session in roster.json: ${reason(error)}`);
   }
   print(`RECORDED ${m.name}: session ${m.agent}:${id} in roster.json`);
+}
+function opencodeServicePid() {
+  try {
+    const pid = JSON.parse(readText(join(home(), ".local", "state", "opencode", "service.json"))).pid;
+    return typeof pid === "number" && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+function readOpencodeConfig(file) {
+  let text;
+  try {
+    text = readText(file);
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    try {
+      const parsed = JSON.parse(text.replace(/,\s*([}\]])/g, "$1"));
+      return isObject(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+}
+function apiKeyEnv(value) {
+  if (isObject(value)) {
+    const env = value.env;
+    return typeof env === "string" && env !== "" ? env : null;
+  }
+  if (typeof value === "string") {
+    const found = /^\{env:([^}]+)\}$/.exec(strip(value));
+    return found ? strip(found[1]) : null;
+  }
+  return null;
+}
+function providerEnvNames(provider, modelId) {
+  const names = [];
+  const take = (value) => {
+    if (typeof value === "string" && value !== "" && !names.includes(value))
+      names.push(value);
+  };
+  if (!isObject(provider))
+    return names;
+  const entry = provider;
+  if (Array.isArray(entry.env))
+    for (const name of entry.env)
+      take(name);
+  if (isObject(entry.options))
+    take(apiKeyEnv(entry.options.apiKey));
+  if (isObject(entry.models)) {
+    const model = entry.models[modelId];
+    if (isObject(model)) {
+      if (Array.isArray(model.env))
+        for (const name of model.env)
+          take(name);
+      if (isObject(model.options))
+        take(apiKeyEnv(model.options.apiKey));
+    }
+  }
+  return names;
+}
+function requiredServiceEnv(provider, modelId, workspace, memberCwd) {
+  const names = [];
+  for (const file of [join(home(), ".config", "opencode", "opencode.json"), join(workspace, memberCwd, "opencode.json")]) {
+    const config = readOpencodeConfig(file);
+    const providers = config ? config.providers : null;
+    if (isObject(providers)) {
+      for (const name of providerEnvNames(providers[provider], modelId)) {
+        if (!names.includes(name))
+          names.push(name);
+      }
+    }
+  }
+  return names;
+}
+function serviceEnvHas(pid, name) {
+  try {
+    const proc = join("/proc", String(pid), "environ");
+    if (isFile(proc)) {
+      return readText(proc).split("\x00").some((entry) => entry.startsWith(`${name}=`));
+    }
+  } catch {}
+  if (!which("ps"))
+    return null;
+  const done = run(["ps", "eww", "-p", String(pid)], { timeoutMs: 15000 });
+  if (done.timedOut || done.code !== 0)
+    return null;
+  return new RegExp(`(^|\\s)${name}=`).test(done.stdout + done.stderr);
+}
+function checkOpencodeServiceEnv(members, workspace) {
+  const wanted = new Map;
+  for (const m of members) {
+    if (m.agent !== "opencode" || !m.model)
+      continue;
+    const [provider, , modelId] = partition(m.model, "/");
+    if (!provider || !modelId)
+      continue;
+    for (const name of requiredServiceEnv(provider, modelId, workspace, m.cwd)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+        continue;
+      if (!wanted.has(name))
+        wanted.set(name, provider);
+    }
+  }
+  if (!wanted.size)
+    return;
+  const pid = opencodeServicePid();
+  if (pid === null) {
+    print("NOTE could not check the OpenCode service environment (no service pid found); skipping the API-key check.");
+    return;
+  }
+  if (!isFile(join("/proc", String(pid), "environ")) && !which("ps")) {
+    print("NOTE could not check the OpenCode service environment (neither /proc nor ps is available); skipping the API-key check.");
+    return;
+  }
+  for (const [name, provider] of wanted) {
+    const has = serviceEnvHas(pid, name);
+    if (has === null) {
+      print(`NOTE could not check the OpenCode service environment (pid ${pid} is unreadable); skipping the API-key check.`);
+      return;
+    }
+    if (!has) {
+      print(`WARN the OpenCode background service (pid ${pid}) is missing ${name}, which the ${repr(provider)} provider needs: ` + `an opencode member may fail with 'API key is required'. Restart it from a shell that sets it ` + `(\`opencode service stop && opencode service start\`), then launch again. Carrying on with the launch.`);
+    }
+  }
 }
 function cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultSources, problems, notes, herdrWhy) {
   const squad = String(roster.squad);
@@ -2500,6 +2723,7 @@ function cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultS
     throw new Exit(1);
   }
   const targets = selected(members, args.member);
+  checkOpencodeServiceEnv(targets, workspace);
   print(`OK ${targets.length} of ${members.length} members, herdr-core (hc)`);
   for (const e of targets)
     print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
@@ -2638,6 +2862,7 @@ function cmdLaunch(args, defaultSources) {
   }
   const targets = selected(members, args.member);
   const byName = new Map(members.map((m) => [m.name, m]));
+  checkOpencodeServiceEnv(targets, workspace);
   print(`OK ${targets.length} of ${members.length} members, herdr session ${session}`);
   for (const e of targets)
     print(`MEMBER ${e.name}${shown(e)}: ${describe(e)}`);
@@ -2872,10 +3097,13 @@ For each member: writes its instruction file and .peers.json, installs peers, ag
 agent-shell and its roster skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's
 own setup: for claude the agent-job channel (.mcp.json, approved in
 .claude/settings.local.json) and the agent-job goal hooks (.claude/settings.local.json); for agy
-the agent-job goal hooks (.agents/hooks.json); for pi the agent-job extension, which launch loads.
+the agent-job goal hooks (.agents/hooks.json); for pi nothing to write, since launch loads its
+two extensions with -e. For an opencode member it merges only the loop entry
+(mcp.servers.roster: the sidecar command, ROSTER_LOG and codemode false) into its opencode.json,
+keeping every other key, and places the loop plugin under .opencode/plugins/.
 Peers needs no per-agent setup: every notification arrives through one herdr agent prompt.
-opencode needs no setup. It never writes a model or effort into an opencode member's
-opencode.json. Needs npx (Node.js).`,
+It never writes a model or effort into an opencode member's
+opencode.json, and never overwrites the file: a second build changes nothing. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],
   output: `
@@ -2923,10 +3151,13 @@ Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
 dialogs are read at full size. It starts each member with its agent's own command, model and
 effort: claude --model --effort (loading the agent-job channel), agy --model --effort,
-pi --model --thinking (with --approve and the agent-job extension, -e), and for opencode, whose TUI takes
-neither flag, OpenCode's API: it creates the member's session, opens the TUI on it with
+pi --model --thinking (with --approve and two extensions, -e: the agent-job extension and the
+loop extension from this skill's scripts/), and for opencode, whose TUI takes
+neither flag, OpenCode's API: it creates the member's session (its loop tools come from the
+sidecar and plugin the build placed, so the command line needs no extra flag), opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
-it with session.get before the first prompt (needs OpenCode's background service; an
+it with a session read-back (session.get, falling back to session.list) before the first
+prompt; a read-back that fails warns and carries on (needs OpenCode's background service; an
 opencode member without a model starts plain, on its opencode.json or /models). It answers
 the folder-trust, channel and one-time notice prompts it knows, and gives each its first
 prompt; a prompt it does not know stops the launch with the screen. Every member runs with
@@ -3017,8 +3248,10 @@ files:
           .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
           opencode, agy and pi), for
           claude its .mcp.json and .claude/settings.local.json, for agy its
-          .agents/hooks.json, and the peers, agent-job and agent-shell CLIs in
-          ~/.local/bin when they are missing. check writes nothing.
+          .agents/hooks.json, for opencode its opencode.json (only the
+          mcp.servers.roster entry) and .opencode/plugins/, and the peers,
+          agent-job and agent-shell CLIs in ~/.local/bin when they are missing.
+          check writes nothing.
 
 member names:
   Each member has a member name ("name": kebab-case, also its cwd, and what reports_to,
@@ -3042,13 +3275,16 @@ agent, model and effort, highest precedence first:
           default effort for the model.
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
-  pi --model and --thinking; muse --model and --effort;
+  pi --model and --thinking (with the agent-job and loop extensions);
+  muse --model and --effort;
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
-  confirm, and only then sends the first prompt. An opencode member without a model
-  starts plain and uses its own opencode.json or /models; ${PROG} never writes
-  opencode.json.
+  confirm (session.get, falling back to session.list; a failed read-back warns and
+  carries on), and only then sends the first prompt. An opencode member without a model
+  starts plain and uses its own opencode.json or /models; ${PROG} only merges the
+  loop entry (mcp.servers.roster) into opencode.json and never writes a model or
+  effort there.
 
 effort levels:
   ${LEVEL_NAMES}. claude, pi and muse take every level for every

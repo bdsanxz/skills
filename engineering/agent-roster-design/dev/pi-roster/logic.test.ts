@@ -1,0 +1,131 @@
+import { strict as assert } from "node:assert";
+import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget } from "./logic.ts";
+import type { LoopSummary } from "./logic.ts";
+assert.deepEqual(parseInterval("30s hello"), { milliseconds: 30000, prompt: "hello" });
+assert.deepEqual(parseInterval("5m /check now"), { milliseconds: 300000, prompt: "/check now" });
+assert.deepEqual(parseInterval("2h x"), { milliseconds: 7200000, prompt: "x" });
+assert.equal(parseInterval("bad"), null);
+assert.equal(clampDelay(0), 1);
+assert.equal(clampDelay(5), 5);
+assert.equal(clampDelay(99), 99);
+assert.equal(clampDelay(9999), 3600);
+assert.equal(tickMessage("interval", "run: date"), "run: date");
+assert.match(tickMessage("dynamic", "check"), /call Schedule.*\/loop check/);
+const cleared: number[] = [];
+assert.equal(replaceTimer(1, value => cleared.push(value), () => 2), 2);
+assert.deepEqual(cleared, [1]);
+assert.deepEqual(decideTick({ busy: false, pending: false }), { inject: true, pending: true });
+assert.deepEqual(decideTick({ busy: true, pending: false }), { inject: true, pending: true });
+assert.deepEqual(decideTick({ busy: true, pending: true }), { inject: false, pending: true });
+assert.deepEqual(decideTick({ busy: false, pending: true }), { inject: false, pending: true });
+assert.deepEqual(consumeTick({ interval: true, dynamic: true }, "interval"), { interval: false, dynamic: true });
+assert.deepEqual(consumeTick({ interval: true, dynamic: true }, "dynamic"), { interval: true, dynamic: false });
+assert.deepEqual(clearTickFlags(), { interval: false, dynamic: false });
+assert.deepEqual(emptyTickFlags(), { interval: false, dynamic: false });
+assert.equal(userMessageText({ role: "user", content: "run: date" }), "run: date");
+assert.equal(userMessageText({ role: "user", content: [{ type: "text", text: "a" }, { type: "image", data: "x", mimeType: "image/png" }, { type: "text", text: "b" }] }), "a\nb");
+assert.equal(userMessageText({ role: "assistant", content: "run: date" }), undefined);
+assert.equal(pendingMaxMs(5000), 60000);
+assert.equal(pendingMaxMs(60000), 180000);
+assert.equal(pendingMaxMs(60000, 10000), 10000);
+assert.equal(pendingMaxMsFromEnv(5000, undefined), 60000);
+assert.equal(pendingMaxMsFromEnv(60000, "10000"), 10000);
+assert.equal(pendingMaxMsFromEnv(60000, "bogus"), 180000);
+assert.equal(isPendingExpired(0, 59999, 60000), false);
+assert.equal(isPendingExpired(0, 60000, 60000), true);
+assert.equal(isPendingExpired(0, 180000, 180000), true);
+assert.equal(isPendingExpired(undefined, 999999, 60000), false);
+assert.equal(shouldClearOnIdle(true, false), true);
+assert.equal(shouldClearOnIdle(true, true), false);
+assert.equal(shouldClearOnIdle(false, false), false);
+assert.deepEqual(decideTick({ busy: true, pending: true }), { inject: false, pending: true });
+assert.equal(isPendingExpired(Date.now() - 1000, Date.now(), pendingMaxMs(5000)), false);
+// Rule 1: interval loops have sequential ids; duplicates share interval + task.
+assert.equal(nextLoopId(1), "loop-1");
+assert.equal(nextLoopId(2), "loop-2");
+const intervals: LoopSummary[] = [
+  { id: "loop-1", kind: "interval", task: "check a", intervalMs: 30000, dueMs: 1000, noopStreak: 0, pending: false },
+  { id: "loop-2", kind: "interval", task: "check b", intervalMs: 60000, dueMs: 2000, noopStreak: 0, pending: false },
+];
+assert.equal(findIntervalDuplicate(intervals, 30000, "check a")?.id, "loop-1");
+assert.equal(findIntervalDuplicate(intervals, 30000, "check b"), undefined);
+assert.equal(findIntervalDuplicate(intervals, 60000, "check a"), undefined);
+assert.equal(findIntervalDuplicate(intervals, 60000, "check b")?.id, "loop-2");
+// Rule 2: dynamic loops are keyed by task text.
+const dynamics: LoopSummary[] = [
+  { id: "loop-1", kind: "dynamic", task: "watch alpha", dueMs: 1000, noopStreak: 1, pending: true },
+  { id: "loop-2", kind: "dynamic", task: "watch beta", dueMs: 2000, noopStreak: 0, pending: false },
+];
+assert.equal(findDynamicByTask(dynamics, "watch alpha")?.id, "loop-1");
+assert.equal(findDynamicByTask(dynamics, "watch beta")?.id, "loop-2");
+assert.equal(findDynamicByTask(dynamics, "watch gamma"), undefined);
+assert.equal(resolveDynamicTarget(dynamics, "watch alpha")?.id, "loop-1");
+assert.equal(resolveDynamicTarget(dynamics, "watch beta")?.id, "loop-2");
+assert.equal(resolveDynamicTarget(dynamics, "watch gamma"), undefined);
+// Schedule without prompt targets the most recent dynamic loop.
+assert.equal(resolveDynamicTarget(dynamics, undefined)?.id, "loop-2");
+assert.equal(resolveDynamicTarget([], undefined), undefined);
+// Same-prompt Schedule replaces only that loop's wakeup.
+const replaced = dynamics.map((loop) => loop.id === "loop-1" ? { ...loop, dueMs: 9999 } : loop);
+assert.equal(replaced[0]?.dueMs, 9999);
+assert.equal(replaced[1]?.dueMs, 2000);
+// Schedule stop with prompt removes one loop; stop without prompt removes all dynamics.
+const mixed: LoopSummary[] = [
+  { id: "loop-9", kind: "interval", task: "poll", intervalMs: 5000, dueMs: 1000, noopStreak: 0, pending: false },
+  ...dynamics,
+];
+const stopOne = mixed.filter((loop) => loop.id !== "loop-1");
+assert.equal(stopOne.length, 2);
+assert.ok(stopOne.some((loop) => loop.id === "loop-2"));
+assert.ok(stopOne.some((loop) => loop.id === "loop-9"));
+const stopAllDynamics = mixed.filter((loop) => loop.kind !== "dynamic");
+assert.deepEqual(stopAllDynamics.map((loop) => loop.id), ["loop-9"]);
+// Rule 3: list/stop parsing and list output.
+assert.deepEqual(parseLoopCommand(""), { action: "list" });
+assert.deepEqual(parseLoopCommand("list"), { action: "list" });
+assert.deepEqual(parseLoopCommand("stop"), { action: "stopAll" });
+assert.deepEqual(parseLoopCommand("stop loop-2"), { action: "stopOne", id: "loop-2" });
+assert.deepEqual(parseLoopCommand("30s hello"), { action: "create", text: "30s hello" });
+assert.deepEqual(parseLoopCommand("watch alpha"), { action: "create", text: "watch alpha" });
+assert.equal(findLoopById(mixed, "loop-2")?.task, "watch beta");
+assert.equal(findLoopById(mixed, "loop-9")?.task, "poll");
+assert.equal(findLoopById(mixed, "loop-99"), undefined);
+const listed = formatLoopList(mixed);
+assert.match(listed, /loop-9 interval/);
+assert.match(listed, /every=5000ms/);
+assert.match(listed, /loop-1 dynamic/);
+assert.match(listed, /loop-2 dynamic/);
+assert.match(listed, /task="watch beta"/);
+assert.match(listed, /noop=0/);
+assert.match(listed, /pending=(yes|no)/);
+assert.match(listed, /next=1970-01-01T00:00:0/);
+assert.equal(formatLoopList([]), "No loops scheduled.");
+assert.ok(shortenTask("x".repeat(61)).length <= 60);
+assert.equal(shortenTask("short"), "short");
+// Rule 4: one pending tick per loop; loops never block each other.
+const pendingA = decideTick({ busy: true, pending: true });
+const pendingB = decideTick({ busy: true, pending: false });
+assert.equal(pendingA.inject, false);
+assert.equal(pendingB.inject, true);
+assert.equal(isPendingExpired(0, 59999, 60000), false);
+assert.equal(isPendingExpired(0, 60000, 60000), true);
+assert.equal(shouldClearOnIdle(true, false), true);
+// Rule 5: cap defaults to 10 and honours ROSTER_MAX_JOBS.
+assert.equal(maxLoopsFromEnv(undefined), 10);
+assert.equal(maxLoopsFromEnv("3"), 3);
+assert.equal(maxLoopsFromEnv("bogus"), 10);
+assert.equal(maxLoopsFromEnv("0"), 10);
+assert.equal(isCapReached(9, 10), false);
+assert.equal(isCapReached(10, 10), true);
+assert.equal(isCapReached(3, 3), true);
+// Rule 6: status shows the count and the earliest next fire.
+assert.equal(earliestDueMs([{ dueMs: 3000 }, { dueMs: 1000 }, { dueMs: 2000 }]), 1000);
+assert.equal(earliestDueMs([]), undefined);
+assert.match(statusText(0, undefined), /No loops scheduled/);
+assert.match(statusText(2, 1000), /2 loops/);
+assert.match(statusText(2, 1000), /1970-01-01T00:00:01/);
+assert.match(statusText(1, 2000), /1 loop/);
+// Rule 7: tick prompts never start with /loop.
+assert.equal(tickMessage("dynamic", "check").startsWith("/loop"), false);
+assert.equal(tickMessage("interval", "run: date").startsWith("/loop"), false);
+assert.match(tickMessage("dynamic", "check"), /\/loop check/);

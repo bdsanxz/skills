@@ -203,10 +203,13 @@ For each member: writes its instruction file and .peers.json, installs peers, ag
 agent-shell and its roster skills into its cwd with \`npx -y skills@latest add\` for its agent, and applies the agent's
 own setup: for claude the agent-job channel (.mcp.json, approved in
 .claude/settings.local.json) and the agent-job goal hooks (.claude/settings.local.json); for agy
-the agent-job goal hooks (.agents/hooks.json); for pi the agent-job extension, which launch loads.
+the agent-job goal hooks (.agents/hooks.json); for pi nothing to write, since launch loads its
+two extensions with -e. For an opencode member it merges only the loop entry
+(mcp.servers.roster: the sidecar command, ROSTER_LOG and codemode false) into its opencode.json,
+keeping every other key, and places the loop plugin under .opencode/plugins/.
 Peers needs no per-agent setup: every notification arrives through one herdr agent prompt.
-opencode needs no setup. It never writes a model or effort into an opencode member's
-opencode.json. Needs npx (Node.js).`,
+It never writes a model or effort into an opencode member's
+opencode.json, and never overwrites the file: a second build changes nothing. Needs npx (Node.js).`,
   positionals: [WORKSPACE],
   options: [MEMBER],
   output: `
@@ -252,10 +255,13 @@ Then it creates the squad's one herdr workspace, squad-<squad>, with one tab per
 hierarchy order, the supervisor first. Each tab holds one pane that fills it, so the agent's
 dialogs are read at full size. It starts each member with its agent's own command, model and
 effort: claude --model --effort (loading the agent-job channel), agy --model --effort,
-pi --model --thinking (with --approve and the agent-job extension, -e), and for opencode, whose TUI takes
-neither flag, OpenCode's API: it creates the member's session, opens the TUI on it with
+pi --model --thinking (with --approve and two extensions, -e: the agent-job extension and the
+loop extension from this skill's scripts/), and for opencode, whose TUI takes
+neither flag, OpenCode's API: it creates the member's session (its loop tools come from the
+sidecar and plugin the build placed, so the command line needs no extra flag), opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
-it with session.get before the first prompt (needs OpenCode's background service; an
+it with a session read-back (session.get, falling back to session.list) before the first
+prompt; a read-back that fails warns and carries on (needs OpenCode's background service; an
 opencode member without a model starts plain, on its opencode.json or /models). It answers
 the folder-trust, channel and one-time notice prompts it knows, and gives each its first
 prompt; a prompt it does not know stops the launch with the screen. Every member runs with
@@ -352,8 +358,10 @@ files:
           .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
           opencode, agy and pi), for
           claude its .mcp.json and .claude/settings.local.json, for agy its
-          .agents/hooks.json, and the peers, agent-job and agent-shell CLIs in
-          ~/.local/bin when they are missing. check writes nothing.
+          .agents/hooks.json, for opencode its opencode.json (only the
+          mcp.servers.roster entry) and .opencode/plugins/, and the peers,
+          agent-job and agent-shell CLIs in ~/.local/bin when they are missing.
+          check writes nothing.
 
 member names:
   Each member has a member name ("name": kebab-case, also its cwd, and what reports_to,
@@ -377,13 +385,16 @@ agent, model and effort, highest precedence first:
           default effort for the model.
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
-  pi --model and --thinking; muse --model and --effort;
+  pi --model and --thinking (with the agent-job and loop extensions);
+  muse --model and --effort;
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
-  confirm, and only then sends the first prompt. An opencode member without a model
-  starts plain and uses its own opencode.json or /models; ${PROG} never writes
-  opencode.json.
+  confirm (session.get, falling back to session.list; a failed read-back warns and
+  carries on), and only then sends the first prompt. An opencode member without a model
+  starts plain and uses its own opencode.json or /models; ${PROG} only merges the
+  loop entry (mcp.servers.roster) into opencode.json and never writes a model or
+  effort there.
 
 effort levels:
   ${LEVEL_NAMES}. claude, pi and muse take every level for every

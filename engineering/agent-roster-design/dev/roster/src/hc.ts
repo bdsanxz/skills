@@ -6,6 +6,7 @@
 
 import {
   LaunchError,
+  type JsonObject,
   dumps,
   isObject,
   print,
@@ -210,7 +211,7 @@ export class Hc {
   }
 
   /** Run `opencode api <operation>` against OpenCode's background service; return its JSON. */
-  opencodeApi(cwd: string, operation: string, params: Record<string, string> = {}, data: object = {}): Record<string, unknown> {
+  opencodeApi(cwd: string, operation: string, params: Record<string, string> = {}, data?: JsonObject): Record<string, unknown> {
     const cmd = ["opencode", "api", operation];
     for (const [key, value] of Object.entries(params)) cmd.push("--param", `${key}=${value}`);
     if (data !== undefined) cmd.push("-d", dumps(data));

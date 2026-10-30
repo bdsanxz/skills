@@ -4,10 +4,12 @@
 import {
   type JsonObject,
   LaunchError,
+  PI_ROSTER,
   dumps,
   isObject,
   join,
   partition,
+  print,
   repr,
   rpartition,
   run,
@@ -17,8 +19,9 @@ import {
   tail,
   which,
 } from "./core";
-import { type Dialog, FIRST_PROMPT, Herdr, field, text } from "./herdr";
+import { type Dialog, FIRST_PROMPT, Herdr, field, list, text } from "./herdr";
 import { agentJobPiExtension, configureAgentJobAgy, configureAgentJobClaude } from "./agentjob";
+import { configureOpencode } from "./opencode";
 
 // Effort levels, lowest first: the levels claude --effort and agy --effort take.
 export const LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -85,10 +88,6 @@ function configureMuse() {
   return null;
 }
 
-function configureNothing() {
-  return null;
-}
-
 export function claudeBaseArgv(m: Member, label: string): string[] {
   const cmd = ["claude", "--dangerously-skip-permissions", "-n", label];
   if (m.model) cmd.push("--model", m.model);
@@ -104,8 +103,10 @@ export function claudeArgv(m: Member, label: string): string[] {
   return cmd;
 }
 
-export function piArgv(m: Member, label: string, ext: string): string[] {
-  const args = ["pi", "--approve", "-e", ext, "--name", label];
+export function piArgv(m: Member, label: string, exts: string[]): string[] {
+  const args = ["pi", "--approve"];
+  for (const ext of exts) args.push("-e", ext);
+  args.push("--name", label);
   if (m.model) args.push("--model", m.model);
   if (m.effort) args.push("--thinking", m.effort);
   return args;
@@ -139,6 +140,35 @@ function launchClaude(h: Herdr, m: Member, pane: string, name: string): string |
   return null;
 }
 
+/** Read an OpenCode session's model back after switchModel: session.get first, then the
+ * session.list entry, which carries the same model. Returns null when neither read-back
+ * works, after a WARN that names the failed commands; the caller then carries on. */
+function readOpencodeModel(h: Herdr, dir: string, member: string, session: string): JsonObject | null {
+  try {
+    return field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+  } catch (getError) {
+    const getMsg = getError instanceof Error ? getError.message : String(getError);
+    try {
+      const found = list(h.opencodeApi(dir, "session.list"), "data").find((s) => text(s, "id") === session);
+      if (found) return field(found, "model");
+      print(
+        `WARN opencode member ${repr(member)}: could not verify the model switch: ` +
+          `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` +
+          `has no session ${session}. Carrying on with the member's first prompt.`,
+      );
+      return null;
+    } catch (listError) {
+      const listMsg = listError instanceof Error ? listError.message : String(listError);
+      print(
+        `WARN opencode member ${repr(member)}: could not verify the model switch: ` +
+          `\`opencode api session.get\` failed (${tail(strip(getMsg), 300)}), and \`opencode api session.list\` ` +
+          `failed (${tail(strip(listMsg), 300)}). Carrying on with the member's first prompt.`,
+      );
+      return null;
+    }
+  }
+}
+
 function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: string): string | null {
   // The OpenCode TUI takes no model or effort flag. With a model in the roster, launch
   // creates the member's session, opens the TUI on it, and sets the model, with the
@@ -165,7 +195,14 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
   const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
   h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
   // switchModel accepts any name, so read the session back: check validated the model and variant.
-  const now = field(field(h.opencodeApi(dir, "session.get", { sessionID: session }), "data"), "model");
+  // session.get on OpenCode 2.0.29 can fail with a GET-body TypeError; fall back to the
+  // session.list entry, which carries the same model. A read-back that fails on its own
+  // never aborts the launch: warn and carry on with the first prompt.
+  const now = readOpencodeModel(h, dir, m.name, session);
+  if (now === null) {
+    h.firstPrompt(name, pane, dialogs);
+    return session || null;
+  }
   const variant = m.effort || "default";
   const same = now.providerID === provider && now.id === modelId && ((now.variant as string) || "default") === variant;
   if (!h.dryRun && !same) {
@@ -179,9 +216,10 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
 }
 
 /** A pi member is notified through one `herdr agent prompt` typed into its session, like every
- * member. It still loads the agent-job extension for crons and goals at launch. */
+ * member. It still loads the agent-job extension for crons and goals at launch,
+ * and the loop extension for /loop. */
 function configurePi() {
-  return "pi loads the agent-job extension from `agent-job pi-extension --path` at launch";
+  return "pi loads the agent-job extension from `agent-job pi-extension --path` and the loop extension (scripts/pi-roster.js) at launch";
 }
 
 /** pi --list-models prints a table: provider, model, then more columns. A member may name either form. */
@@ -197,8 +235,9 @@ function parsePiModels(output: string) {
 function launchPi(h: Herdr, m: Member, pane: string, name: string): string | null {
   // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
   // asking. -e loads the agent-job extension for this session only, from the file the installed
-  // CLI writes, so it matches its binary. pi's --thinking takes every level.
-  const args = piArgv(m, sessionLabel(m, name), agentJobPiExtension()).slice(1);
+  // CLI writes, so it matches its binary, and the loop extension from this skill's scripts/,
+  // so pi members get /loop. pi's --thinking takes every level.
+  const args = piArgv(m, sessionLabel(m, name), [agentJobPiExtension(), PI_ROSTER]).slice(1);
   h.startAgent(name, "pi", pane, args);
   h.firstPrompt(name, pane, AGENTS.pi!.dialogs);
   // pi's session id is known only to its runtime; launch records it by lookup instead.
@@ -252,7 +291,7 @@ export const AGENTS: Record<string, Agent> = {
     // The TUI takes neither as a flag: launchOpencode sets both through OpenCode's API.
     launchSettings: true,
     dialogs: [],
-    configure: configureNothing,
+    configure: configureOpencode,
     launch: launchOpencode,
   },
   agy: {

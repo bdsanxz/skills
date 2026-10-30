@@ -4,6 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
+import { PI_ROSTER } from "../src/core";
 import { type Squad, exists, member, read, roster, setRoster, setUp, tearDown } from "./harness";
 
 setDefaultTimeout(120000);
@@ -50,11 +51,13 @@ describe("pi members", () => {
     let done = await roster(["build", s.w], { PEERS_OLD: "1" });
     expect(done.code).toBe(0);
     expect(done.out).toContain("BUILT review");
-    expect(done.out).toContain("pi loads the agent-job extension from `agent-job pi-extension --path` at launch");
+    expect(done.out).toContain("pi loads the agent-job extension from `agent-job pi-extension --path` and the loop extension (scripts/pi-roster.js) at launch");
     expect(read(s.npxLog)).toContain("--skill agent-job");
     expect(read(s.npxLog)).toContain("-a pi -y --copy --skill peers");
     const dir = path.join(s.w, "review");
     expect(exists(path.join(dir, "AGENTS.md"))).toBe(true);
+    expect(read(path.join(dir, "AGENTS.md"))).toContain("## Loop");
+    expect(read(path.join(dir, "AGENTS.md"))).toContain("/loop stop");
     expect(JSON.parse(read(path.join(dir, ".peers.json"))).agent).toBe("pi");
   });
 
@@ -65,7 +68,8 @@ describe("pi members", () => {
     expect(start).toBeDefined();
     expect(start!).toContain("--kind pi");
     const jobExt = path.join(s.tmp, "agent-job-home", "pi-extension.ts");
-    expect(start!).toContain(`-- --approve -e ${jobExt} --name`);
+    expect(start!).toContain(`-- --approve -e ${jobExt} -e ${PI_ROSTER} --name`);
+    expect(exists(PI_ROSTER)).toBe(true);
     expect(read(jobExt)).toContain("agent-job extension");
     expect(start!).toContain("--model anthropic/claude-opus-4-8 --thinking high");
     expect(done.out).toContain("WOULD LAUNCH review (pi, model anthropic/claude-opus-4-8, effort high)");

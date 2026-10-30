@@ -54,6 +54,11 @@ export const DEFAULT_AGENT_SHELL = path.resolve(SKILL_DIR, "..", "agent-shell");
 /** Where each skill every member gets is installed from. */
 export type SkillSources = { peers: string; agentJob: string; agentShell: string };
 export const DEFAULT_SOURCES: SkillSources = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB, agentShell: DEFAULT_AGENT_SHELL };
+// The loop extensions every pi and opencode member gets: built files in this skill's
+// scripts/, loaded by absolute path so members always run the installed copy.
+export const PI_ROSTER = join(SKILL_DIR, "scripts", "pi-roster.js");
+export const OPENCODE_ROSTER_MCP = join(SKILL_DIR, "scripts", "opencode-roster-mcp.js");
+export const OPENCODE_ROSTER_PLUGIN = join(SKILL_DIR, "scripts", "opencode-roster-plugin.js");
 
 /** os.path.join: an absolute part starts over, and nothing is normalized. */
 export function join(first: string, ...rest: string[]) {

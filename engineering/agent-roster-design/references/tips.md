@@ -58,6 +58,12 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 - **Practice:** Run `launch --dry-run` first and fix every `PROBLEM`. Then launch. When a member fails, `launch` stops there: fix the cause, close the tabs of the panes it names, and start each missing member with `--member <name>`. Do not start the whole squad again.
 - **Why:** The dry run catches a missing agent, an unknown model or an unbuilt member before any pane opens. Resuming with `--member` keeps the members that already run, with their sessions and history.
 
+### Start the OpenCode service from a login shell
+
+- **Situation:** The OpenCode background service was started from a non-login shell (such as an hc terminal without `~/.zshrc`), so it lacks a provider API key; an opencode member then fails with "API key is required".
+- **Practice:** Before `launch`, check the service process has each opencode member's provider key (`launch` does this itself and prints a WARN naming the missing variable). When it warns, restart the service from a shell that sets the key (`opencode service stop && opencode service start`), then launch again.
+- **Why:** The member inherits the service's environment, not yours. A key set in your shell never reaches a service started without it.
+
 ### A relaunched member has a new address
 
 - **Situation:** A member is relaunched, and its old session still shows in `peers list` next to the new one.
