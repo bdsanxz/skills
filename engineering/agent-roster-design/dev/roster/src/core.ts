@@ -46,14 +46,12 @@ export const SCRIPT = path.join(SKILL_DIR, "scripts", "roster.js");
 // The peers skill sits next to this skill, both in this repository and where installers put
 // skills; roster.json can name another source.
 export const DEFAULT_PEERS = path.resolve(SKILL_DIR, "..", "peers");
-// So does the agent-job skill, which tells members how to use the agent-job CLI this skill installs.
-export const DEFAULT_AGENT_JOB = path.resolve(SKILL_DIR, "..", "agent-job");
 // So does the agent-shell skill, which tells members how to run background shell jobs with the
 // agent-shell CLI this skill installs.
 export const DEFAULT_AGENT_SHELL = path.resolve(SKILL_DIR, "..", "agent-shell");
 /** Where each skill every member gets is installed from. */
-export type SkillSources = { peers: string; agentJob: string; agentShell: string };
-export const DEFAULT_SOURCES: SkillSources = { peers: DEFAULT_PEERS, agentJob: DEFAULT_AGENT_JOB, agentShell: DEFAULT_AGENT_SHELL };
+export type SkillSources = { peers: string; agentShell: string };
+export const DEFAULT_SOURCES: SkillSources = { peers: DEFAULT_PEERS, agentShell: DEFAULT_AGENT_SHELL };
 // The loop extensions every pi and opencode member gets: built files in this skill's
 // scripts/, loaded by absolute path so members always run the installed copy.
 export const PI_ROSTER = join(SKILL_DIR, "scripts", "pi-roster.js");

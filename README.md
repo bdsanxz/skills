@@ -40,8 +40,7 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 | [`edd`](engineering/edd/SKILL.md) | Evidence-Driven Development. Every acceptance criterion gets a passing test and evidence from the real, running product. The evidence goes in a ledger that a script checks for missing, misquoted and stale entries, and the final report claims only what the evidence shows. |
 | [`tdd`](engineering/tdd/SKILL.md) | Test-Driven Development in Red-Green-Refactor cycles. Each failing test is committed as `[red]` and each passing implementation as `[green]`. |
 | [`peers`](engineering/peers/SKILL.md) | Lets separate agent sessions on one machine message each other, across Claude Code, OpenCode, the Antigravity CLI and pi. Messages work like an inbox: each session keeps its history and receives a short notification when something arrives. Sessions can be resumed, and a peer started from it is visible in [herdr](https://herdr.dev) rather than hidden in the background. |
-| [`agent-job`](engineering/agent-job/SKILL.md) | Puts instructions into a live agent session at the right moment, across Claude Code, OpenCode, the Antigravity CLI and pi: a cron fires at a time, and a goal keeps the session working until the agent marks it done. Both are sent only while the session is open, and nothing runs headless. |
-| [`agent-roster-design`](engineering/agent-roster-design/SKILL.md) | Designs and launches a squad of long-lived agents that work in their own directories and talk through `peers` and receive scheduled instructions and goals through `agent-job`. It guides you through the goal, the members, their roles and their skills, writes each member's instructions, then starts the whole squad in herdr. Each member can run its own agent, model and effort level; pi and OpenCode members get `/loop` for repeated work and `/goal` for completion conditions. |
+| [`agent-roster-design`](engineering/agent-roster-design/SKILL.md) | Designs and launches a squad of long-lived agents that work in their own directories and talk through `peers`. It guides you through the goal, the members, their roles and their skills, writes each member's instructions, then starts the whole squad in herdr. Each member can run its own agent, model and effort level; pi and OpenCode members get `/loop` for repeated work and `/goal` for completion conditions. |
 | [`herdr-peers`](engineering/herdr-peers/SKILL.md) | Lets agent sessions in one herdr workspace message each other using only the `herdr` CLI. Messages are fire-and-forget prompts that arrive as ordinary turns, with a bounded request-to-receipt protocol and no extra CLI. |
 | [`herdr-roster-design`](engineering/herdr-roster-design/SKILL.md) | Designs and launches a squad of agent sessions in one herdr workspace using only the `herdr` CLI. It guides you through the goal and the members, writes each member's files and generated instructions, installs their skills, and starts the squad with semantic `squad-<slug>` and `<slug>-<member>` names. |
 | [`hcx`](engineering/hcx/SKILL.md) | Messages another agent session by tab name and spawns new agents in tabs of their own, without the `<hc from>` tag and with no parent terminal. Everything else passes through to `hc`, with tab names accepted wherever `hc` takes a terminal. |
@@ -89,19 +88,12 @@ Most skills need nothing beyond your agent. The rest bring their own scripts and
 | `font-design`, `pixel-perfect` | Python 3.9 or newer. On first use, the bundled tool creates its own environment and installs its dependencies, which needs network access. |
 | `edd`, `tasks`, `research-market`, `agents-creator`, `get-knowledge` | [Bun](https://bun.sh) |
 | `peers` | The [`peers`](https://github.com/bdsanxz/peers) command on your `PATH` (see below). [herdr](https://herdr.dev) is needed to start visible peers. |
-| `agent-job` | The [`agent-job`](https://github.com/bdsanxz/agent-job) command on your `PATH` (see below), which runs with [Bun](https://bun.sh). `agent-roster-design` installs it, with each member's channel, hooks and extension. |
-| `agent-roster-design` | Bun, herdr, and the agents you choose for the squad (`claude`, `opencode`, `agy` or `pi`). `peers` and `agent-job` are installed when they are missing. |
+| `agent-roster-design` | Bun, herdr, and the agents you choose for the squad (`claude`, `opencode`, `agy` or `pi`). `peers` is installed when it is missing. |
 
 Install the `peers` command at `~/.local/bin/peers` with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bdsanxz/peers/main/install.sh | sh
-```
-
-Install the `agent-job` command at `~/.local/bin/agent-job` with:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bdsanxz/agent-job/main/install.sh | sh
 ```
 
 `get-knowledge` searches the web through three providers. When one reaches its limit, the next is tried, in the order below. Each works without an API key through its free service, which allows only a few searches in a short time. Set a provider's key in your environment to lift its limit:

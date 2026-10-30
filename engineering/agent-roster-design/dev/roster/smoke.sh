@@ -131,13 +131,8 @@ cat >"$TMP/bin/peers" <<'EOF'
 #!/bin/sh
 echo peers 0.0.1
 EOF
-cat >"$TMP/bin/agent-job" <<'EOF'
-#!/bin/sh
-echo agent-job 0.0.1
-EOF
 chmod +x "$TMP/bin/"*
 export PATH="$TMP/bin:$PATH" NPX_LOG="$TMP/npx.log" HERDR_LOG="$TMP/herdr.log" OPENCODE_LOG="$TMP/opencode.log"
-export AGENT_JOB_INSTALL_DIR="$TMP/agent-job-bin" AGENT_JOB_HOME="$TMP/agent-job-home"
 fails=0
 check() { # name, expected substring, command...
   local name=$1 want=$2; shift 2
@@ -216,15 +211,15 @@ edit 'del r["members"][2]["runtime"]'
 check "built-in default agent is claude" "MEMBER docs: agent claude (built-in default), the agent's own default model" bun "$SCRIPT" check "$W"
 edit 'r["defaults"] = {"agent": "agy"}'
 check "defaults.agent applies" "MEMBER docs: agent agy (defaults.agent)" bun "$SCRIPT" check "$W"
-edit 'r["defaults"]["models"] = {"agy": "gem-fast", "claude": "sonnet"}'
+edit 'r["defaults"]["models"] = {"agy": "gem-fast", "claude": "haiku"}'
 check "defaults.models applies to its agent" "MEMBER docs: agent agy (defaults.agent), model gem-fast (defaults.models.agy)" bun "$SCRIPT" check "$W"
 check "member model beats defaults.models" "MEMBER lead: agent claude (member), model haiku (member)" bun "$SCRIPT" check "$W"
 
 # --- model validation, per agent ---
 edit 'r["members"][0]["model"] = "gpt-5"'
 check "claude model form" "model 'gpt-5' (member) is not a claude model; expected an alias" bun "$SCRIPT" check "$W"
-edit 'r["members"][0]["model"] = "claude-sonnet-5-5"'
-check "claude full model name" "MEMBER lead: agent claude (member), model claude-sonnet-5-5" bun "$SCRIPT" check "$W"
+edit 'r["members"][0]["model"] = "claude-haiku-4-5"'
+check "claude full model name" "MEMBER lead: agent claude (member), model claude-haiku-4-5" bun "$SCRIPT" check "$W"
 edit 'r["members"][1]["model"] = "big-pickle"'
 check "opencode model form" "is not a opencode model; expected provider/model" bun "$SCRIPT" check "$W"
 edit 'r["members"][1]["model"] = "opencode/nope"'
@@ -237,11 +232,11 @@ check "agy missing is a note for check" "NOTE member 'docs': cannot confirm mode
 exits "agy missing still passes check" 0 env PATH="$TMP/noagy:/usr/bin:/bin" "$BUN" "$SCRIPT" check "$W"
 
 # --- effort: default, mapping per agent, validation and fallback ---
-check "no effort is the agent's default" "model claude-sonnet-5-5 (member), the agent's own default effort (no effort set)" bun "$SCRIPT" check "$W"
+check "no effort is the agent's default" "model claude-haiku-4-5 (member), the agent's own default effort (no effort set)" bun "$SCRIPT" check "$W"
 edit 'r["members"][0]["effort"] = "extreme"'
 check "unknown member effort" "\"effort\" 'extreme' is not an effort level; use one of low, medium, high, xhigh, max" bun "$SCRIPT" check "$W"
 edit 'r["members"][0]["effort"] = "high"'
-check "claude effort from the member" "MEMBER lead: agent claude (member), model claude-sonnet-5-5 (member), effort high (member)" bun "$SCRIPT" check "$W"
+check "claude effort from the member" "MEMBER lead: agent claude (member), model claude-haiku-4-5 (member), effort high (member)" bun "$SCRIPT" check "$W"
 check "claude takes every level" "effort max (--effort)" bun "$SCRIPT" check "$W" --effort lead=max
 check "--effort unknown level" "--effort lead=extreme: 'extreme' is not an effort level" bun "$SCRIPT" check "$W" --effort lead=extreme
 check "--effort unknown member" "--effort nope=low: no member named 'nope'" bun "$SCRIPT" check "$W" --effort nope=low
@@ -255,7 +250,7 @@ check "agy id fixed to a level" "it has low; the nearest it has is 'low'; or set
 edit 'del r["defaults"]["models"]["agy"]'
 check "agy effort needs a model" "effort 'low' (--effort): agy needs a model to check an effort level against" bun "$SCRIPT" check "$W" --effort docs=low
 edit 'r["defaults"]["models"]["agy"] = "gem-fast"; r["defaults"]["effort"] = "max"'
-check "defaults.effort applies" "MEMBER api: agent claude (--agent), model sonnet (defaults.models.claude), effort max (defaults.effort)" bun "$SCRIPT" check "$W" --agent api=claude
+check "defaults.effort applies" "MEMBER api: agent claude (--agent), model haiku (defaults.models.claude), effort max (defaults.effort)" bun "$SCRIPT" check "$W" --agent api=claude
 check "member effort beats defaults.effort" "effort high (member)" bun "$SCRIPT" check "$W"
 check "defaults.effort on an opencode model without variants" "NOTE member 'api': opencode/big-pickle has no 'max' effort (it has no effort levels), so it uses the agent's own default effort" bun "$SCRIPT" check "$W"
 check "defaults.effort on an opencode variant" "model opencode/beam-free (--model), effort max (defaults.effort)" bun "$SCRIPT" check "$W" --model api=opencode/beam-free
@@ -301,7 +296,7 @@ check "agents file says to read them first" "Read all four" cat "$W/api/AGENTS.m
 check "claude file imports by path" "- Memory: @$W/lead/MEMORY.md" cat "$W/lead/CLAUDE.md"
 check "claude file copies nothing" "absent" bash -c "grep -q 'You are lead.' '$W/lead/CLAUDE.md' && echo copied || echo absent"
 check "squad directory shows agent and model" '`docs` (you) | agy | gem-fast |' cat "$W/docs/AGENTS.md"
-check "squad directory shows a member model" '`lead` | claude | claude-sonnet-5-5 | high |' cat "$W/docs/AGENTS.md"
+check "squad directory shows a member model" '`lead` | claude | claude-haiku-4-5 | high |' cat "$W/docs/AGENTS.md"
 check "peers command in the instructions" "through the peers skill (\`peers\`)" cat "$W/docs/AGENTS.md"
 check "lessons go to MEMORY.md" "as one short entry. Never record lessons in this file." cat "$W/api/AGENTS.md"
 check "regenerate hint names assemble" "roster.js assemble $W --member api" cat "$W/api/AGENTS.md"
@@ -314,9 +309,10 @@ check "peers installed for claude" "SKILL.md" ls "$W/lead/.claude/skills/peers"
 check "peers installed for agy" "SKILL.md" ls "$W/docs/.agents/skills/peers"
 check "extra skills in one call" "add acme/skills -a opencode -y --copy --skill go-testing --skill sql" cat "$NPX_LOG"
 check "agy skills agent name" "-a antigravity" cat "$NPX_LOG"
-check "channel in .mcp.json" "peers ['channel']" python3 -c "import json,os;s=json.load(open('$W/lead/.mcp.json'))['mcpServers']['peers'];print(os.path.basename(s['command']), s['args'])"
-check "channels approved" "['peers', 'agent-job']" python3 -c "import json;print(json.load(open('$W/lead/.claude/settings.local.json'))['enabledMcpjsonServers'])"
-check "build writes no opencode.json" "absent" bash -c "[ -e '$W/api/opencode.json' ] && echo present || echo absent"
+check "claude needs no .mcp.json" "absent" bash -c "[ -e '$W/lead/.mcp.json' ] && echo present || echo absent"
+check "claude needs no settings.local.json" "absent" bash -c "[ -e '$W/lead/.claude/settings.local.json' ] && echo present || echo absent"
+check "agy gets no hooks.json" "absent" bash -c "[ -e '$W/docs/.agents/hooks.json' ] && echo present || echo absent"
+check "build merges the loop entry into opencode.json" '"roster"' cat "$W/api/opencode.json"
 check "opencode records its model" '"model": "opencode/big-pickle"' cat "$W/api/.peers.json"
 check "squad directory shows the opencode model" '`api` | opencode | opencode/big-pickle | agent default |' cat "$W/lead/CLAUDE.md"
 check "role file for each member" '"role": "api"' cat "$W/api/.peers.json"
@@ -327,10 +323,10 @@ check "no channel for opencode" "absent" bash -c "[ -e '$W/api/.mcp.json' ] && e
 echo '{"mcpServers":{"other":{"command":"x"}},"x":1}' >"$W/lead/.mcp.json"
 bun "$SCRIPT" build "$W" --member lead >/dev/null
 check "existing .mcp.json kept" '"other"' cat "$W/lead/.mcp.json"
-check "rebuild keeps one approval" "1" python3 -c "import json;print(json.load(open('$W/lead/.claude/settings.local.json'))['enabledMcpjsonServers'].count('peers'))"
+check "rebuild writes no settings.local.json" "absent" bash -c "[ -e '$W/lead/.claude/settings.local.json' ] && echo present || echo absent"
 echo '{"model":"opencode/beam-free#high"}' >"$W/api/opencode.json"
 bun "$SCRIPT" build "$W" --member api >/dev/null
-check "build keeps the member's own opencode.json" '{"model":"opencode/beam-free#high"}' cat "$W/api/opencode.json"
+check "build keeps the member's own opencode.json" '"model": "opencode/beam-free#high"' cat "$W/api/opencode.json"
 : >"$NPX_LOG"
 check "assemble writes only instructions" "ASSEMBLED api" bun "$SCRIPT" assemble "$W" --member api
 check "assemble installs nothing" "0" bash -c "wc -l <'$NPX_LOG' | tr -d ' '"
@@ -345,7 +341,7 @@ check "launch rejects an invalid model" "model 'opus-9' (--model) is not availab
 check "failed validation starts nothing" "0" bash -c "grep -c -e 'workspace create' -e 'tab create' -e 'agent start' -e 'pane run' '$HERDR_LOG' || true"
 
 # --- launch: dry run prints each agent's own command and model setting ---
-check "dry run claude with --model and --effort" "claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5 --effort high --dangerously-load-development-channels server:peers server:agent-job --" bun "$SCRIPT" launch "$W" --dry-run
+check "dry run claude with --model and --effort" "claude --dangerously-skip-permissions -n demo-lead --model claude-haiku-4-5 --effort high --" bun "$SCRIPT" launch "$W" --dry-run
 check "dry run opencode starts as a herdr agent" "agent start demo-api --kind opencode --pane '<pane-2>'" bun "$SCRIPT" launch "$W" --dry-run
 check "dry run agy with --model" "agent start demo-docs --kind agy --pane '<pane-3>' -- --dangerously-skip-permissions --model gem-fast" bun "$SCRIPT" launch "$W" --dry-run
 check "dry run shows agy's dialog answers" "agent send-keys demo-docs esc   # only when the screen shows 'esc to dismiss'" bun "$SCRIPT" launch "$W" --dry-run
@@ -353,15 +349,15 @@ check "dry run opencode creates its session" "RUN opencode api session.create -d
 check "dry run opencode opens that session" "agent start demo-api --kind opencode --pane '<pane-2>' -- --session '<session>'" bun "$SCRIPT" launch "$W" --dry-run
 check "dry run opencode sets the model by API" "RUN opencode api session.switchModel --param 'sessionID=<session>' -d '{\"model\": {\"providerID\": \"opencode\", \"id\": \"big-pickle\"}}'" bun "$SCRIPT" launch "$W" --dry-run
 check "dry run reports the model per member" "WOULD LAUNCH api (opencode, model opencode/big-pickle, effort the agent's own default)" bun "$SCRIPT" launch "$W" --dry-run
-check "dry run with an agent override would rebuild" "WOULD REBUILD api for agent claude" bun "$SCRIPT" launch "$W" --dry-run --agent api=claude --model api=opus
+check "dry run with an agent override would rebuild" "WOULD REBUILD api for agent claude" bun "$SCRIPT" launch "$W" --dry-run --agent api=claude --model api=haiku
 check "dry run changes nothing" '"agent": "opencode"' cat "$W/api/.peers.json"
 
 # --- launch: real run against the herdr stub ---
 : >"$HERDR_LOG"
 check "launch starts every member" "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr session default, tab 3 'docs', pane w9:p3" bun "$SCRIPT" launch "$W"
-check "claude started with its model" "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5" cat "$HERDR_LOG"
+check "claude started with its model" "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-haiku-4-5" cat "$HERDR_LOG"
 check "claude trust prompt answered" "pane send-keys w9:p1 down enter" cat "$HERDR_LOG"
-check "claude channel confirmed" "pane wait-output w9:p1 --match inject directly" cat "$HERDR_LOG"
+check "claude settles before first prompt" "agent wait demo-lead --until idle --until blocked" cat "$HERDR_LOG"
 check "opencode retried a busy pane" "busy-once" cat "$HERDR_LOG"
 check "opencode got its first prompt" "agent prompt demo-api Read your instructions" cat "$HERDR_LOG"
 check "agy trust prompt answered" "agent send-keys demo-docs enter" cat "$HERDR_LOG"
@@ -373,10 +369,10 @@ check "opencode TUI opens that session" "agent start demo-api --kind opencode --
 lacks "opencode gets no model flag" "--kind opencode --pane w9:p2 -- --model" cat "$HERDR_LOG"
 check "opencode model set by API" 'api session.switchModel --param sessionID=ses_test1 -d {"model": {"providerID": "opencode", "id": "big-pickle"}}' cat "$OPENCODE_LOG"
 check "model set after start, before the first prompt" "start<settle<switch<get<prompt" bash -c "awk '/agent start demo-api/{a=NR} /agent wait demo-api/ && !w{w=NR} /session.switchModel/{s=NR} /session.get/{g=NR} /agent prompt demo-api/{p=NR} END{print (a<w&&w<s&&s<g&&g<p)?\"start<settle<switch<get<prompt\":a\" \"w\" \"s\" \"g\" \"p}' '$HERDR_LOG'"
-check "launch override rebuilds the member" "REBUILT api (claude)" bun "$SCRIPT" launch "$W" --member api --agent api=claude --model api=opus
+check "launch override rebuilds the member" "REBUILT api (claude)" bun "$SCRIPT" launch "$W" --member api --agent api=claude --model api=haiku
 check "override rebuild writes CLAUDE.md" "CLAUDE.md AGENTS.md:absent" bash -c "[ -e '$W/api/CLAUDE.md' ] && printf 'CLAUDE.md '; [ -e '$W/api/AGENTS.md' ] && echo AGENTS.md:present || echo AGENTS.md:absent"
-check "override shows in the squad directory" '`api` | claude | opus |' cat "$W/lead/CLAUDE.md"
-check "override records agent and model" '"model": "opus"' cat "$W/api/.peers.json"
+check "override shows in the squad directory" '`api` | claude | haiku |' cat "$W/lead/CLAUDE.md"
+check "override records agent and model" '"model": "haiku"' cat "$W/api/.peers.json"
 bun "$SCRIPT" build "$W" --member api >/dev/null
 : >"$HERDR_LOG"
 check "opencode override launches with its effort" "LAUNCHED api (opencode, model opencode/beam-free, effort xhigh)" bun "$SCRIPT" launch "$W" --member api --model api=opencode/beam-free --effort api=xhigh
@@ -391,10 +387,10 @@ lacks "plain opencode makes no API call" "session.create" cat "$HERDR_LOG"
 lacks "plain opencode gets no flags" "--kind opencode --pane w9:p1 --" cat "$HERDR_LOG"
 edit 'r["members"][1]["model"] = "opencode/big-pickle"'
 bun "$SCRIPT" assemble "$W" --member api >/dev/null
-check "effort-only override retunes" "SET lead's model to claude-sonnet-5-5, effort low" bun "$SCRIPT" launch "$W" --member lead --effort lead=low
+check "effort-only override retunes" "SET lead's model to claude-haiku-4-5, effort low" bun "$SCRIPT" launch "$W" --member lead --effort lead=low
 check "effort recorded in .peers.json" '"effort": "low"' cat "$W/lead/.peers.json"
-check "squad directory shows the effort" '`lead` | claude | claude-sonnet-5-5 | low |' cat "$W/api/AGENTS.md"
-check "claude gets the overridden effort" "--model claude-sonnet-5-5 --effort low" cat "$HERDR_LOG"
+check "squad directory shows the effort" '`lead` | claude | claude-haiku-4-5 | low |' cat "$W/api/AGENTS.md"
+check "claude gets the overridden effort" "--model claude-haiku-4-5 --effort low" cat "$HERDR_LOG"
 : >"$HERDR_LOG"
 check "agy launches with its effort" "LAUNCHED docs (agy, model gem-flash, effort high)" bun "$SCRIPT" launch "$W" --member docs --model docs=gem-flash --effort docs=high
 check "agy gets --model and --effort" "--kind agy --pane w9:p1 -- --dangerously-skip-permissions --model gem-flash --effort high" cat "$HERDR_LOG"
@@ -492,12 +488,13 @@ check "peers is not listed by hand" "which every member gets" bun "$SCRIPT" chec
 # --- the peers CLI: build installs it when it is missing ---
 edit 'r["members"][2].pop("skills", None)'
 mkdir -p "$TMP/nopeers" "$TMP/home"
-for t in npx claude opencode agy herdr agent-job; do ln -sf "$TMP/bin/$t" "$TMP/nopeers/$t"; done
+for t in npx claude opencode agy herdr; do ln -sf "$TMP/bin/$t" "$TMP/nopeers/$t"; done
 cat >"$TMP/installer.sh" <<'EOF'
 [ "${INSTALLER_FAIL:-}" = 1 ] && { echo "peers-install: error: no release" >&2; exit 1; }
 dir="${PEERS_INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$dir" && printf '#!/bin/sh\necho peers 0.0.1\n' >"$dir/peers" && chmod +x "$dir/peers"
 EOF
+rm -f "$W/lead/.mcp.json"
 nopeers() { env PATH="$TMP/nopeers:/usr/bin:/bin" HOME="$TMP/home" GITHUB_TOKEN= PEERS_INSTALL_DIR= PEERS_INSTALLER_URL="file://$TMP/installer.sh" "$@"; }
 check "check notes a missing peers CLI" "NOTE the peers CLI is not installed; build installs it with file://$TMP/installer.sh" nopeers "$BUN" "$SCRIPT" check "$W"
 check "launch needs the peers CLI" "the peers CLI is not installed; run" nopeers "$BUN" "$SCRIPT" launch "$W" --dry-run
@@ -506,7 +503,7 @@ check "an unreachable installer is named" "could not be fetched from file://$TMP
 nopeers "$BUN" "$SCRIPT" build "$W" --member lead >"$TMP/install.out" 2>&1
 check "build installs a missing peers CLI" "INSTALLED peers 0.0.1 at $TMP/home/.local/bin/peers" cat "$TMP/install.out"
 check "the install warns when its directory is not on PATH" "is not on PATH, so members cannot run \`peers\`" cat "$TMP/install.out"
-check "the channel runs the installed peers" "\"command\": \"$TMP/home/.local/bin/peers\"" cat "$W/lead/.mcp.json"
+check "claude still needs no .mcp.json" "absent" bash -c "[ -e '$W/lead/.mcp.json' ] && echo present || echo absent"
 lacks "an installed peers CLI is not installed again" "INSTALLED" nopeers "$BUN" "$SCRIPT" build "$W" --member lead
 check "PEERS_INSTALL_DIR picks the directory" "INSTALLED peers 0.0.1 at $TMP/pdir/peers" nopeers env HOME="$TMP/home2" PEERS_INSTALL_DIR="$TMP/pdir" "$BUN" "$SCRIPT" build "$W" --member lead
 bun "$SCRIPT" build "$W" --member lead >/dev/null

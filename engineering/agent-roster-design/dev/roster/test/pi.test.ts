@@ -51,8 +51,8 @@ describe("pi members", () => {
     let done = await roster(["build", s.w], { PEERS_OLD: "1" });
     expect(done.code).toBe(0);
     expect(done.out).toContain("BUILT review");
-    expect(done.out).toContain("pi loads the agent-job extension from `agent-job pi-extension --path` and the loop extension (scripts/pi-roster.js) at launch");
-    expect(read(s.npxLog)).toContain("--skill agent-job");
+    expect(done.out).toContain("pi loads the loop extension (scripts/pi-roster.js) at launch");
+    expect(read(s.npxLog)).toContain("--skill peers");
     expect(read(s.npxLog)).toContain("-a pi -y --copy --skill peers");
     const dir = path.join(s.w, "review");
     expect(exists(path.join(dir, "AGENTS.md"))).toBe(true);
@@ -60,7 +60,7 @@ describe("pi members", () => {
     expect(read(path.join(dir, "AGENTS.md"))).toContain("/loop stop");
     expect(read(path.join(dir, "AGENTS.md"))).toContain("/goal <condition>");
     expect(read(path.join(dir, "AGENTS.md"))).toContain("A goal never needs Schedule");
-    expect(read(path.join(dir, "AGENTS.md"))).toContain("Prefer this native `/goal` over an agent-job daemon goal");
+    expect(read(path.join(dir, "AGENTS.md"))).not.toContain("daemon goal");
     expect(JSON.parse(read(path.join(dir, ".peers.json"))).agent).toBe("pi");
   });
 
@@ -70,10 +70,8 @@ describe("pi members", () => {
     const start = done.out.split("\n").find((line) => line.includes("agent start demo-review"));
     expect(start).toBeDefined();
     expect(start!).toContain("--kind pi");
-    const jobExt = path.join(s.tmp, "agent-job-home", "pi-extension.ts");
-    expect(start!).toContain(`-- --approve -e ${jobExt} -e ${PI_ROSTER} --name`);
+    expect(start!).toContain(`-- --approve -e ${PI_ROSTER} --name`);
     expect(exists(PI_ROSTER)).toBe(true);
-    expect(read(jobExt)).toContain("agent-job extension");
     expect(start!).toContain("--model anthropic/claude-opus-4-8 --thinking high");
     expect(done.out).toContain("WOULD LAUNCH review (pi, model anthropic/claude-opus-4-8, effort high)");
   });
