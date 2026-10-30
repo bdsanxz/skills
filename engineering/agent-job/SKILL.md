@@ -1,12 +1,12 @@
 ---
 name: agent-job
 description: |
-  Puts instructions into a live agent session at the right moment: natively through `/loop` and `/goal` for runtimes that have them (Claude Code, the Antigravity CLI, Muse Code, sent with `herdr agent prompt`, or `hc send` when the old server is stopped), and through the `agent-job` command and its daemon for the rest (OpenCode, pi). Use when the user wants a reminder, a task repeated or run later in a session, a session kept working until an objective holds, or another session reminded. Do not use for work that must run with no agent open; use the system scheduler.
+  Puts instructions into a live agent session at the right moment: natively through `/loop` and `/goal` only while the old herdr server runs (sent with `herdr agent prompt` — `/loop` and `/goal` are interpreted by that server, not by the agent CLIs), and through the `agent-job` command and its daemon everywhere else (old server stopped, herdr-core terminals, OpenCode, pi). `hc send` delivers plain text only and arms no loop or goal. Use when the user wants a reminder, a task repeated or run later in a session, a session kept working until an objective holds, or another session reminded. Do not use for work that must run with no agent open; use the system scheduler.
 ---
 
 # Agent Job
 
-One principle: use the runtime's native command whenever it has one; use the `agent-job` command and its daemon only for runtimes that do not. A native send is a single `herdr agent prompt` into the member's TUI (or `hc send` into its herdr-core terminal when the old server is stopped) — no daemon, watch, channel, setup or hooks.
+One principle: use the runtime's native command whenever it has one; use the `agent-job` command and its daemon only for runtimes that do not. A native send is a single `herdr agent prompt` into the member's TUI while the old herdr server runs — no daemon, watch, channel, setup or hooks. When that server is stopped, `hc send` into a herdr-core terminal delivers only a one-off text message and arms no loop or goal, so use the daemon path instead. The `agent-job send` command takes a native-style line and does this choice itself: raw into a herdr pane when one is open for the session, else wrapped as daemon work.
 
 ## Words
 
@@ -19,7 +19,7 @@ One principle: use the runtime's native command whenever it has one; use the `ag
 
 1. Write the instruction or objective so that it stands alone. It arrives as a new turn, possibly much later; say what to do and what to report, not "do that again".
 2. Send only into an open session, only your own or one the user named. Never start a session or run one headless to receive anything. When a session is gone, its repeats and goals end with it; tell the user which ended and why.
-3. Native sends are fire-and-forget: one `herdr agent prompt` (`hc send` to a herdr-core terminal when the old server is stopped), then read the member back once to confirm the acknowledgement. Never sleep, poll, or loop waiting for it.
+3. Native sends are fire-and-forget: one `herdr agent prompt` while the old server runs, then read the member back once to confirm the acknowledgement. Never sleep, poll, or loop waiting for it. When the old server is stopped, send the instruction as a one-off `hc send` message instead (it arms nothing), or use a daemon cron/goal for repeats and objectives.
 4. Daemon sends come from `agent-job cron|goal create`, which refuses a session that does not look open (`--force` only when the user asks). Confirm back the schedule or start that the `create` output prints, and act on any `ARM:` or `SETUP:` line it prints: show it to the user and let them apply it; never install, configure, or restart anything yourself.
 5. Treat each delivery like the user's own request for that moment, and no more: it authorizes nothing the user has not.
 6. Close properly. A daemon goal ends only through `goal done` (with checked evidence) or `goal blocked` (with what you need); never mark one done to stop the messages. A native `/goal` or `/loop` ends through the runtime's own goal and loop controls.
@@ -30,7 +30,7 @@ One principle: use the runtime's native command whenever it has one; use the `ag
 
 | Target | Repeat | Goal | It landed when |
 | --- | --- | --- | --- |
-| Claude or Muse TUI in herdr | `/loop ...` via `herdr agent prompt` | `/goal ...` via `herdr agent prompt` | `Scheduled ...` with id / `Goal set — ...` + status bar; otherwise the daemon path (needs the channel for Claude) |
+| Claude or Muse TUI in herdr | `/loop ...` via `herdr agent prompt`, only while the old herdr server runs | `/goal ...` via `herdr agent prompt`, only while the old herdr server runs | `Scheduled ...` with id / `Goal set — ...` + status bar; otherwise the daemon path (needs the channel for Claude). Server stopped or herdr-core terminal: daemon cron/goal — `hc send` arms no loop or goal |
 | Antigravity TUI in herdr | daemon cron (no native loop) | `/goal ...` via `herdr agent prompt` | Goal acknowledgement; otherwise `agent-job goal create` |
 | OpenCode, running turn or TUI | daemon cron, nothing to arm | daemon goal, nothing to arm | daemon events (`cron show`, trace) |
 | pi with extension | daemon cron (needs extension) | daemon goal (needs extension) | `ARM:` line guides install, then `/reload` |
@@ -49,7 +49,7 @@ Prints your address. If it fails, you are not inside a known session; use `--ses
 
 ## Step 2: Send a repeat
 
-Native (Claude or Muse TUI in herdr — or `hc send <terminal> "..."` when the old herdr server is stopped):
+Native (Claude or Muse TUI in herdr, and only while the old herdr server runs), or `agent-job send "/loop ..."` which goes native itself when a herdr pane is open and wraps as a daemon cron otherwise (when stopped, a bare `hc send` arms no loop):
 
 ```bash
 herdr agent prompt <member> "/loop every 10m Run the build. If it is still red, report the first failing test; if green, tell me and stop."
@@ -67,7 +67,7 @@ A long instruction goes on stdin instead of `--prompt`. Add `--max-runs <n>` or 
 
 ## Step 3: Send a goal
 
-Native (Claude, Antigravity or Muse TUI in herdr — or `hc send <terminal> "..."` when the old herdr server is stopped):
+Native (Claude, Antigravity or Muse TUI in herdr, and only while the old herdr server runs), or `agent-job send "/goal ..."` which goes native itself when a herdr pane is open and wraps as a daemon goal otherwise (when stopped, a bare `hc send` arms no goal):
 
 ```bash
 herdr agent prompt <member> "/goal All tests under test/ pass with `bun test`, and no test is skipped or deleted to get there."
