@@ -18,6 +18,9 @@ Without an interval, dynamic mode: after this iteration call roster_Schedule onc
 
 /loop list (also bare /loop) prints every loop via roster_ScheduleList: id, kind (interval or dynamic), interval or next fire time, task (shortened), noop streak, pending state. /loop stop ends ALL loops through roster_Schedule with stop:true, which cancels every job the session owns. /loop stop <id> ends one loop: use roster_ScheduleDelete with that id, or for a dynamic loop roster_Schedule with stop:true and prompt set to that loop's exact prompt text (which stops that loop only). Timers reinject into the same session; if busy they hold one pending prompt per loop and deliver on idle. Timers exist only while the MCP server process is alive.`
 
+const goalSkillContent = `# Goal
+For /goal <condition>, set the ONE session-scoped completion condition via exactly one roster_Goal call with that condition text only, then stop and work toward the condition: the sidecar injects the ack turn and checks every turn end with a separate evaluator session. For /goal with no argument, call roster_Goal with no params to show the panel (No goal set, or Goal active with elapsed, turns, condition, last check). For /goal clear, call roster_Goal with clear:true. Setting a new condition replaces the old goal. One goal per session; it coexists with /loop jobs (a loop tick is just another turn) and auto-clears when the evaluator decides the condition holds. Never use Schedule tools for goals.`
+
 export default {
   id: "opencode-roster",
   async setup(context: any) {
@@ -28,14 +31,29 @@ export default {
         description: "Run one loop iteration now then schedule another; /loop list shows all loops, /loop stop [<id>] ends all or one loop. Fixed intervals use roster_ScheduleCreate.",
         template: "You are executing /loop {{args}}. Follow the loop skill exactly. Perform one iteration NOW before scheduling. Preserve the original input verbatim for Schedule.prompt (dynamic loops only). For interval input, do the work now, then ScheduleCreate(interval, task-only prompt without the leading /loop and interval; e.g. /loop 5s run sleep 12 seconds -> interval 5s, prompt run sleep 12 seconds). /loop list (also bare /loop) lists every loop via roster_ScheduleList (id, kind, interval or next fire, task, noop streak, pending). /loop stop ends ALL loops via roster_Schedule stop:true; /loop stop <id> ends one loop via roster_ScheduleDelete or, for a dynamic loop, roster_Schedule stop:true with that loop's exact prompt. The session-scoped MCP server tools are roster_Schedule, roster_ScheduleCreate, roster_ScheduleList, and roster_ScheduleDelete.",
       }
-      if (typeof draft.update === "function") draft.update("loop", (value: any) => Object.assign(value, command))
+      const goalCommand = {
+        name: "goal",
+        description: "Set, show, or clear the session goal; /goal <condition> sets it, /goal shows it, /goal clear stops it early. Uses roster_Goal.",
+        template: "You are executing /goal {{args}}. Follow the goal skill exactly. With a condition, call roster_Goal once with that condition text only, then work toward it. With no argument, call roster_Goal with no params to show the panel. With clear, call roster_Goal with clear:true. The session-scoped MCP server goal tool is roster_Goal.",
+      }
+      if (typeof draft.update === "function") {
+        draft.update("loop", (value: any) => Object.assign(value, command))
+        draft.update("goal", (value: any) => Object.assign(value, goalCommand))
+      }
       void log("command_registered", { name: "loop", payload_shape: Array.isArray(draft) ? "array" : typeof draft })
+      void log("command_registered", { name: "goal", payload_shape: Array.isArray(draft) ? "array" : typeof draft })
     })
     await context.skill.transform((draft: any) => {
       const skills = Array.isArray(draft) ? draft : draft?.skills
-      if (typeof draft.source === "function") draft.source({ type: "embedded", skill: { name: "loop", description: "Schedule dynamic and interval loop iterations in the current session", slash: false, location: "opencode-roster:loop", content: skillContent } })
-      else if (Array.isArray(skills)) skills.push({ name: "loop", description: "Schedule loop iterations", content: skillContent })
+      if (typeof draft.source === "function") {
+        draft.source({ type: "embedded", skill: { name: "loop", description: "Schedule dynamic and interval loop iterations in the current session", slash: false, location: "opencode-roster:loop", content: skillContent } })
+        draft.source({ type: "embedded", skill: { name: "goal", description: "Set, show, or clear the session goal in the current session", slash: false, location: "opencode-roster:goal", content: goalSkillContent } })
+      } else if (Array.isArray(skills)) {
+        skills.push({ name: "loop", description: "Schedule loop iterations", content: skillContent })
+        skills.push({ name: "goal", description: "Set, show, or clear the session goal", content: goalSkillContent })
+      }
       void log("skill_registered", { name: "loop", payload_shape: Array.isArray(draft) ? "array" : draft && typeof draft === "object" ? Object.keys(draft) : typeof draft })
+      void log("skill_registered", { name: "goal", payload_shape: Array.isArray(draft) ? "array" : draft && typeof draft === "object" ? Object.keys(draft) : typeof draft })
     })
   },
 }

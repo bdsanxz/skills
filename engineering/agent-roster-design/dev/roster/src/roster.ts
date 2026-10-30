@@ -492,7 +492,11 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
       "",
       "You have a `/loop` command for repeated work: `/loop 5m <prompt>` runs the prompt now and repeats it every 5 minutes, " +
         "`/loop <prompt>` runs it now and wakes again when the Schedule tool says, and `/loop stop` ends the loop. " +
-        "After a dynamic iteration, call the Schedule tool with the delay, a short reason, and noop true when nothing changed.",
+        "After a dynamic iteration, call the Schedule tool with the delay, a short reason, and noop true when nothing changed. " +
+        "You also have a `/goal` command for completion conditions: `/goal <condition>` sets the one session-scoped goal and starts work at once, " +
+        "bare `/goal` shows its status, and `/goal clear` stops it early; an evaluator checks the condition at the end of every turn and keeps you working until it holds. " +
+        "A goal never needs Schedule: never call the Schedule tool to implement a goal, poll one, or re-wake yourself for one. " +
+        "Prefer this native `/goal` over an agent-job daemon goal; use the daemon goal only when this command is unavailable.",
     );
   }
   if (anyNamed) {

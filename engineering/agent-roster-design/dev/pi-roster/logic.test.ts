@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget } from "./logic.ts";
+import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget, parseGoalCommand, goalMaxChecksFromEnv, goalEvalTimeoutFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, shouldSkipGoalCheck, shouldApplyEvalResult, applyGoalSet, buildGoalAck, buildGoalFeedback, goalEvaluatorSystemPrompt, buildEvaluatorPrompt, capTranscript, transcriptToText, parseEvaluatorVerdict, formatGoalElapsed, formatGoalTokens, formatGoalStatus, formatGoalAchieved, shouldLogGoalScheduleCall, GOAL_MAX_EVAL_FAILURES } from "./logic.ts";
 import type { LoopSummary } from "./logic.ts";
 assert.deepEqual(parseInterval("30s hello"), { milliseconds: 30000, prompt: "hello" });
 assert.deepEqual(parseInterval("5m /check now"), { milliseconds: 300000, prompt: "/check now" });
@@ -129,3 +129,112 @@ assert.match(statusText(1, 2000), /1 loop/);
 assert.equal(tickMessage("dynamic", "check").startsWith("/loop"), false);
 assert.equal(tickMessage("interval", "run: date").startsWith("/loop"), false);
 assert.match(tickMessage("dynamic", "check"), /\/loop check/);
+// Goal: command parsing (/goal, /goal clear, /goal <text>).
+assert.deepEqual(parseGoalCommand(""), { action: "status" });
+assert.deepEqual(parseGoalCommand("   "), { action: "status" });
+assert.deepEqual(parseGoalCommand("clear"), { action: "clear" });
+assert.deepEqual(parseGoalCommand("  clear  "), { action: "clear" });
+assert.deepEqual(parseGoalCommand("tests pass"), { action: "set", condition: "tests pass" });
+assert.deepEqual(parseGoalCommand("  tests pass  "), { action: "set", condition: "tests pass" });
+// Goal: verdict parsing (valid, fenced, garbage).
+assert.deepEqual(parseEvaluatorVerdict('{"met": true, "reason": "done per transcript"}'), { met: true, reason: "done per transcript" });
+assert.deepEqual(parseEvaluatorVerdict('{"met": false, "reason": "still working"}'), { met: false, reason: "still working" });
+assert.deepEqual(parseEvaluatorVerdict('```json\n{"met": true, "reason": "cited"}\n```'), { met: true, reason: "cited" });
+assert.deepEqual(parseEvaluatorVerdict('```\n{"met": false, "reason": "cited"}\n```'), { met: false, reason: "cited" });
+assert.deepEqual(parseEvaluatorVerdict('Some prose {"met": true, "reason": "found it"} trailing'), { met: true, reason: "found it" });
+assert.equal(parseEvaluatorVerdict("garbage with no json"), null);
+assert.equal(parseEvaluatorVerdict('{"met": "yes", "reason": "wrong type"}'), null);
+assert.equal(parseEvaluatorVerdict(""), null);
+assert.equal(parseEvaluatorVerdict("[]"), null);
+// Goal: cap (default 30, env override, boundary).
+assert.equal(goalMaxChecksFromEnv(undefined), 30);
+assert.equal(goalMaxChecksFromEnv("5"), 5);
+assert.equal(goalMaxChecksFromEnv("bogus"), 30);
+assert.equal(goalMaxChecksFromEnv("0"), 30);
+assert.equal(isGoalCapReached(29, 30), false);
+assert.equal(isGoalCapReached(30, 30), true);
+assert.equal(isGoalCapReached(4, 5), false);
+assert.equal(isGoalCapReached(5, 5), true);
+assert.equal(goalEvalTimeoutFromEnv(undefined), 60000);
+assert.equal(goalEvalTimeoutFromEnv("5000"), 5000);
+assert.equal(goalEvalTimeoutFromEnv("bogus"), 60000);
+assert.equal(goalTranscriptMaxFromEnv(undefined), 12000);
+assert.equal(goalTranscriptMaxFromEnv("100"), 100);
+assert.equal(GOAL_MAX_EVAL_FAILURES, 3);
+assert.equal(isGoalEvalGiveUp(2), false);
+assert.equal(isGoalEvalGiveUp(3), true);
+// Goal: replace-on-new-goal resets progress.
+const first = applyGoalSet("first condition", 1000);
+first.checks = 7;
+first.tokens = 500;
+first.evalFailures = 2;
+first.lastReason = "old";
+const replacedGoal = applyGoalSet("second condition", 2000);
+assert.equal(replacedGoal.condition, "second condition");
+assert.equal(replacedGoal.setAtMs, 2000);
+assert.equal(replacedGoal.checks, 0);
+assert.equal(replacedGoal.tokens, 0);
+assert.equal(replacedGoal.evalFailures, 0);
+assert.equal(replacedGoal.lastReason, undefined);
+// Goal: skip on pending background work.
+assert.equal(shouldSkipGoalCheck(true), true);
+assert.equal(shouldSkipGoalCheck(false), false);
+// Goal: no injection after clear (stale generation or changed condition drops the verdict).
+assert.equal(shouldApplyEvalResult({ goalActive: true, evalGeneration: 1, currentGeneration: 1, evalCondition: "x", currentCondition: "x" }), true);
+assert.equal(shouldApplyEvalResult({ goalActive: false, evalGeneration: 1, currentGeneration: 1, evalCondition: "x", currentCondition: undefined }), false);
+assert.equal(shouldApplyEvalResult({ goalActive: true, evalGeneration: 1, currentGeneration: 2, evalCondition: "x", currentCondition: "x" }), false);
+assert.equal(shouldApplyEvalResult({ goalActive: true, evalGeneration: 1, currentGeneration: 1, evalCondition: "x", currentCondition: "y" }), false);
+// Goal: prompt building and transcript caps.
+assert.match(buildGoalAck("tests pass"), /Stop hook is now active with condition: "tests pass"/);
+assert.match(buildGoalAck("tests pass"), /do not tell the user to run `\/goal clear` after success/);
+assert.equal(buildGoalFeedback("tests pass", "half done"), "Stop hook feedback:\n[tests pass]: half done");
+assert.match(goalEvaluatorSystemPrompt(), /\{"met": boolean, "reason": string\}/);
+assert.match(buildEvaluatorPrompt("tests pass", "User: hi"), /Completion condition: tests pass/);
+assert.match(buildEvaluatorPrompt("tests pass", "User: hi"), /<transcript>/);
+assert.equal(capTranscript("abcdef", 10), "abcdef");
+assert.equal(capTranscript("abcdef", 4), "cdef");
+const branchText = transcriptToText([
+  { type: "message", message: { role: "user", content: "run the tests" } },
+  { type: "message", message: { role: "assistant", content: [{ type: "text", text: "ran them" }, { type: "toolCall", name: "bash", arguments: { command: "ls" } }] } },
+  { type: "custom", message: { role: "user", content: "ignored" } },
+]);
+assert.match(branchText, /User: run the tests/);
+assert.match(branchText, /Assistant: ran them/);
+assert.match(branchText, /Tool bash was called/);
+// Goal: status and achieved lines.
+const shown = applyGoalSet("tests pass", 0);
+shown.checks = 7;
+shown.tokens = 1800;
+shown.lastReason = "waiting on suites";
+assert.match(formatGoalStatus(undefined, 24000), /No goal set/);
+assert.match(formatGoalStatus(undefined, 24000), /\/goal <condition> to set one/);
+assert.match(formatGoalStatus(shown, 24000), /Goal active/);
+assert.match(formatGoalStatus(shown, 24000), /24s · 7 turns · 1\.8k tokens/);
+assert.match(formatGoalStatus(shown, 24000), /Goal: tests pass/);
+assert.match(formatGoalStatus(shown, 24000), /Last check: waiting on suites/);
+assert.match(formatGoalStatus(shown, 24000), /\/goal clear to stop early/);
+assert.equal(formatGoalElapsed(0, 5000), "5s");
+assert.equal(formatGoalElapsed(0, 125000), "2m 5s");
+assert.equal(formatGoalTokens(999), "999");
+assert.equal(formatGoalTokens(1800), "1.8k");
+assert.match(formatGoalAchieved(shown, 24000), /✔ Goal achieved \(24s · 7 turns · 1\.8k tokens\)/);
+// Goal fix: the ack keeps the spec text and steers the model away from Schedule self-pacing.
+assert.match(buildGoalAck("tests pass"), /Do not use the Schedule tool for this goal; when you stop, the harness checks the condition and continues you if it is not met\./);
+// Goal fix: Schedule calls that are not user /loop tasks are logged while a goal is active (but still run).
+const schedLoops: LoopSummary[] = [
+  { id: "loop-1", kind: "dynamic", task: "watch alpha", dueMs: 1000, noopStreak: 0, pending: false },
+];
+assert.equal(shouldLogGoalScheduleCall({ goalActive: true, prompt: "Continue the active goal: append h", loops: schedLoops }), true);
+assert.equal(shouldLogGoalScheduleCall({ goalActive: true, prompt: "watch alpha", loops: schedLoops }), false);
+assert.equal(shouldLogGoalScheduleCall({ goalActive: true, prompt: undefined, loops: schedLoops }), false);
+assert.equal(shouldLogGoalScheduleCall({ goalActive: false, prompt: "Continue the active goal: append h", loops: schedLoops }), false);
+assert.equal(shouldLogGoalScheduleCall({ goalActive: false, prompt: undefined, loops: [] }), false);
+// Goal fix: the check waits until the follow-up queue drains (pending, pending,
+// then clear runs exactly once, at the last end).
+{
+  const ranAt: number[] = [];
+  [true, true, false].forEach((pending, index) => {
+    if (!shouldSkipGoalCheck(pending)) ranAt.push(index);
+  });
+  assert.deepEqual(ranAt, [2]);
+}

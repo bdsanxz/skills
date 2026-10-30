@@ -2,8 +2,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { clampDelay, decideTick, earliestDueMs, findDynamicByTask, findIntervalDuplicate, findLoopById, formatLoopList, isCapReached, isPendingExpired, maxLoopsFromEnv, nextLoopId, parseInterval, parseLoopCommand, pendingMaxMsFromEnv, replaceTimer, resolveDynamicTarget, shouldClearOnIdle, statusText, tickMessage, userMessageText } from "./logic";
-import type { LoopMode, LoopSummary } from "./logic";
+import { applyGoalSet, buildEvaluatorPrompt, buildGoalAck, buildGoalFeedback, capTranscript, formatGoalAchieved, formatGoalElapsed, formatGoalStatus, goalEvalTimeoutFromEnv, goalEvaluatorSystemPrompt, goalMaxChecksFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, parseEvaluatorVerdict, parseGoalCommand, shouldApplyEvalResult, shouldSkipGoalCheck, transcriptToText, clampDelay, decideTick, earliestDueMs, findDynamicByTask, findIntervalDuplicate, findLoopById, formatLoopList, isCapReached, isPendingExpired, maxLoopsFromEnv, nextLoopId, parseInterval, parseLoopCommand, pendingMaxMsFromEnv, replaceTimer, resolveDynamicTarget, shouldClearOnIdle, statusText, tickMessage, userMessageText, shouldLogGoalScheduleCall } from "./logic";
+import type { GoalState, LoopMode, LoopSummary } from "./logic";
 
 export default function (pi: ExtensionAPI) {
   const logPath = process.env.ROSTER_LOG || join(homedir(), ".pi", "agent", "logs", "roster.jsonl");
@@ -29,6 +29,42 @@ export default function (pi: ExtensionAPI) {
   const loops = new Map<string, LoopState>();
   let seq = 1;
   let lastDynamicId: string | undefined;
+  let goal: GoalState | undefined;
+  let goalGeneration = 0;
+  let goalEvaluating = false;
+  let goalAbort: AbortController | undefined;
+  const goalMaxChecks = (): number => goalMaxChecksFromEnv(process.env.ROSTER_GOAL_MAX_CHECKS);
+  const goalEvalTimeoutMs = (): number => goalEvalTimeoutFromEnv(process.env.ROSTER_GOAL_EVAL_TIMEOUT_MS);
+  const goalTranscriptMax = (): number => goalTranscriptMaxFromEnv(process.env.ROSTER_GOAL_TRANSCRIPT_MAX_CHARS);
+  const abortGoalEval = (): void => {
+    if (goalAbort) {
+      try { goalAbort.abort(); } catch { /* ignore */ }
+      goalAbort = undefined;
+    }
+  };
+  const refreshGoalStatus = (ctx: any): void => {
+    try {
+      if (!goal) { ctx?.ui.setStatus("goal", undefined); return; }
+      ctx?.ui.setStatus("goal", `◎ /goal active (${formatGoalElapsed(goal.setAtMs, Date.now())})`);
+    } catch { /* Footer ticks must never break the session. */ }
+  };
+  let goalTimer: ReturnType<typeof setInterval> | undefined;
+  let goalTimerCtx: any = undefined;
+  const stopGoalTimer = (): void => {
+    if (goalTimer !== undefined) clearInterval(goalTimer);
+    goalTimer = undefined;
+    goalTimerCtx = undefined;
+  };
+  const startGoalTimer = (ctx: any): void => {
+    stopGoalTimer();
+    goalTimerCtx = ctx;
+    goalTimer = setInterval(() => {
+      try {
+        if (goal) refreshGoalStatus(goalTimerCtx);
+      } catch { /* Footer ticks must never break the session. */ }
+    }, 1000);
+    try { (goalTimer as unknown as { unref?: () => unknown }).unref?.(); } catch { /* ignore */ }
+  };
   const maxLoops = (): number => maxLoopsFromEnv(process.env.ROSTER_MAX_JOBS);
   const pendingMaxForLoop = (loop: LoopState): number =>
     pendingMaxMsFromEnv(loop.lastDelayMs, process.env.ROSTER_PENDING_MAX_MS);
@@ -170,6 +206,166 @@ export default function (pi: ExtensionAPI) {
       }
     }
   });
+  pi.on("agent_end", async (_event, ctx) => {
+    // Session Stop hook: evaluate the active goal after every agent turn.
+    // Every branch logs (goal_eval_skip / goal_skipped_background /
+    // goal_eval_stale / goal_eval_start / goal_check / goal_eval_failed /
+    // goal_achieved) so a silent skip is impossible.
+    if (!goal) { log("goal_eval_skip", { reason: "no_goal" }, ctx); return; }
+    if (goalEvaluating) {
+      log("goal_eval_skip", { reason: "already_evaluating", condition: goal.condition }, ctx);
+      refreshGoalStatus(ctx);
+      return;
+    }
+    refreshGoalStatus(ctx);
+    goalTimerCtx = ctx;
+    let queued = false;
+    try {
+      queued = typeof ctx?.hasPendingMessages === "function" ? ctx.hasPendingMessages() : false;
+    } catch { queued = false; }
+    if (shouldSkipGoalCheck(queued)) {
+      log("goal_skipped_background", { condition: goal.condition }, ctx);
+      return;
+    }
+    let model: any;
+    try {
+      model = ctx?.model;
+    } catch (error) {
+      log("goal_eval_failed", { reason: "ctx_stale", detail: error instanceof Error ? error.message : String(error), condition: goal.condition }, ctx);
+      return;
+    }
+    if (!model) {
+      log("goal_eval_failed", { reason: "no_model", condition: goal.condition }, ctx);
+      return;
+    }
+    const generation = goalGeneration;
+    const condition = goal.condition;
+    log("goal_eval_start", { condition, generation }, ctx);
+    goalEvaluating = true;
+    const abort = new AbortController();
+    goalAbort = abort;
+    const timer = setTimeout(() => abort.abort(), goalEvalTimeoutMs());
+    try { ctx?.ui.setWorkingMessage("running Stop hook"); } catch { /* ignore */ }
+    const started = Date.now();
+    const clearActiveGoal = (event: string, details: Record<string, unknown>, notice: string, noticeType: "info" | "error"): void => {
+      goal = undefined;
+      goalGeneration++;
+      abortGoalEval();
+      stopGoalTimer();
+      refreshGoalStatus(ctx);
+      log(event, details, ctx);
+      try { ctx?.ui.notify(notice, noticeType); } catch { /* ignore */ }
+    };
+    try {
+      const branch = ctx.sessionManager.getBranch();
+      const transcript = capTranscript(transcriptToText(branch), goalTranscriptMax());
+      const response = await ctx.modelRegistry.complete(
+        model,
+        {
+          systemPrompt: goalEvaluatorSystemPrompt(),
+          messages: [{
+            role: "user",
+            content: [{ type: "text", text: buildEvaluatorPrompt(condition, transcript) }],
+            timestamp: Date.now(),
+          }],
+        },
+        { signal: abort.signal },
+      );
+      const text = Array.isArray(response?.content)
+        ? response.content.filter((c: any) => c?.type === "text").map((c: any) => c.text).join("\n")
+        : "";
+      const usage = (response as { usage?: { totalTokens?: unknown } } | undefined)?.usage;
+      const tokens = typeof usage?.totalTokens === "number" ? usage.totalTokens : 0;
+      const durationMs = Date.now() - started;
+      if (!shouldApplyEvalResult({ goalActive: goal !== undefined, evalGeneration: generation, currentGeneration: goalGeneration, evalCondition: condition, currentCondition: goal?.condition })) {
+        log("goal_eval_stale", { reason: "generation_or_condition_changed", condition, eval_generation: generation }, ctx);
+        return;
+      }
+      const active = goal;
+      if (!active) { log("goal_eval_stale", { reason: "goal_gone", condition, eval_generation: generation }, ctx); return; }
+      const verdict = parseEvaluatorVerdict(text);
+      if (!verdict) {
+        active.evalFailures++;
+        log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures }, ctx);
+        if (isGoalEvalGiveUp(active.evalFailures)) {
+          clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup" }, `Goal cleared after ${active.evalFailures} failed evaluations: ${condition}`, "error");
+        }
+        return;
+      }
+      active.evalFailures = 0;
+      active.tokens += tokens;
+      active.checks++;
+      active.lastReason = verdict.reason;
+      if (!verdict.met) {
+        log("goal_check", { met: false, condition, reason: verdict.reason, duration_ms: durationMs }, ctx);
+        if (isGoalCapReached(active.checks, goalMaxChecks())) {
+          clearActiveGoal("goal_cap_reached", { condition, checks: active.checks, max_checks: goalMaxChecks() }, `Goal stopped after ${active.checks} checks without success: ${condition}`, "error");
+          return;
+        }
+        refreshGoalStatus(ctx);
+        try { ctx?.ui.notify("◯ Goal not yet met… continuing", "info"); } catch { /* ignore */ }
+        try {
+          pi.sendUserMessage(buildGoalFeedback(condition, verdict.reason), { deliverAs: "followUp" });
+          log("goal_continue", { condition, checks: active.checks }, ctx);
+        } catch (error) { log("error", { stack: error instanceof Error ? error.stack : String(error) }, ctx); }
+        return;
+      }
+      log("goal_check", { met: true, condition, reason: verdict.reason, duration_ms: durationMs, iterations: active.checks, tokens: active.tokens }, ctx);
+      const achieved = formatGoalAchieved(active, Date.now());
+      clearActiveGoal("goal_achieved", { condition, iterations: active.checks, duration_ms: durationMs, tokens: active.tokens }, achieved, "info");
+    } catch (error) {
+      const durationMs = Date.now() - started;
+      if (!shouldApplyEvalResult({ goalActive: goal !== undefined, evalGeneration: generation, currentGeneration: goalGeneration, evalCondition: condition, currentCondition: goal?.condition })) {
+        log("goal_eval_stale", { reason: "generation_or_condition_changed", condition, eval_generation: generation }, ctx);
+        return;
+      }
+      if (!goal) { log("goal_eval_stale", { reason: "goal_gone", condition, eval_generation: generation }, ctx); return; }
+      goal.evalFailures++;
+      log("goal_eval_failed", { reason: error instanceof Error ? error.message : String(error), condition, duration_ms: durationMs, eval_failures: goal.evalFailures }, ctx);
+      if (isGoalEvalGiveUp(goal.evalFailures)) {
+        clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup" }, `Goal cleared after ${goal.evalFailures} failed evaluations: ${condition}`, "error");
+      }
+    } finally {
+      clearTimeout(timer);
+      try { ctx?.ui.setWorkingMessage(); } catch { /* ignore */ }
+      if (goalAbort === abort) goalAbort = undefined;
+      goalEvaluating = false;
+    }
+  });
+  pi.registerCommand("goal", {
+    description: "Set a session completion condition checked by a Stop hook evaluator",
+    handler: async (args, ctx) => {
+      try {
+        const command = parseGoalCommand(args);
+        log("command_received", { raw_args: args, parsed_action: `goal_${command.action}` }, ctx);
+        if (command.action === "status") {
+          refreshGoalStatus(ctx);
+          ctx.ui.notify(formatGoalStatus(goal, Date.now()), "info");
+          return;
+        }
+        if (command.action === "clear") {
+          if (!goal) { ctx.ui.notify("No goal set.", "info"); return; }
+          const condition = goal.condition;
+          goal = undefined;
+          goalGeneration++;
+          abortGoalEval();
+          stopGoalTimer();
+          refreshGoalStatus(ctx);
+          log("goal_cleared", { condition, reason: "user /goal clear" }, ctx);
+          ctx.ui.notify(`Goal cleared: ${condition}`, "info");
+          return;
+        }
+        goalGeneration++;
+        abortGoalEval();
+        goal = applyGoalSet(command.condition, Date.now());
+        log("goal_set", { condition: command.condition }, ctx);
+        refreshGoalStatus(ctx);
+        startGoalTimer(ctx);
+        ctx.ui.notify(`Goal set: ${command.condition}`, "info");
+        pi.sendUserMessage(buildGoalAck(command.condition), { deliverAs: "followUp" });
+      } catch (error) { log("error", { stack: error instanceof Error ? error.stack : String(error) }, ctx); }
+    },
+  });
   pi.registerCommand("loop", {
     description: "Run recurring or dynamic prompt loops",
     handler: async (args, ctx) => {
@@ -254,6 +450,9 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params: any, _signal, _onUpdate, ctx) {
       try {
         const rawPrompt = typeof params.prompt === "string" && params.prompt.trim() !== "" ? params.prompt.trim() : undefined;
+        if (shouldLogGoalScheduleCall({ goalActive: goal !== undefined, prompt: rawPrompt, loops: summaries() })) {
+          log("goal_schedule_call", { prompt: rawPrompt, condition: goal?.condition }, ctx);
+        }
         if (params.stop) {
           if (rawPrompt !== undefined) {
             const resolved = findDynamicByTask(summaries(), rawPrompt);
@@ -307,5 +506,11 @@ export default function (pi: ExtensionAPI) {
     loops.clear();
     lastDynamicId = undefined;
     refreshStatus(ctx);
+    if (goal) log("goal_cleared", { condition: goal.condition, reason: "session_shutdown" }, ctx);
+    goal = undefined;
+    goalGeneration++;
+    abortGoalEval();
+    stopGoalTimer();
+    refreshGoalStatus(ctx);
   });
 }

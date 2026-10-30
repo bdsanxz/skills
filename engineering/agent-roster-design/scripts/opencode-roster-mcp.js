@@ -23746,7 +23746,278 @@ class StdioServerTransport {
     });
   }
 }
+// src/mcp/goal.ts
+var GOAL_MAX_CHECKS_DEFAULT = 30;
+var GOAL_EVAL_TIMEOUT_MS_DEFAULT = 60000;
+var GOAL_TRANSCRIPT_CHARS_DEFAULT = 12000;
+var GOAL_MAX_EVAL_FAILURES_DEFAULT = 3;
+var GOAL_HELPER_TITLE_PREFIX = "roster-goal-eval";
+function envInt(name, fallback, min) {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || Math.floor(raw) < min)
+    return fallback;
+  return Math.floor(raw);
+}
+function goalMaxChecks() {
+  return envInt("ROSTER_GOAL_MAX_CHECKS", GOAL_MAX_CHECKS_DEFAULT, 1);
+}
+function goalEvalTimeoutMs() {
+  return envInt("ROSTER_GOAL_EVAL_TIMEOUT_MS", GOAL_EVAL_TIMEOUT_MS_DEFAULT, 1000);
+}
+function goalTranscriptChars() {
+  return envInt("ROSTER_GOAL_TRANSCRIPT_CHARS", GOAL_TRANSCRIPT_CHARS_DEFAULT, 500);
+}
+function goalMaxEvalFailures() {
+  return envInt("ROSTER_GOAL_MAX_EVAL_FAILURES", GOAL_MAX_EVAL_FAILURES_DEFAULT, 1);
+}
+function buildGoalAckPrompt(condition) {
+  return `A session-scoped Stop hook is now active with condition: "${condition}". Briefly acknowledge the goal, then immediately start (or continue) working toward it \u2014 treat the condition itself as your directive and do not pause to ask the user what to do. The hook will block stopping until the condition holds. It auto-clears once the condition is met \u2014 do not tell the user to run \`/goal clear\` after success; that's only for clearing a goal early.`;
+}
+function buildGoalContinuePrompt(condition, reason) {
+  return `Stop hook feedback:
+[${condition}]: ${reason}`;
+}
+function buildGoalCapPrompt(condition, checks) {
+  return `Goal stopped after ${checks} checks without meeting the condition: "${condition}".`;
+}
+function buildGoalEvalFailedPrompt(condition) {
+  return `Goal evaluation failed repeatedly; stopping goal: "${condition}".`;
+}
+function buildEvaluatorPrompt(condition, transcript) {
+  return `You are a session Stop-hook evaluator. Decide whether the session's goal condition already holds, using ONLY the transcript below as evidence. Never write to the user's session. Reply with strict JSON only, no other text: {"met":boolean,"reason":string}. "reason" must cite concrete transcript evidence in one short sentence.
+
+Goal condition: "${condition}"
+
+Session transcript (most recent last, truncated):
+${transcript}`;
+}
+function parseGoalVerdict(raw) {
+  if (typeof raw !== "string" || !raw.trim())
+    throw new Error("evaluator returned empty output");
+  let text = raw.trim();
+  const fence = /^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/.exec(text);
+  if (fence?.[1] !== undefined)
+    text = fence[1].trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start)
+      throw new Error("evaluator returned non-JSON output");
+    try {
+      parsed = JSON.parse(text.slice(start, end + 1));
+    } catch {
+      throw new Error("evaluator returned non-JSON output");
+    }
+  }
+  const met = parsed?.met;
+  const reason = parsed?.reason;
+  if (typeof met !== "boolean" || typeof reason !== "string" || !reason.trim()) {
+    throw new Error('evaluator verdict must be {"met":boolean,"reason":string}');
+  }
+  return { met, reason: reason.trim() };
+}
+function partText(part) {
+  if (typeof part === "string")
+    return part;
+  if (part !== null && typeof part === "object") {
+    const text = part.text;
+    if (typeof text === "string" && text.length > 0)
+      return text;
+  }
+  return;
+}
+function describeMessage(message) {
+  if (typeof message === "string")
+    return { role: "unknown", text: message };
+  const record = message ?? {};
+  const info = record.info ?? {};
+  const role = typeof info.role === "string" && info.role || typeof record.role === "string" && record.role || typeof record.type === "string" && record.type || "unknown";
+  const chunks = [];
+  if (Array.isArray(record.parts))
+    chunks.push(...record.parts);
+  if (Array.isArray(record.content))
+    chunks.push(...record.content);
+  const texts = chunks.map(partText).filter((entry) => entry !== undefined);
+  if (texts.length > 0)
+    return { role, text: texts.join(`
+`) };
+  for (const key of ["content", "text", "body"]) {
+    if (typeof record[key] === "string" && record[key].length > 0) {
+      return { role, text: record[key] };
+    }
+  }
+  const payload = record.payload;
+  if (payload !== null && typeof payload === "object" && typeof payload.text === "string" && payload.text.length > 0) {
+    return { role, text: payload.text };
+  }
+  return { role, text: "" };
+}
+function compactTranscript(messages, maxChars) {
+  const lines = (messages ?? []).map(describeMessage).filter((entry) => entry.text.trim().length > 0).map((entry) => `${entry.role}: ${entry.text.replace(/\s+/g, " ").trim()}`);
+  const full = lines.join(`
+`);
+  if (full.length <= maxChars)
+    return full;
+  return `\u2026(truncated)
+${full.slice(full.length - maxChars)}`;
+}
+function extractTextFromPromptResult(body) {
+  const root = (body ?? {}).data ?? body;
+  if (typeof root === "string")
+    return root.length > 0 ? root : undefined;
+  if (root !== null && typeof root === "object") {
+    const record = root;
+    const info = record.info ?? {};
+    const kind = typeof info.role === "string" && info.role || typeof record.role === "string" && record.role || typeof record.type === "string" && record.type;
+    if (kind === "user")
+      return;
+    if (typeof record.text === "string" && record.text.length > 0)
+      return record.text;
+    const chunks = [];
+    if (Array.isArray(record.parts))
+      chunks.push(...record.parts);
+    if (Array.isArray(record.content))
+      chunks.push(...record.content);
+    if (chunks.length > 0) {
+      const texts = chunks.map(partText).filter((entry) => entry !== undefined);
+      if (texts.length > 0)
+        return texts.join(`
+`);
+    }
+  }
+  return;
+}
+function extractTextFromMessages(messages) {
+  if (!Array.isArray(messages))
+    return;
+  for (let index = messages.length - 1;index >= 0; index--) {
+    const described = describeMessage(messages[index]);
+    if (described.role === "assistant" && described.text.trim().length > 0)
+      return described.text;
+  }
+  return;
+}
+function formatElapsed(ms) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60)
+    return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60)
+    return `${minutes}m${seconds % 60 ? `${seconds % 60}s` : ""}`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h${minutes % 60 ? `${minutes % 60}m` : ""}`;
+}
+function formatGoalStatus(goal, now) {
+  if (!goal)
+    return `No goal set
+/goal <condition> to set one`;
+  const turns = goal.checks + 1;
+  const lines = [
+    "Goal active",
+    `running ${formatElapsed(now - goal.setAt)} \xB7 ${turns} turn${turns === 1 ? "" : "s"}`,
+    `Goal: ${goal.condition}`,
+    `Last check: ${goal.lastReason ?? "pending"}`,
+    "/goal clear to stop early"
+  ];
+  return lines.join(`
+`);
+}
+
 // src/mcp/api.ts
+function createGoalEvaluator(options) {
+  const fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
+  const authorization = options.password ? `Basic ${Buffer.from(`opencode:${options.password}`).toString("base64")}` : undefined;
+  const headers = () => ({ ...authorization ? { authorization } : {} });
+  const base = options.baseURL.replace(/\/$/, "");
+  async function readJson(response, operation) {
+    if (!response.ok)
+      throw new Error(`goal evaluation failed: ${operation} (${response.status})`);
+    try {
+      return await response.json();
+    } catch {
+      throw new Error(`goal evaluation failed: ${operation} returned non-JSON`);
+    }
+  }
+  return async (sessionID, condition) => {
+    const timeoutMs = goalEvalTimeoutMs();
+    const controller = new AbortController;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const signal = controller.signal;
+    let helperID;
+    try {
+      const info = await readJson(await fetchImpl(`${base}/api/session/${encodeURIComponent(sessionID)}`, { headers: headers(), signal }), "session.get");
+      const model = info?.data?.model;
+      const modelID = model !== null && typeof model === "object" ? typeof model.id === "string" ? model.id : typeof model.modelID === "string" ? model.modelID : undefined : undefined;
+      const useModel = model !== null && typeof model === "object" && typeof model.providerID === "string" && typeof modelID === "string" ? { providerID: model.providerID, id: modelID, ...typeof model.variant === "string" ? { variant: model.variant } : {} } : undefined;
+      const listed = await readJson(await fetchImpl(`${base}/api/session/${encodeURIComponent(sessionID)}/message?limit=50&order=desc`, { headers: headers(), signal }), "session.message.list");
+      const messages = Array.isArray(listed?.data) ? listed.data : [];
+      const chronological = [...messages].reverse();
+      const transcript = compactTranscript(chronological, goalTranscriptChars());
+      const prompt = buildEvaluatorPrompt(condition, transcript);
+      const created = await readJson(await fetchImpl(`${base}/api/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers() },
+        body: JSON.stringify({ title: `${GOAL_HELPER_TITLE_PREFIX} ${sessionID}`, ...useModel ? { model: useModel } : {} }),
+        signal
+      }), "session.create");
+      const createdData = created?.data ?? created;
+      helperID = typeof createdData?.id === "string" ? createdData.id : typeof createdData?.info?.id === "string" ? createdData.info.id : undefined;
+      if (!helperID)
+        throw new Error("goal evaluation failed: session.create returned no id");
+      options.onHelper?.(helperID, true);
+      const answered = await readJson(await fetchImpl(`${base}/api/session/${encodeURIComponent(helperID)}/prompt`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers() },
+        body: JSON.stringify({ text: prompt }),
+        signal
+      }), "session.prompt");
+      let text = extractTextFromPromptResult(answered);
+      if (!text) {
+        for (;; ) {
+          if (signal.aborted)
+            throw new Error(`goal evaluation timed out after ${timeoutMs}ms`);
+          const helperMessages = await readJson(await fetchImpl(`${base}/api/session/${encodeURIComponent(helperID)}/message?limit=5&order=desc`, { headers: headers(), signal }), "session.message.list");
+          const helperData = Array.isArray(helperMessages?.data) ? helperMessages.data : [];
+          const found = extractTextFromMessages(helperData);
+          if (found) {
+            text = found;
+            break;
+          }
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(resolve, 1000);
+            if (signal.aborted) {
+              clearTimeout(timer);
+              reject(new Error(`goal evaluation timed out after ${timeoutMs}ms`));
+              return;
+            }
+            signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new Error(`goal evaluation timed out after ${timeoutMs}ms`));
+            }, { once: true });
+          });
+        }
+      }
+      if (!text)
+        throw new Error("goal evaluation failed: helper session returned no text");
+      return parseGoalVerdict(text);
+    } catch (error) {
+      if (signal.aborted)
+        throw new Error(`goal evaluation timed out after ${timeoutMs}ms`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      if (helperID) {
+        options.onHelper?.(helperID, false);
+        try {
+          await fetchImpl(`${base}/api/session/${encodeURIComponent(helperID)}`, { method: "DELETE", headers: headers() });
+        } catch {}
+      }
+    }
+  };
+}
 function createPromptInjector(options) {
   const fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
   const authorization = options.password ? `Basic ${Buffer.from(`opencode:${options.password}`).toString("base64")}` : undefined;
@@ -23810,6 +24081,10 @@ function loopKindOf(source) {
 }
 function createRosterHandlers(inject, log, clock = () => Date.now(), options = {}) {
   const jobs = new Map;
+  const goals = new Map;
+  const goalGenerations = new Map;
+  const helpers = new Set;
+  const goalChecks = new Set;
   const busy = new Set;
   const pending = new Map;
   const noopStreak = new Map;
@@ -23880,6 +24155,95 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
     jobs.delete(id);
     return job;
   }
+  const goalKey = (sessionID) => `goal:${sessionID}`;
+  async function clearGoal(sessionID, reason, condition) {
+    const existing = goals.get(sessionID);
+    goalGenerations.set(sessionID, (goalGenerations.get(sessionID) ?? 0) + 1);
+    goals.delete(sessionID);
+    await log("goal_cleared", sessionID, { condition: condition ?? existing?.condition, reason });
+  }
+  function sessionHasPendingTick(sessionID) {
+    if (pending.has(sessionID))
+      return true;
+    for (const item of pendingByKey.values())
+      if (item.sessionID === sessionID)
+        return true;
+    return false;
+  }
+  async function runGoalCheck(sessionID) {
+    const goal = goals.get(sessionID);
+    if (!goal || helpers.has(sessionID))
+      return;
+    if (busy.has(sessionID)) {
+      await log("goal_skipped_busy", sessionID, { condition: goal.condition, reason: "session_busy" });
+      return;
+    }
+    if (sessionHasPendingTick(sessionID)) {
+      await log("goal_skipped_busy", sessionID, { condition: goal.condition, reason: "pending_tick" });
+      return;
+    }
+    if (goal.evalInFlight) {
+      await log("goal_skipped_busy", sessionID, { condition: goal.condition, reason: "eval_in_flight" });
+      return;
+    }
+    const maxChecks = goalMaxChecks();
+    if (goal.checks >= maxChecks) {
+      const condition = goal.condition;
+      const checks = goal.checks;
+      await clearGoal(sessionID, "cap_reached", condition);
+      await log("goal_cap_reached", sessionID, { condition, checks, max_checks: maxChecks });
+      await deliver(sessionID, buildGoalCapPrompt(condition, checks), "Goal", goalKey(sessionID));
+      return;
+    }
+    if (!options.evaluate) {
+      await log("goal_eval_failed", sessionID, { condition: goal.condition, error: "no evaluator configured", failures: goal.checks });
+      return;
+    }
+    const generation = goal.generation;
+    goal.evalInFlight = true;
+    const started = clock();
+    try {
+      const verdict = await options.evaluate(sessionID, goal.condition);
+      const current = goals.get(sessionID);
+      if (!current || current.generation !== generation)
+        return;
+      const durationMs = clock() - started;
+      if (verdict.met) {
+        goals.delete(sessionID);
+        await log("goal_check", sessionID, { condition: current.condition, met: true, reason: verdict.reason, duration_ms: durationMs, checks: current.checks });
+        await log("goal_achieved", sessionID, { condition: current.condition, reason: verdict.reason, checks: current.checks, elapsed_ms: clock() - current.setAt });
+        return;
+      }
+      current.checks += 1;
+      current.evalFailures = 0;
+      current.lastReason = verdict.reason;
+      await log("goal_check", sessionID, { condition: current.condition, met: false, reason: verdict.reason, duration_ms: durationMs, checks: current.checks });
+      await log("goal_continue", sessionID, { condition: current.condition, reason: verdict.reason, checks: current.checks });
+      if (busy.has(sessionID) || sessionHasPendingTick(sessionID) || goals.get(sessionID)?.generation !== generation) {
+        await log("goal_skipped_busy", sessionID, { condition: current.condition, reason: "became_busy_during_eval" });
+        return;
+      }
+      await deliver(sessionID, buildGoalContinuePrompt(current.condition, verdict.reason), "Goal", goalKey(sessionID));
+    } catch (error) {
+      const current = goals.get(sessionID);
+      if (!current || current.generation !== generation)
+        return;
+      current.evalFailures += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      await log("goal_eval_failed", sessionID, { condition: current.condition, error: message, failures: current.evalFailures });
+      if (current.evalFailures >= goalMaxEvalFailures()) {
+        const condition = current.condition;
+        const failures = current.evalFailures;
+        await clearGoal(sessionID, "eval_failed", condition);
+        await log("goal_cap_reached", sessionID, { condition, reason: "eval_failed", failures });
+        await deliver(sessionID, buildGoalEvalFailedPrompt(condition), "Goal", goalKey(sessionID));
+      }
+    } finally {
+      const current = goals.get(sessionID);
+      if (current && current.generation === generation)
+        current.evalInFlight = false;
+    }
+  }
   async function schedule(sessionID, prompt, delaySeconds, source, noop = false) {
     const delay = clampDelay(delaySeconds);
     const prior = [...jobs.values()].find((j) => j.sessionID === sessionID && j.source === "Schedule" && j.prompt === prompt);
@@ -23924,6 +24288,10 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
       await log("error", undefined, { source: name, message: "OpenCode session id missing from params._meta[ai.opencode/sessionID]" });
       throw new Error("OpenCode session id missing; this tool must be called from an OpenCode session");
     }
+    if (helpers.has(sessionID)) {
+      await log("error", sessionID, { source: name, message: "goal helper sessions may not call roster tools" });
+      throw new Error("goal helper sessions may not call roster tools");
+    }
     try {
       if (name === "Schedule") {
         if (args.stop) {
@@ -23951,6 +24319,8 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
             if (legacy && legacy.prompt === stopPrompt)
               pending.delete(sessionID);
           }
+          if (goals.has(sessionID))
+            await clearGoal(sessionID, "schedule_stop");
           if (stopPrompt !== undefined && owned.length === 0) {
             await log("cancel_stop", sessionID, { action: "stop", prompt: stopPrompt, result: "No loop with that prompt for this session" });
             return { content: [{ type: "text", text: `No loop with that prompt for this session.` }] };
@@ -24041,6 +24411,36 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
         await log("tool_result", sessionID, { tool: name, result });
         return { content: [{ type: "text", text: result }] };
       }
+      if (name === "Goal") {
+        const condition = typeof args.condition === "string" && args.condition.trim() ? args.condition.trim() : undefined;
+        if (args.clear === true) {
+          const existing = goals.get(sessionID);
+          if (!existing) {
+            await log("goal_cleared", sessionID, { cleared: false, reason: "clear" });
+            const empty = "No goal set";
+            await log("tool_result", sessionID, { tool: name, result: empty });
+            return { content: [{ type: "text", text: empty }] };
+          }
+          await clearGoal(sessionID, "clear", existing.condition);
+          const result = `Goal cleared: ${existing.condition}`;
+          await log("tool_result", sessionID, { tool: name, result });
+          return { content: [{ type: "text", text: result }] };
+        }
+        if (condition !== undefined) {
+          const replaced = goals.has(sessionID);
+          const generation = (goalGenerations.get(sessionID) ?? 0) + 1;
+          goalGenerations.set(sessionID, generation);
+          goals.set(sessionID, { condition, setAt: clock(), checks: 0, evalFailures: 0, evalInFlight: false, generation, lastReason: undefined });
+          await log("goal_set", sessionID, { condition, replaced });
+          await deliver(sessionID, buildGoalAckPrompt(condition), "Goal", goalKey(sessionID));
+          const result = `Goal set: ${condition}`;
+          await log("tool_result", sessionID, { tool: name, result });
+          return { content: [{ type: "text", text: result }] };
+        }
+        const result = formatGoalStatus(goals.get(sessionID), clock());
+        await log("tool_result", sessionID, { tool: name, result });
+        return { content: [{ type: "text", text: result }] };
+      }
       throw new Error(`Unknown tool ${name}`);
     } catch (error) {
       await log("error", sessionID, { source: name, params: args, message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
@@ -24074,6 +24474,11 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
         pendingByKey.delete(key);
         await deliver(sessionID, item.prompt, item.source, key);
       }
+      if (goals.has(sessionID) && !helpers.has(sessionID)) {
+        const check = runGoalCheck(sessionID);
+        goalChecks.add(check);
+        check.then(() => goalChecks.delete(check), () => goalChecks.delete(check));
+      }
     },
     async onBusy(sessionID, payload) {
       await log(frameTypeOf(payload) ?? "session.status", sessionID, { raw_payload: payload });
@@ -24092,6 +24497,9 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
         removeJob(id);
         noopStreak.delete(id);
       }
+      if (goals.has(sessionID))
+        await clearGoal(sessionID, "session_deleted");
+      helpers.delete(sessionID);
       await releaseBusy(sessionID, "session_deleted", {});
       pending.delete(sessionID);
       noopStreak.delete(sessionID);
@@ -24152,6 +24560,25 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
     },
     flushForTest(sessionID) {
       return this.onIdle(sessionID, { type: "session.idle" });
+    },
+    goalForTest(sessionID) {
+      return goals.get(sessionID);
+    },
+    isGoalEvalInFlightForTest(sessionID) {
+      return goals.get(sessionID)?.evalInFlight ?? false;
+    },
+    isHelperForTest(sessionID) {
+      return helpers.has(sessionID);
+    },
+    setHelper(sessionID, active) {
+      if (active)
+        helpers.add(sessionID);
+      else
+        helpers.delete(sessionID);
+    },
+    async flushGoalsForTest() {
+      for (let i = 0;i < 50 && goalChecks.size > 0; i++)
+        await Promise.all([...goalChecks]);
     }
   };
 }
@@ -24380,8 +24807,12 @@ var baseURL = service.baseURL;
 var password = service.password;
 var authorization = password ? `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` : undefined;
 var injector = createPromptInjector({ baseURL, password, onError: async (error, sessionID) => log("error", sessionID, { source: "session.prompt", message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined }) });
-var handlers = createRosterHandlers(injector, log, () => Date.now(), { maxBusyMs: Number(process.env.ROSTER_BUSY_MAX_MS || process.env.ROSTER_MAX_BUSY_MS || 120000), probeIdle });
-var mcp = new McpServer({ name: "roster", version: "0.1.0" }, { instructions: `Loop protocol: for /loop [interval] <task>, perform one useful iteration immediately. A session may run up to 10 loops at once (ROSTER_MAX_JOBS, default 10); each loop has an id (interval loops keep their cron ids) and a kind (interval or dynamic). An interval loop (/loop 5s <task>) means exactly ONE roster_ScheduleCreate call with that interval and prompt equal to the TASK ONLY, without the leading "/loop" and without the interval; e.g. /loop 5s run sleep 12 seconds -> ScheduleCreate {interval:"5s", prompt:"run sleep 12 seconds"}. Never pass the whole /loop input as a ScheduleCreate prompt: injected ticks must never look like a new /loop command, or jobs multiply. Never call Schedule, ScheduleList, or ScheduleDelete alongside an interval loop, and never delete the loop's own job. Two interval loops with different tasks or intervals run side by side; the same interval and task returns the existing id ("already scheduled (already running as <id>)"). A loop without an interval is dynamic: call roster_Schedule once with prompt exactly equal to the original /loop input verbatim, delaySeconds clamped to 1-3600 (idle default 1200-1800; do not poll work the harness notifies about), a short reason, and noop true only when nothing changed. Dynamic wakeups are keyed by prompt text: the SAME prompt replaces that loop's wakeup only, a different prompt is a different loop. Use <<autonomous-loop-dynamic>> for an autonomous loop without a user prompt. /loop list (also bare /loop) lists every loop via roster_ScheduleList (id, kind, interval or next fire, task shortened, noop streak, pending). /loop stop ends ALL loops through roster_Schedule with stop:true, which cancels every job the session owns; roster_Schedule with stop:true and prompt set to a loop's exact prompt stops that dynamic loop only. /loop stop <id> ends one loop via roster_ScheduleDelete. ScheduleCreate is idempotent per session, interval and prompt and each session is capped at ROSTER_MAX_JOBS loops (default 10). Calls must be made within an OpenCode session so the server supplies _meta["ai.opencode/sessionID"].`, capabilities: { tools: {} } });
+var handlers;
+var evaluator = createGoalEvaluator({ baseURL, password, onHelper: (id, active) => {
+  handlers?.setHelper(id, active);
+} });
+handlers = createRosterHandlers(injector, log, () => Date.now(), { maxBusyMs: Number(process.env.ROSTER_BUSY_MAX_MS || process.env.ROSTER_MAX_BUSY_MS || 120000), probeIdle, evaluate: evaluator });
+var mcp = new McpServer({ name: "roster", version: "0.1.0" }, { instructions: `Loop protocol: for /loop [interval] <task>, perform one useful iteration immediately. A session may run up to 10 loops at once (ROSTER_MAX_JOBS, default 10); each loop has an id (interval loops keep their cron ids) and a kind (interval or dynamic). An interval loop (/loop 5s <task>) means exactly ONE roster_ScheduleCreate call with that interval and prompt equal to the TASK ONLY, without the leading "/loop" and without the interval; e.g. /loop 5s run sleep 12 seconds -> ScheduleCreate {interval:"5s", prompt:"run sleep 12 seconds"}. Never pass the whole /loop input as a ScheduleCreate prompt: injected ticks must never look like a new /loop command, or jobs multiply. Never call Schedule, ScheduleList, or ScheduleDelete alongside an interval loop, and never delete the loop's own job. Two interval loops with different tasks or intervals run side by side; the same interval and task returns the existing id ("already scheduled (already running as <id>)"). A loop without an interval is dynamic: call roster_Schedule once with prompt exactly equal to the original /loop input verbatim, delaySeconds clamped to 1-3600 (idle default 1200-1800; do not poll work the harness notifies about), a short reason, and noop true only when nothing changed. Dynamic wakeups are keyed by prompt text: the SAME prompt replaces that loop's wakeup only, a different prompt is a different loop. Use <<autonomous-loop-dynamic>> for an autonomous loop without a user prompt. /loop list (also bare /loop) lists every loop via roster_ScheduleList (id, kind, interval or next fire, task shortened, noop streak, pending). /loop stop ends ALL loops through roster_Schedule with stop:true, which cancels every job the session owns; roster_Schedule with stop:true and prompt set to a loop's exact prompt stops that dynamic loop only. /loop stop <id> ends one loop via roster_ScheduleDelete. ScheduleCreate is idempotent per session, interval and prompt and each session is capped at ROSTER_MAX_JOBS loops (default 10). Calls must be made within an OpenCode session so the server supplies _meta["ai.opencode/sessionID"]. Goal protocol: for /goal <condition>, call roster_Goal once with that condition (the condition text only); for /goal with no argument call roster_Goal with no params to show the panel; for /goal clear call roster_Goal with clear:true. Do not use Schedule tools for goals.`, capabilities: { tools: {} } });
 function sessionID(extra) {
   const value = extra?._meta?.["ai.opencode/sessionID"];
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -24407,6 +24838,11 @@ register("Schedule", "Schedule the next dynamic /loop iteration in this session 
 register("ScheduleCreate", 'Create one recurring prompt job for an interval loop (/loop <interval> <task>): call exactly once with that interval and prompt equal to the TASK ONLY, without the leading /loop and without the interval; e.g. /loop 5s run sleep 12 seconds -> {interval:"5s", prompt:"run sleep 12 seconds"}. Never also call Schedule, ScheduleList, or ScheduleDelete. interval examples: 5s, 5m, 2h (limited to 1s-1h). Different tasks or intervals run side by side; a duplicate session/interval/prompt returns the existing id (already scheduled, already running as <id>); each session is capped at ROSTER_MAX_JOBS loops (default 10).', { interval: stringType2(), prompt: stringType2() });
 register("ScheduleList", "List every loop of this session for /loop list (also bare /loop): each entry has id, kind (interval or dynamic), interval or next fire time, task (shortened), noop streak, and pending state; the list length is the loop count and the earliest due is the next fire. A routine loop must not call this.", {});
 register("ScheduleDelete", "Delete one loop by id for /loop stop <id> (for a stale or unwanted job). Never delete the loop's own running job; /loop stop without an id ends every loop via Schedule stop:true.", { id: stringType2() });
+register("Goal", "Set, clear, or show the session goal for /goal. Goal({condition}) sets (replaces) the ONE session-scoped completion condition and starts evaluator checks at every turn end; Goal({clear:true}) removes it early; Goal({}) or Goal({status:true}) shows No goal set or the active panel. One goal per session; it coexists with /loop jobs and auto-clears when met.", {
+  condition: stringType2().optional(),
+  clear: booleanType2().optional(),
+  status: booleanType2().optional()
+});
 async function probeIdle(sessionID) {
   const response = await fetch(`${baseURL}/api/session/active`, { headers: authorization ? { authorization } : {} });
   if (!response.ok)
