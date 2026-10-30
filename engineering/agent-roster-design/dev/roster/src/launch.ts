@@ -97,9 +97,10 @@ function builtFor(workspace: string, m: Member) {
 }
 
 /** Build one member's agent argv for herdr-core, without the first prompt: it is
- * always sent with `hc send` after the tab opens, so it is delivered exactly
- * once even when the tab opens on a trust dialog. Returns the argv and the
- * runtime session id when creating one is part of opening the tab. */
+ * always sent with `hcx send` (untagged; `hc send` when hcx is missing or
+ * fails) after the tab opens, so it is delivered exactly once even when the
+ * tab opens on a trust dialog. Returns the argv and the runtime session id
+ * when creating one is part of opening the tab. */
 function hcMemberArgv(h: Hc, m: Member, dir: string, label: string): { argv: string[]; session: string | null } {
   switch (m.agent) {
     case "claude":
@@ -374,7 +375,7 @@ export function cmdLaunchHc(
   };
   notes.push(
     `old herdr ${herdrWhy ?? "session is not running"}; launching with herdr-core instead: ` +
-      `each member opens its own tab in Herdr app space ${space} via \`herdr-app do\` (no parent terminal), notified with \`hc send\``,
+      `each member opens its own tab in Herdr app space ${space} via \`herdr-app do\` (no parent terminal), notified with \`hcx send\` (untagged; \`hc send\` fallback)`,
   );
   if (!haveApp()) {
     problems.push("the Herdr app CLI (herdr-app) is not on PATH; install it before launching to herdr-core");

@@ -1,8 +1,9 @@
 // herdr-core backend: open one Herdr app tab per member with `herdr-app do
-// tab.new`, notify them with `hc send`. Used when the old herdr server is
-// stopped but `hc` lists a live core. Terminals opened by herdr-app have no
-// parent, so members never stick to the runner's tab; never start them with
-// `hc run` from inside an agent.
+// tab.new`, notify them with `hcx send` (untagged; `hc send` when hcx is
+// missing or fails). Used when the old herdr server is stopped but `hc`
+// lists a live core. Terminals opened by herdr-app have no parent, so
+// members never stick to the runner's tab; never start them with `hc run`
+// from inside an agent.
 
 import {
   LaunchError,
@@ -37,6 +38,11 @@ export function haveHc(): boolean {
 /** Whether the Herdr app CLI exists. */
 export function haveApp(): boolean {
   return which("herdr-app") !== null;
+}
+
+/** Whether the hcx helper exists (it sends without the `<hc from>` tag). */
+export function haveHcx(): boolean {
+  return which("hcx") !== null;
 }
 
 /** Herdr app spaces by name, or null when the app cannot be listed. */
@@ -202,7 +208,23 @@ export class Hc {
     return output;
   }
 
+  /** Send the first prompt untagged via `hcx send`, falling back to `hc send`. */
   sendPrompt(name: string, promptText: string) {
+    if (!haveHcx()) {
+      this.run(["send", name, promptText]);
+      return;
+    }
+    const hcxCmd = ["hcx", "send", name, promptText];
+    if (this.dryRun) {
+      print("RUN " + shlexJoin(hcxCmd));
+      return;
+    }
+    const done = run(hcxCmd, { timeoutMs: TIMEOUT_MS });
+    if (!done.timedOut && done.code === 0) return;
+    const detail = done.timedOut
+      ? "`hcx send` did not answer within 120 s"
+      : `\`hcx send ${name}\` failed (exit ${done.code}): ${tail(strip(done.stdout + done.stderr), 400)}`;
+    print(`WARN ${detail}; falling back to \`hc send\``);
     this.run(["send", name, promptText]);
   }
 
