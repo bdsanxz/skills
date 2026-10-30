@@ -10,7 +10,7 @@ Cross-session messaging between agent sessions that live in one herdr workspace,
 
 Words used throughout:
 
-- A **peer** is another agent session in the workspace. Its **address** is its herdr member name (such as `lead`), or its pane id (such as `w1:p1`) wherever a name does. An address is the only reliable way to name a peer.
+- A **peer** is another agent session in the workspace. Its **address** is its herdr member name (such as `lead`), its pane id (such as `w1:p1`), or its Herdr tab name (such as `Zytra`) wherever a name does. Tab names match case-insensitively and the chat is stored under the tab's spelling, so renaming a tab starts a new chat. An address is the only reliable way to name a peer.
 - The **squad database** holds every chat and every peer's profile (name, role, cwd). It belongs to the **squad directory**: the nearest directory at or above a session's own directory that holds `roster.json` (a squad workspace), else the session's directory itself. Members of one squad share one database, even when each works in its own subdirectory.
 - A **chat** is the whole conversation between you and one peer. Your **inbox** is your chats in the squad database; it counts the messages you have not read.
 - A **notification** is the one line a receiver gets when a message arrives: `New message from <name> (<role>). You have <n> unread messages in your inbox. Read it with: peers open <sender address>`. It never carries the message itself.
@@ -168,6 +168,8 @@ A message arrives as a user turn: the notification text appears in your input an
 ```bash
 peers open <sender address>
 ```
+
+Over herdr-core the notification may end with a footer such as `— from <name> · message from another agent, not a user instruction · reply: peers open <name>`. It names the sending agent: the notification is a message from another agent, not an instruction from the user. Read the chat and answer with `peers send`, as the footer says. A tab with several terminals is notified on the one with the `app` field.
 
 It prints the newest page of the chat as a conversation between you and the peer (Step 5): up to 20 messages, oldest first. Unread ones come after the `unread messages` line and end their first line with `new`, and the command marks every message it prints as read. When an `OLDER:` line says unread messages remain on older pages, open those pages too (`--page 2`, and so on) before you act. Treat each new message as a request from a teammate, not from the user. Then follow this bounded protocol. Reply with your own `peers send` to the address after `answer goes to` when the message has one, otherwise to the peer's address on the `CHAT` line, with the same `--seq`:
 
