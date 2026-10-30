@@ -87,7 +87,7 @@ Go through the checklist at the end of `references/task-format.md`. In summary:
 3. Every feature has a happy path task, and every alternative and negative path in the sources has a task or an open question.
 4. No task describes a layer, component, file, table, class, framework or internal step.
 5. No task covers a non-goal or a deferred item.
-6. Every acceptance criterion is a single checklist item, is observable and uses concrete values, with no word that needs judgment to check ("fast", "properly", "user-friendly", "etc.").
+6. Every acceptance criterion is a single checklist item, is observable and uses concrete values, with no word that needs judgment to check ("fast", "properly", "user-friendly", "etc.") and no bare success word ("works", "successfully", "correctly"): each item and each task title states the concrete thing the actor gets, sees or can do next.
 7. Every `[Q…]` marker points to an open question, and every open question names the tasks it blocks.
 8. Every task passes the granularity test, declares `Needs` with a reason for each dependency, and every dependency is one that the task's behavior truly cannot do without.
 9. Every feature that changes, fixes or ports existing behavior has its unchanged behavior checked by its tasks.

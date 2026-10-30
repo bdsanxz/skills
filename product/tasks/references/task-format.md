@@ -73,6 +73,7 @@ Optional; present once a question has been answered. One line per question: `- Q
 
 - A task covers one actor's one path to a result, from the first thing that actor does to the last thing that actor (or another actor) observes. It is a slice through the whole system, not a piece of one layer.
 - Name the task by what the actor achieves or is told: "Member exports their expenses for a date range", "Member is told the range is too long". Never name a component: "Export service", "Date validation".
+- State the outcome with the concrete thing the actor gets, sees or can do next, never with a bare success word. Ban "works", "successfully", "correctly" and "properly" from titles, scenarios and criteria unless the sentence also says what the actor observes: not "then the export works", but "then the member receives a CSV file with one row per expense in the range". A criterion that only says the behavior succeeded is rewritten the same way.
 - Write the scenario with what crosses the system boundary: what the actor does, sees, receives or can do next. Leave out components, layers, files, tables, classes, frameworks, endpoints (unless an external actor calls the endpoint directly and a source specifies it), and steps of the implementation.
 - Do not write a list of implementation steps, a technical approach or a "how". If the sources mention one, it is not part of the task; report it as a detail left out.
 
