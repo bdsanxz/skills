@@ -118,6 +118,14 @@ function isPlainCwd(cwd: unknown): cwd is string {
   return !cwd.replace(/^\/+|\/+$/g, "").includes("/");
 }
 
+/** Whether any member still lists the removed skill. */
+function listsRemovedSkill(roster: Json): boolean {
+  if (!isObject(roster) || !Array.isArray(roster.members)) return false;
+  return roster.members.some(
+    (m) => isObject(m) && Array.isArray(m.skills) && m.skills.some((s) => isObject(s) && s.skill === "agent-job"),
+  );
+}
+
 export function structureProblems(roster: Json, overrides: Overrides) {
   const problems: string[] = [];
   if (!isObject(roster)) return ['roster.json must be an object with "squad", "goal" and "members"'];
@@ -232,8 +240,6 @@ export function structureProblems(roster: Json, overrides: Overrides) {
         problems.push(`${where}: skills[${j}] must be {"source": <package, URL or path>, "skill": <name>}`);
       } else if (skill.skill === "peers") {
         problems.push(`${where}: skills[${j}] lists peers, which every member gets; set "peers_source" instead`);
-      } else if (skill.skill === "agent-job") {
-        problems.push(`${where}: skills[${j}] lists agent-job, which every member gets; set "agent_job_source" instead`);
       } else if (skill.skill === "agent-shell") {
         problems.push(`${where}: skills[${j}] lists agent-shell, which every member gets; set "agent_shell_source" instead`);
       }
@@ -242,8 +248,8 @@ export function structureProblems(roster: Json, overrides: Overrides) {
   if ("peers_source" in roster && !isFilled(roster.peers_source)) {
     problems.push('roster.json: "peers_source" must be a package, URL or path of the peers skill');
   }
-  if ("agent_job_source" in roster && !isFilled(roster.agent_job_source)) {
-    problems.push('roster.json: "agent_job_source" must be a package, URL or path of the agent-job skill');
+  if ("agent_job_source" in roster || listsRemovedSkill(roster)) {
+    problems.push('roster.json: agent-job was removed; delete "agent_job_source" and any {"skill": "agent-job"} entries');
   }
   if ("agent_shell_source" in roster && !isFilled(roster.agent_shell_source)) {
     problems.push('roster.json: "agent_shell_source" must be a package, URL or path of the agent-shell skill');
@@ -501,8 +507,7 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
         "After a dynamic iteration, call the Schedule tool with the delay, a short reason, and noop true when nothing changed. " +
         "You also have a `/goal` command for completion conditions: `/goal <condition>` sets the one session-scoped goal and starts work at once, " +
         "bare `/goal` shows its status, and `/goal clear` stops it early; an evaluator checks the condition at the end of every turn and keeps you working until it holds. " +
-        "A goal never needs Schedule: never call the Schedule tool to implement a goal, poll one, or re-wake yourself for one. " +
-        "Prefer this native `/goal` over an agent-job daemon goal; use the daemon goal only when this command is unavailable.",
+        "A goal never needs Schedule: never call the Schedule tool to implement a goal, poll one, or re-wake yourself for one.",
     );
   }
   if (anyNamed) {
@@ -542,10 +547,10 @@ export function assemble(workspace: string, roster: Roster, members: Member[], m
   return lines.join("\n") + "\n";
 }
 
-/** Install peers, agent-job, agent-shell and the member's other skills into its cwd, for its agent. */
+/** Install peers, agent-shell and the member's other skills into its cwd, for its agent. */
 export function installSkills(dir: string, m: Member, sources: SkillSources) {
   const spec = agent(m.agent);
-  const wanted: [string, string][] = [[sources.peers, "peers"], [sources.agentJob, "agent-job"], [sources.agentShell, "agent-shell"], ...(m.skills ?? []).map((s): [string, string] => [s.source, s.skill])];
+  const wanted: [string, string][] = [[sources.peers, "peers"], [sources.agentShell, "agent-shell"], ...(m.skills ?? []).map((s): [string, string] => [s.source, s.skill])];
   const bySource = new Map<string, string[]>();
   for (const [source, skill] of wanted) {
     if (!bySource.has(source)) bySource.set(source, []);

@@ -74,7 +74,7 @@ Additional revision-2 commands and outputs:
 7. `opencode .` (interactive TUI)
    - Started an interactive TUI; its shell capture contained terminal escape sequences, not readable screen output. No live plugin discovery or command/tool behavior was conclusively verified.
 8. `bun test && bun run typecheck && git status --short && git diff --check && opencode --help`
-   - Tests and typecheck passed again; `git diff --check` had no output. `git status --short` showed pre-existing changes outside this project (`agent-job/SKILL.md`, `product/tasks/SKILL.md`, `product/tasks/references/task-format.md`, `../pi-roster/`, `frontend/web-to-egui/`) as well as this project's untracked `./`; none outside this project were edited by this work. Help printed CLI usage/subcommands.
+   - Tests and typecheck passed again; `git diff --check` had no output. `git status --short` showed pre-existing changes outside this project (a since-removed skill's `SKILL.md`, `product/tasks/SKILL.md`, `product/tasks/references/task-format.md`, `../pi-roster/`, `frontend/web-to-egui/`) as well as this project's untracked `./`; none outside this project were edited by this work. Help printed CLI usage/subcommands.
 
 ## Proven live
 

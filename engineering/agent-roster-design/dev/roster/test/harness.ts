@@ -133,16 +133,6 @@ fi
 echo peers 0.0.1
 `;
 
-/** agent-job: prints its version, and writes the agent-job extension for pi with pi-extension --path. */
-const AGENT_JOB = `#!/bin/sh
-case "$1" in
-  --version) echo "agent-job 0.0.1" ;;
-  pi-extension) f="$AGENT_JOB_HOME/pi-extension.ts"
-                mkdir -p "$AGENT_JOB_HOME" && echo '// agent-job extension: spawns agent-job watch' >"$f" && echo "$f" ;;
-  *) echo "unexpected agent-job call: $*" >&2; exit 9 ;;
-esac
-`;
-
 /** agent-shell: prints its version. */
 const AGENT_SHELL = `#!/bin/sh
 case "$1" in
@@ -188,12 +178,6 @@ fi
 echo "unexpected hcx call: $*" >&2; exit 9
 `;
 
-/** The agent-job install script build fetches; INSTALLER_FAIL=1 makes it fail. */
-export const AGENT_JOB_INSTALLER = `[ "\${INSTALLER_FAIL:-}" = 1 ] && { echo "agent-job-install: error: no release" >&2; exit 1; }
-dir="\${AGENT_JOB_INSTALL_DIR:-$HOME/.local/bin}"
-mkdir -p "$dir" && printf '#!/bin/sh\\necho agent-job 0.0.1\\n' >"$dir/agent-job" && chmod +x "$dir/agent-job"
-`;
-
 /** The agent-shell install script build fetches; INSTALLER_FAIL=1 makes it fail. */
 export const AGENT_SHELL_INSTALLER = `[ "\${INSTALLER_FAIL:-}" = 1 ] && { echo "agent-shell-install: error: no release" >&2; exit 1; }
 dir="\${AGENT_SHELL_INSTALL_DIR:-$HOME/.local/bin}"
@@ -218,7 +202,7 @@ export type Squad = {
   hcappLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, hcx: HCX, "herdr-app": HCAPP, peers: PEERS, "agent-job": AGENT_JOB, "agent-shell": AGENT_SHELL };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, hcx: HCX, "herdr-app": HCAPP, peers: PEERS, "agent-shell": AGENT_SHELL };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
@@ -249,8 +233,6 @@ export function setUp(): Squad {
     HCX_LOG: squad.hcxLog,
     HCAPP_LOG: squad.hcappLog,
     PEERS_CACHE: path.join(tmp, "cache"),
-    AGENT_JOB_INSTALL_DIR: path.join(tmp, "agent-job-bin"),
-    AGENT_JOB_HOME: path.join(tmp, "agent-job-home"),
   });
   return squad;
 }

@@ -29,12 +29,10 @@ import {
   which,
 } from "./core";
 import { type Member, agent, agyArgv, claudeBaseArgv, museArgv, piArgv } from "./agents";
-import { agentJobPiExtension } from "./agentjob";
 import { Hc, appSpaces, haveApp, hcSpaceName, hcTerminals } from "./hc";
 import { FIRST_PROMPT, Herdr, field, herdrSession, list, text } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
 import { peersInstalled } from "./peers";
-import { agentJobInstalled } from "./agentjob";
 import { agentShellInstalled } from "./agentshell";
 import {
   type Overrides,
@@ -64,19 +62,18 @@ export function report(notes: string[], problems: string[]) {
   for (const problem of problems) print(`PROBLEM ${problem}`);
 }
 
-/** Where the skills every member gets come from: roster.json's peers_source, agent_job_source and
+/** Where the skills every member gets come from: roster.json's peers_source and
  * agent_shell_source, else the copies next to this skill. */
 export function skillSourcesOf(roster: Roster, fallback: SkillSources): SkillSources {
   const peers = "peers_source" in roster ? (roster.peers_source as string) : fallback.peers;
-  const agentJob = "agent_job_source" in roster ? (roster.agent_job_source as string) : fallback.agentJob;
   const agentShell = "agent_shell_source" in roster ? (roster.agent_shell_source as string) : fallback.agentShell;
-  for (const [skill, source, key] of [["peers", peers, "peers_source"], ["agent-job", agentJob, "agent_job_source"], ["agent-shell", agentShell, "agent_shell_source"]]) {
+  for (const [skill, source, key] of [["peers", peers, "peers_source"], ["agent-shell", agentShell, "agent_shell_source"]]) {
     if (source!.startsWith("/") && !isFile(join(source!, "SKILL.md"))) {
       fail(`no ${skill} skill at ${source}; set "${key}" in roster.json to its directory, package or URL`);
     }
   }
   if (!which("npx")) fail("npx is not on PATH; install Node.js, which the skills CLI needs");
-  return { peers, agentJob, agentShell };
+  return { peers, agentShell };
 }
 
 function settingsChange(m: Member) {
@@ -118,7 +115,7 @@ function hcMemberArgv(h: Hc, m: Member, dir: string, label: string): { argv: str
       return { argv: ["opencode", "--session", session], session: session || null };
     }
     case "pi":
-      return { argv: piArgv(m, label, [agentJobPiExtension(), PI_ROSTER]), session: null };
+      return { argv: piArgv(m, label, [PI_ROSTER]), session: null };
     case "agy":
       return { argv: agyArgv(m), session: null };
     case "muse":
@@ -519,9 +516,6 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
   let state: [string | null, Pane[]] = [null, []];
   if (!peersInstalled()) {
     problems.push(`the peers CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
-  }
-  if (!agentJobInstalled()) {
-    problems.push(`the agent-job CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);
   }
   if (!agentShellInstalled()) {
     problems.push(`the agent-shell CLI is not installed; run \`bun ${SCRIPT} build ${workspace}\` first, which installs it`);

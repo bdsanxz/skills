@@ -20,7 +20,6 @@ import {
   which,
 } from "./core";
 import { type Dialog, FIRST_PROMPT, Herdr, field, list, text } from "./herdr";
-import { agentJobPiExtension, configureAgentJobAgy, configureAgentJobClaude } from "./agentjob";
 import { configureOpencode } from "./opencode";
 
 // Effort levels, lowest first: the levels claude --effort and agy --effort take.
@@ -71,19 +70,19 @@ export type Agent = {
   launch: (h: Herdr, member: Member, pane: string, name: string, dir: string) => string | null;
 };
 
-/** Load the agent-job channel at project scope, approved so it starts without a prompt, and
- * the agent-job goal hooks. Peers needs no channel: every notification arrives through one
+/** Claude Code needs no per-member files: every notification arrives through one
  * `herdr agent prompt` into the member's input. */
-function configureClaude(_workspace: string, dir: string) {
-  return configureAgentJobClaude(dir);
+function configureClaude() {
+  return null;
 }
 
-function configureAgy(_workspace: string, dir: string) {
-  return configureAgentJobAgy(dir);
+/** Antigravity gets no cron/goal support: the build writes no hooks for it. */
+function configureAgy() {
+  return null;
 }
 
-/** Muse Code needs no per-member peers files: its notifications arrive through one
- * `herdr agent prompt` typed into its TUI, and agent-job polls its session log. */
+/** Muse Code needs no per-member files: its notifications arrive through one
+ * `herdr agent prompt` typed into its TUI. */
 function configureMuse() {
   return null;
 }
@@ -98,7 +97,6 @@ export function claudeBaseArgv(m: Member, label: string): string[] {
 export function claudeArgv(m: Member, label: string): string[] {
   const cmd = claudeBaseArgv(m, label);
   // Keep the "--" so a prompt starting with a dash is not parsed as a flag.
-  // The agent-job channel comes from the member's .mcp.json; no extra flag loads it.
   cmd.push("--", FIRST_PROMPT);
   return cmd;
 }
@@ -216,10 +214,9 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
 }
 
 /** A pi member is notified through one `herdr agent prompt` typed into its session, like every
- * member. It still loads the agent-job extension for crons and goals at launch,
- * and the loop extension for /loop. */
+ * member. It loads the loop extension for /loop and the native /goal at launch. */
 function configurePi() {
-  return "pi loads the agent-job extension from `agent-job pi-extension --path` and the loop extension (scripts/pi-roster.js) at launch";
+  return "pi loads the loop extension (scripts/pi-roster.js) at launch";
 }
 
 /** pi --list-models prints a table: provider, model, then more columns. A member may name either form. */
@@ -234,10 +231,9 @@ function parsePiModels(output: string) {
 
 function launchPi(h: Herdr, m: Member, pane: string, name: string): string | null {
   // --approve trusts the member's cwd, which the roster made, so pi loads its skills without
-  // asking. -e loads the agent-job extension for this session only, from the file the installed
-  // CLI writes, so it matches its binary, and the loop extension from this skill's scripts/,
-  // so pi members get /loop. pi's --thinking takes every level.
-  const args = piArgv(m, sessionLabel(m, name), [agentJobPiExtension(), PI_ROSTER]).slice(1);
+  // asking. -e loads the loop extension from this skill's scripts/, so pi members get /loop
+  // and the native /goal. pi's --thinking takes every level.
+  const args = piArgv(m, sessionLabel(m, name), [PI_ROSTER]).slice(1);
   h.startAgent(name, "pi", pane, args);
   h.firstPrompt(name, pane, AGENTS.pi!.dialogs);
   // pi's session id is known only to its runtime; launch records it by lookup instead.

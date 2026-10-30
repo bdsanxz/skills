@@ -14,7 +14,6 @@ import { AGENTS } from "../src/agents";
 import { OPENCODE_ROSTER_MCP, OPENCODE_ROSTER_PLUGIN } from "../src/core";
 import { findSession, sessionLive } from "../src/sessions";
 import {
-  AGENT_JOB_INSTALLER,
   AGENT_SHELL_INSTALLER,
   INSTALLER,
   type MemberData,
@@ -141,7 +140,7 @@ describe("a mixed team", () => {
     await check("built-in default agent is claude", "MEMBER docs: agent claude (built-in default), the agent's own default model", ["check", W]);
     edit(s, (r) => (r.defaults = { agent: "agy" }));
     await check("defaults.agent applies", "MEMBER docs: agent agy (defaults.agent)", ["check", W]);
-    edit(s, (r) => (r.defaults!.models = { agy: "gem-fast", claude: "sonnet" }));
+    edit(s, (r) => (r.defaults!.models = { agy: "gem-fast", claude: "haiku" }));
     const out = (await roster(["check", W])).out;
     has("defaults.models applies to its agent", out, "MEMBER docs: agent agy (defaults.agent), model gem-fast (defaults.models.agy)");
     has("member model beats defaults.models", out, "MEMBER lead: agent claude (member), model haiku (member)");
@@ -150,8 +149,8 @@ describe("a mixed team", () => {
   test("model validation, per agent", async () => {
     edit(s, (r) => (m(r, 0).model = "gpt-5"));
     await check("claude model form", "model 'gpt-5' (member) is not a claude model; expected an alias", ["check", W]);
-    edit(s, (r) => (m(r, 0).model = "claude-sonnet-5-5"));
-    await check("claude full model name", "MEMBER lead: agent claude (member), model claude-sonnet-5-5", ["check", W]);
+    edit(s, (r) => (m(r, 0).model = "claude-haiku-4-5"));
+    await check("claude full model name", "MEMBER lead: agent claude (member), model claude-haiku-4-5", ["check", W]);
     edit(s, (r) => (m(r, 1).model = "big-pickle"));
     await check("opencode model form", "is not a opencode model; expected provider/model", ["check", W]);
     edit(s, (r) => (m(r, 1).model = "opencode/nope"));
@@ -187,7 +186,7 @@ describe("a mixed team", () => {
   });
 
   test("effort: default, mapping per agent, validation and fallback", async () => {
-    await check("no effort is the agent's default", "model claude-sonnet-5-5 (member), the agent's own default effort (no effort set)", ["check", W]);
+    await check("no effort is the agent's default", "model claude-haiku-4-5 (member), the agent's own default effort (no effort set)", ["check", W]);
     edit(s, (r) => (m(r, 0).effort = "extreme"));
     await check(
       "unknown member effort",
@@ -195,7 +194,7 @@ describe("a mixed team", () => {
       ["check", W],
     );
     edit(s, (r) => (m(r, 0).effort = "high"));
-    await check("claude effort from the member", "MEMBER lead: agent claude (member), model claude-sonnet-5-5 (member), effort high (member)", ["check", W]);
+    await check("claude effort from the member", "MEMBER lead: agent claude (member), model claude-haiku-4-5 (member), effort high (member)", ["check", W]);
     await check("claude takes every level", "effort max (--effort)", ["check", W, "--effort", "lead=max"]);
     await check("--effort unknown level", "--effort lead=extreme: 'extreme' is not an effort level", ["check", W, "--effort", "lead=extreme"]);
     await check("--effort unknown member", "--effort nope=low: no member named 'nope'", ["check", W, "--effort", "nope=low"]);
@@ -247,7 +246,7 @@ describe("a mixed team", () => {
     });
     await check(
       "defaults.effort applies",
-      "MEMBER api: agent claude (--agent), model sonnet (defaults.models.claude), effort max (defaults.effort)",
+      "MEMBER api: agent claude (--agent), model haiku (defaults.models.claude), effort max (defaults.effort)",
       ["check", W, "--agent", "api=claude"],
     );
     const fallback = (await roster(["check", W])).out;
@@ -336,7 +335,7 @@ describe("build", () => {
     has("claude file imports by path", file("lead", "CLAUDE.md"), `- Memory: @${W}/lead/MEMORY.md`);
     lacks("claude file copies nothing", file("lead", "CLAUDE.md"), "You are lead.");
     has("squad directory shows agent and model", file("docs", "AGENTS.md"), "`docs` (you) | agy | gem-fast |");
-    has("squad directory shows a member model", file("docs", "AGENTS.md"), "`lead` | claude | claude-sonnet-5-5 | high |");
+    has("squad directory shows a member model", file("docs", "AGENTS.md"), "`lead` | claude | claude-haiku-4-5 | high |");
     has("peers command in the instructions", file("docs", "AGENTS.md"), "through the peers skill (`peers`)");
     has("lessons go to MEMORY.md", file("api", "AGENTS.md"), "as one short entry. Never record lessons in this file.");
     has("regenerate hint names assemble", file("api", "AGENTS.md"), `roster.js assemble ${W} --member api`);
@@ -349,20 +348,14 @@ describe("build", () => {
     has("peers installed for agy", String(exists(path.join(W, "docs/.agents/skills/peers/SKILL.md"))), "true");
     has("extra skills in one call", read(s.npxLog), "add acme/skills -a opencode -y --copy --skill go-testing --skill sql");
     has("agy skills agent name", read(s.npxLog), "-a antigravity");
-    const servers = JSON.parse(file("lead", ".mcp.json")).mcpServers;
-    lacks("no peers channel in .mcp.json", JSON.stringify(Object.keys(servers)), '"peers"');
-    const settings = JSON.parse(file("lead", ".claude", "settings.local.json"));
-    has("agent-job channel approved", JSON.stringify(settings.enabledMcpjsonServers), '["agent-job"]');
-    const agentJob = path.join(s.bin, "agent-job");
-    const job = JSON.parse(file("lead", ".mcp.json")).mcpServers["agent-job"];
-    has("agent-job channel in .mcp.json", JSON.stringify(job.args), JSON.stringify([agentJob, "channel"]));
-    has("claude goal Stop hook", JSON.stringify(settings.hooks.Stop), `${agentJob} goal hook claude`);
-    has("claude goal SessionStart hook", JSON.stringify(settings.hooks.SessionStart), '"matcher":"compact|resume"');
-    const agyHooks = JSON.parse(file("docs", ".agents", "hooks.json"))["agent-job-goal"];
-    has("agy goal hooks", JSON.stringify(agyHooks), `${agentJob} goal hook antigravity Stop`);
-    lacks("no agy hooks for opencode", String(exists(path.join(W, "api", ".agents", "hooks.json"))), "true");
-    has("agent-job skill installed for claude", String(exists(path.join(W, "lead/.claude/skills/agent-job/SKILL.md"))), "true");
-    has("agent-job skill installed for opencode", String(exists(path.join(W, "api/.agents/skills/agent-job/SKILL.md"))), "true");
+    lacks("claude needs no .mcp.json", String(exists(path.join(W, "lead", ".mcp.json"))), "true");
+    lacks("claude needs no settings.local.json", String(exists(path.join(W, "lead", ".claude", "settings.local.json"))), "true");
+    lacks("agy gets no hooks.json", String(exists(path.join(W, "docs", ".agents", "hooks.json"))), "true");
+    lacks("no hooks for opencode", String(exists(path.join(W, "api", ".agents", "hooks.json"))), "true");
+    const claudeSkills = fs.readdirSync(path.join(W, "lead", ".claude", "skills")).sort();
+    has("only peers and agent-shell installed for claude", JSON.stringify(claudeSkills), '["agent-shell","peers"]');
+    const opencodeSkills = fs.readdirSync(path.join(W, "api", ".agents", "skills")).sort();
+    has("only expected skills installed for opencode", JSON.stringify(opencodeSkills), '["agent-shell","go-testing","peers","sql"]');
     has("agent-shell skill installed for claude", String(exists(path.join(W, "lead/.claude/skills/agent-shell/SKILL.md"))), "true");
     has("agent-shell skill installed for opencode", String(exists(path.join(W, "api/.agents/skills/agent-shell/SKILL.md"))), "true");
     has("build merges the loop entry into opencode.json", file("api", "opencode.json"), '"roster"');
@@ -379,7 +372,7 @@ describe("build", () => {
     has("loop note names the stop command", file("api", "AGENTS.md"), "/loop stop");
     has("loop note names the goal command", file("api", "AGENTS.md"), "/goal <condition>");
     has("loop note says a goal never needs Schedule", file("api", "AGENTS.md"), "A goal never needs Schedule");
-    has("loop note prefers the native goal", file("api", "AGENTS.md"), "Prefer this native `/goal` over an agent-job daemon goal");
+    lacks("loop note names no daemon goal", file("api", "AGENTS.md"), "daemon goal");
     lacks("claude members get no loop note", file("lead", "CLAUDE.md"), "## Loop");
     has("opencode records its model", file("api", ".peers.json"), '"model": "opencode/big-pickle"');
     has("squad directory shows the opencode model", file("lead", "CLAUDE.md"), "`api` | opencode | opencode/big-pickle | agent default |");
@@ -392,20 +385,12 @@ describe("build", () => {
   test("rebuilds keep what is there", async () => {
     write(path.join(W, "lead", ".mcp.json"), '{"mcpServers":{"other":{"command":"x"}},"x":1}');
     const local = path.join(W, "lead", ".claude", "settings.local.json");
-    const before = JSON.parse(read(local));
-    before.hooks.Stop.push({ hooks: [{ type: "command", command: "my-own-stop-hook" }] });
-    before.hooks.Stop[0].hooks[0].command = "/old/path/agent-job goal hook claude";
+    const before = { hooks: { Stop: [{ hooks: [{ type: "command", command: "my-own-stop-hook" }] }] } };
     write(local, JSON.stringify(before));
     await roster(["build", W, "--member", "lead"]);
     has("rebuild keeps the user's own hook", read(local), "my-own-stop-hook");
-    lacks("rebuild replaces an old agent-job hook", read(local), "/old/path/agent-job");
+    has("rebuild adds no hooks of its own", read(local), JSON.stringify(before));
     has("existing .mcp.json kept", file("lead", ".mcp.json"), '"other"');
-    const enabled = JSON.parse(file("lead", ".claude", "settings.local.json")).enabledMcpjsonServers as string[];
-    lacks("rebuild keeps no peers approval", JSON.stringify(enabled), '"peers"');
-    has("rebuild keeps one agent-job approval", String(enabled.filter((x) => x === "agent-job").length), "1");
-    const hooks = JSON.parse(file("lead", ".claude", "settings.local.json")).hooks;
-    has("rebuild keeps one agent-job Stop hook", String(JSON.stringify(hooks.Stop).split("goal hook claude").length - 1), "1");
-    has("rebuild keeps one SessionStart hook", String(hooks.SessionStart.length), "1");
     write(path.join(W, "api", "opencode.json"), '{"model":"opencode/beam-free#high"}\n');
     await roster(["build", W, "--member", "api"]);
     has("build keeps the member's own opencode.json keys", file("api", "opencode.json"), '"model": "opencode/beam-free#high"');
@@ -459,7 +444,7 @@ describe("launch", () => {
     has(
       "dry run claude with --model and --effort",
       dry,
-      "claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5 --effort high --",
+      "claude --dangerously-skip-permissions -n demo-lead --model claude-haiku-4-5 --effort high --",
     );
     has("dry run opencode starts as a herdr agent", dry, "agent start demo-api --kind opencode --pane '<pane-2>'");
     has("dry run agy with --model", dry, "agent start demo-docs --kind agy --pane '<pane-3>' -- --dangerously-skip-permissions --model gem-fast");
@@ -472,7 +457,7 @@ describe("launch", () => {
       `RUN opencode api session.switchModel --param 'sessionID=<session>' -d '{"model": {"providerID": "opencode", "id": "big-pickle"}}'`,
     );
     has("dry run reports the model per member", dry, "WOULD LAUNCH api (opencode, model opencode/big-pickle, effort the agent's own default)");
-    await check("dry run with an agent override would rebuild", "WOULD REBUILD api for agent claude", ["launch", W, "--dry-run", "--agent", "api=claude", "--model", "api=opus"]);
+    await check("dry run with an agent override would rebuild", "WOULD REBUILD api for agent claude", ["launch", W, "--dry-run", "--agent", "api=claude", "--model", "api=haiku"]);
     has("dry run changes nothing", file("api", ".peers.json"), '"agent": "opencode"');
   });
 
@@ -484,7 +469,7 @@ describe("launch", () => {
       ["launch", W],
     );
     const log = read(s.herdrLog);
-    has("claude started with its model", log, "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-sonnet-5-5");
+    has("claude started with its model", log, "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-haiku-4-5");
     has("claude trust prompt answered", log, "pane send-keys w9:p1 down enter");
     has("claude settles before first prompt", log, "agent wait demo-lead --until idle --until blocked");
     has("opencode retried a busy pane", log, "busy-once");
@@ -525,10 +510,10 @@ describe("launch", () => {
   });
 
   test("overrides rebuild and retune the member", async () => {
-    await check("launch override rebuilds the member", "REBUILT api (claude)", ["launch", W, "--member", "api", "--agent", "api=claude", "--model", "api=opus"]);
+    await check("launch override rebuilds the member", "REBUILT api (claude)", ["launch", W, "--member", "api", "--agent", "api=claude", "--model", "api=haiku"]);
     has("override rebuild writes CLAUDE.md", `${exists(path.join(W, "api/CLAUDE.md"))} ${exists(path.join(W, "api/AGENTS.md"))}`, "true false");
-    has("override shows in the squad directory", file("lead", "CLAUDE.md"), "`api` | claude | opus |");
-    has("override records agent and model", file("api", ".peers.json"), '"model": "opus"');
+    has("override shows in the squad directory", file("lead", "CLAUDE.md"), "`api` | claude | haiku |");
+    has("override records agent and model", file("api", ".peers.json"), '"model": "haiku"');
     await roster(["build", W, "--member", "api"]);
     clear(s.herdrLog);
     await check(
@@ -552,10 +537,10 @@ describe("launch", () => {
     lacks("plain opencode gets no flags", read(s.herdrLog), "--kind opencode --pane w9:p1 --");
     edit(s, (r) => (m(r, 1).model = "opencode/big-pickle"));
     await roster(["assemble", W, "--member", "api"]);
-    await check("effort-only override retunes", "SET lead's model to claude-sonnet-5-5, effort low", ["launch", W, "--member", "lead", "--effort", "lead=low"]);
+    await check("effort-only override retunes", "SET lead's model to claude-haiku-4-5, effort low", ["launch", W, "--member", "lead", "--effort", "lead=low"]);
     has("effort recorded in .peers.json", file("lead", ".peers.json"), '"effort": "low"');
-    has("squad directory shows the effort", file("api", "AGENTS.md"), "`lead` | claude | claude-sonnet-5-5 | low |");
-    has("claude gets the overridden effort", read(s.herdrLog), "--model claude-sonnet-5-5 --effort low");
+    has("squad directory shows the effort", file("api", "AGENTS.md"), "`lead` | claude | claude-haiku-4-5 | low |");
+    has("claude gets the overridden effort", read(s.herdrLog), "--model claude-haiku-4-5 --effort low");
     clear(s.herdrLog);
     await check("agy launches with its effort", "LAUNCHED docs (agy, model gem-flash, effort high)", ["launch", W, "--member", "docs", "--model", "docs=gem-flash", "--effort", "docs=high"]);
     has("agy gets --model and --effort", read(s.herdrLog), "--kind agy --pane w9:p1 -- --dangerously-skip-permissions --model gem-flash --effort high");
@@ -705,7 +690,7 @@ describe("herdr-core launch", () => {
     clear(s.hcxLog);
     clear(s.hcappLog);
     clear(s.herdrLog);
-    const noHcx = `${partialBin(s, "nohcx", ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "hc", "herdr-app", "peers", "agent-job", "agent-shell"])}:/usr/bin:/bin`;
+    const noHcx = `${partialBin(s, "nohcx", ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "hc", "herdr-app", "peers", "agent-shell"])}:/usr/bin:/bin`;
     const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), PATH: noHcx };
     await check(
       "hc fallback launch starts the member",
@@ -833,17 +818,46 @@ describe("build failures", () => {
     await check("install that leaves nothing is caught", "did not install 'silent'", ["build", W, "--member", "docs"]);
     edit(s, (r) => (m(r, 2).skills = [{ source: "acme/skills", skill: "peers" }]));
     await check("peers is not listed by hand", "which every member gets", ["check", W]);
-    edit(s, (r) => (m(r, 2).skills = [{ source: "acme/skills", skill: "agent-job" }]));
-    await check("agent-job is not listed by hand", 'lists agent-job, which every member gets; set "agent_job_source" instead', ["check", W]);
     edit(s, (r) => (m(r, 2).skills = [{ source: "acme/skills", skill: "agent-shell" }]));
     await check("agent-shell is not listed by hand", 'lists agent-shell, which every member gets; set "agent_shell_source" instead', ["check", W]);
+  });
+});
+
+describe("removed agent-job", () => {
+  const removed = 'agent-job was removed; delete "agent_job_source"';
+  test("a roster that still names agent-job is rejected with one PROBLEM line", async () => {
+    edit(s, (r) => {
+      delete m(r, 2).skills;
+      (r as Record<string, unknown>).agent_job_source = "acme/skills";
+    });
+    const keyed = await roster(["check", W]);
+    exits("agent_job_source exits 1", keyed.code, 1);
+    has("agent_job_source is rejected", keyed.out, removed);
+    edit(s, (r) => {
+      delete (r as Record<string, unknown>).agent_job_source;
+      m(r, 2).skills = [{ source: "acme/skills", skill: "agent-job" }];
+    });
+    const listed = await roster(["check", W]);
+    exits("listed agent-job exits 1", listed.code, 1);
+    has("listed agent-job is rejected", listed.out, removed);
+    edit(s, (r) => {
+      (r as Record<string, unknown>).agent_job_source = "acme/skills";
+    });
+    const both = await roster(["check", W]);
+    exits("key and skill together exit 1", both.code, 1);
+    has("key and skill together print one PROBLEM line", String(both.out.split(removed).length - 1), "1");
+    edit(s, (r) => {
+      delete (r as Record<string, unknown>).agent_job_source;
+      delete m(r, 2).skills;
+    });
+    await check("clean roster passes again", "OK 3 members", ["check", W]);
   });
 });
 
 describe("the peers CLI", () => {
   test("build installs it when it is missing", async () => {
     edit(s, (r) => delete m(r, 2).skills);
-    const noPeers = `${partialBin(s, "nopeers", ["npx", "claude", "opencode", "agy", "herdr", "agent-job", "agent-shell"])}:/usr/bin:/bin`;
+    const noPeers = `${partialBin(s, "nopeers", ["npx", "claude", "opencode", "agy", "herdr", "agent-shell"])}:/usr/bin:/bin`;
     const home = path.join(s.tmp, "home");
     const installer = path.join(s.tmp, "installer.sh");
     write(installer, INSTALLER);
@@ -864,11 +878,11 @@ describe("the peers CLI", () => {
       ["build", W, "--member", "lead"],
       env({ PEERS_INSTALLER_URL: `file://${s.tmp}/missing.sh` }),
     );
+    fs.rmSync(path.join(W, "lead", ".mcp.json"), { force: true });
     const installed = (await roster(["build", W, "--member", "lead"], env())).out;
     has("build installs a missing peers CLI", installed, `INSTALLED peers 0.0.1 at ${home}/.local/bin/peers`);
     has("the install warns when its directory is not on PATH", installed, "is not on PATH, so members cannot run `peers`");
-    has("no peers channel in .mcp.json", file("lead", ".mcp.json"), '"agent-job"');
-    lacks("no peers server in .mcp.json", file("lead", ".mcp.json"), '"peers"');
+    lacks("claude needs no .mcp.json", String(exists(path.join(W, "lead", ".mcp.json"))), "true");
     lacks("an installed peers CLI is not installed again", (await roster(["build", W, "--member", "lead"], env())).out, "INSTALLED");
     await check(
       "PEERS_INSTALL_DIR picks the directory",
@@ -880,42 +894,10 @@ describe("the peers CLI", () => {
   });
 });
 
-describe("the agent-job CLI", () => {
-  test("build installs it when it is missing, and launch needs it", async () => {
-    const noJob = `${partialBin(s, "nojob", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-shell"])}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
-    const home = path.join(s.tmp, "jobhome");
-    const installer = path.join(s.tmp, "agent-job-installer.sh");
-    write(installer, AGENT_JOB_INSTALLER);
-    const env = (more: Record<string, string> = {}) => ({
-      PATH: noJob,
-      HOME: home,
-      GITHUB_TOKEN: "",
-      AGENT_JOB_INSTALL_DIR: "",
-      AGENT_JOB_INSTALLER_URL: `file://${installer}`,
-      ...more,
-    });
-    await check("check notes a missing agent-job CLI", `NOTE the agent-job CLI is not installed; build installs it with file://${installer}`, ["check", W], env());
-    await check("launch needs the agent-job CLI", "the agent-job CLI is not installed; run", ["launch", W, "--dry-run"], env());
-    await check("a failed agent-job install shows its output", "agent-job-install: error: no release", ["build", W, "--member", "lead"], env({ INSTALLER_FAIL: "1" }));
-    await check(
-      "agent-job needs bun",
-      "it needs bun on PATH to run",
-      ["build", W, "--member", "lead"],
-      env({ PATH: `${partialBin(s, "nojobnobun", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-shell"])}:/usr/bin:/bin` }),
-    );
-    const installed = (await roster(["build", W, "--member", "lead"], env())).out;
-    has("build installs a missing agent-job CLI", installed, `INSTALLED agent-job 0.0.1 at ${home}/.local/bin/agent-job`);
-    has("the install warns when its directory is not on PATH", installed, "is not on PATH, so members cannot run `agent-job`");
-    has("the hooks run the installed agent-job", file("lead", ".claude", "settings.local.json"), `${home}/.local/bin/agent-job goal hook claude`);
-    lacks("an installed agent-job CLI is not installed again", (await roster(["build", W, "--member", "lead"], env())).out, "INSTALLED agent-job");
-    await roster(["build", W, "--member", "lead"]);
-  });
-});
-
 describe("the agent-shell CLI", () => {
   test("build installs it when it is missing, and launch needs it", async () => {
     edit(s, (r) => delete m(r, 2).skills);
-    const noShell = `${partialBin(s, "noshell", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-job"])}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
+    const noShell = `${partialBin(s, "noshell", ["npx", "claude", "opencode", "agy", "herdr", "peers"])}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     const home = path.join(s.tmp, "shellhome");
     const installer = path.join(s.tmp, "agent-shell-installer.sh");
     write(installer, AGENT_SHELL_INSTALLER);
@@ -934,7 +916,7 @@ describe("the agent-shell CLI", () => {
       "agent-shell needs bun",
       "it needs bun on PATH to run",
       ["build", W, "--member", "lead"],
-      env({ PATH: `${partialBin(s, "noshellnobun", ["npx", "claude", "opencode", "agy", "herdr", "peers", "agent-job"])}:/usr/bin:/bin` }),
+      env({ PATH: `${partialBin(s, "noshellnobun", ["npx", "claude", "opencode", "agy", "herdr", "peers"])}:/usr/bin:/bin` }),
     );
     const installed = (await roster(["build", W, "--member", "lead"], env())).out;
     has("build installs a missing agent-shell CLI", installed, `INSTALLED agent-shell 0.0.1 at ${home}/.local/bin/agent-shell`);
@@ -1120,7 +1102,7 @@ echo "  999999999   ??  Ss    0:00.01 opencode service"
 [ -n "\${ROSTER_TEST_API_KEY:-}" ] && echo "ROSTER_TEST_API_KEY=present"
 exit 0
 `;
-  const tools = ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "peers", "agent-job", "agent-shell"];
+  const tools = ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "peers", "agent-shell"];
 
   function fakeHome(name: string, withPid: boolean) {
     const home = path.join(s.tmp, name);
