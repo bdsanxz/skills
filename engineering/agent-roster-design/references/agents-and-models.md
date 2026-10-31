@@ -7,7 +7,7 @@ Each member runs one agent with one model at one effort level, set on its own, i
 | `claude` | Claude Code | an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full name such as `claude-sonnet-5-5` | no list; `check` checks the form | `claude --model <model> --effort <level>` |
 | `opencode` | OpenCode | `provider/model`, such as `opencode/beam-free` | `opencode models` | through OpenCode's API, since the TUI takes no model or effort flag (below) |
 | `agy` | Antigravity CLI | a model id, such as `gemini-3.8-flash`, or one fixed to a level, such as `gemini-3.8-flash-low` | `agy models` | `agy --model <model> --effort <level>` |
-| `pi` | pi | `provider/model` or the bare model, as `pi --list-models` lists them, such as `anthropic/claude-opus-4-8` | `pi --list-models` | `pi --model <model> --thinking <level>`, with `--approve` and the loop extension (`-e`) |
+| `pi` | pi | `provider/model` (possibly deeper, such as `vikey/deepseek/deepseek-v4-flash`) or the bare model, as `pi --list-models` lists them, such as `anthropic/claude-opus-4-8` | `pi --list-models` | `pi --model <model> --thinking <level>`, with `--approve` and the loop extension (`-e`) |
 | `muse` | Muse Code | a model id such as `muse-spark-1.3` | no list; `check` checks the form | `muse --yolo --model <model> --effort <level>` |
 | `qoder` | Qoder CLI | a model id from `qodercli --list-models`, such as `Qwen3.8-Flash` | `qodercli --list-models` | `qodercli --dangerously-skip-permissions -m <model> --reasoning-effort <level>` |
 

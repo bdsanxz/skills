@@ -185,6 +185,30 @@ describe("a mixed team", () => {
     exits("agy missing still passes check", missing.code, 0);
   });
 
+  test("empty model lists with exit 0 are unconfirmable, not absent", async () => {
+    const agyEmpty = await roster(["check", W], { AGY_EMPTY: "1" });
+    has("agy empty lists no models", agyEmpty.out, "NOTE member 'docs': cannot confirm model 'gem-fast'");
+    has("agy empty names the lister", agyEmpty.out, "listed no models");
+    has("agy empty names the phrase", agyEmpty.out, "No models available");
+    lacks("agy empty is not absent", agyEmpty.out, "is not available to agy");
+    exits("agy empty still passes check", agyEmpty.code, 0);
+    const opencodeEmpty = await roster(["check", W], { OPENCODE_EMPTY: "1" });
+    has("opencode empty lists no models", opencodeEmpty.out, "NOTE member 'api': cannot confirm model 'opencode/big-pickle'");
+    has("opencode empty names the lister", opencodeEmpty.out, "listed no models");
+    lacks("opencode empty is not absent", opencodeEmpty.out, "is not available to opencode");
+    exits("opencode empty still passes check", opencodeEmpty.code, 0);
+    // Launch shares the same modelProblems path (pi's test launches with an empty
+    // list); a launch dry-run here would need a build, which the suite does later.
+  });
+
+  test("an empty opencode variant list cannot confirm the effort", async () => {
+    const done = await roster(["check", W, "--model", "api=opencode/beam-free", "--effort", "api=xhigh"], {
+      OPENCODE_VARIANTS_EMPTY: "1",
+    });
+    has("variants empty notes the effort", done.out, "cannot confirm effort 'xhigh'");
+    exits("variants empty still passes check", done.code, 0);
+  });
+
   test("effort: default, mapping per agent, validation and fallback", async () => {
     await check("no effort is the agent's default", "model claude-haiku-4-5 (member), the agent's own default effort (no effort set)", ["check", W]);
     edit(s, (r) => (m(r, 0).effort = "extreme"));

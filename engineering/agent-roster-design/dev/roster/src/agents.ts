@@ -145,11 +145,24 @@ export function qoderArgv(m: Member, label: string): string[] {
 function launchClaude(h: Herdr, m: Member, pane: string, name: string): string | null {
   const cmd = claudeArgv(m, sessionLabel(m, name));
   h.run(["pane", "run", pane, shlexJoin(cmd)]);
-  // Claude asks to trust a new folder before it starts; "No, exit" is preselected, and the
-  // member cwd is one the roster names. No channel banner is matched: readiness is the
+  // Claude asks to trust a new folder before it starts; "No, exit" is preselected, so the
+  // dialog takes down+enter, and the member cwd is one the roster names. The dialog can
+  // appear after the pane starts, so poll for it (bounded) instead of reading once, and
+  // never send keys to any other screen. No channel banner is matched: readiness is the
   // agent settling, whatever it loads.
-  if (h.dryRun || h.text(["pane", "read", pane, "--source", "visible"]).includes("Yes, I trust this folder")) {
-    h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
+  const dialogs = AGENTS.claude!.dialogs;
+  for (let attempt = 0; attempt < dialogs.length + 2; attempt++) {
+    h.settle(name, pane, { dialogs });
+    if (h.dryRun) {
+      for (const [marker, keys] of dialogs) {
+        h.run(["pane", "send-keys", pane, ...keys], `only when the screen shows ${repr(marker)}`);
+      }
+      break;
+    }
+    const screen = h.text(["pane", "read", pane, "--source", "visible"]);
+    const answer = dialogs.find(([marker]) => screen.toLowerCase().includes(marker))?.[1];
+    if (!answer) break;
+    h.run(["pane", "send-keys", pane, ...answer], "only when Claude asks to trust the folder");
   }
   h.settle(name, pane);
   // Claude's session id is known only to its runtime; launch records it by lookup instead.
@@ -237,12 +250,16 @@ function configurePi() {
   return "pi loads the loop extension (scripts/pi-roster.js) at launch";
 }
 
-/** pi --list-models prints a table: provider, model, then more columns. A member may name either form. */
+/** pi --list-models prints a table: provider, model, then more columns. A member may name either form.
+ * Deeper ids (such as vikey/deepseek/deepseek-v4-flash) print either as one full id in the
+ * first column or as a provider with a model that itself holds a slash; both are listed. */
 function parsePiModels(output: string) {
   const ids: string[] = [];
   for (const line of output.split(/\r?\n/).slice(1)) {
-    const [provider, model] = strip(line).split(/\s+/);
-    if (provider && model) ids.push(`${provider}/${model}`, model);
+    const [first, second] = strip(line).split(/\s+/);
+    if (!first) continue;
+    if (first.includes("/")) ids.push(first);
+    else if (second) ids.push(`${first}/${second}`, second);
   }
   return ids;
 }
@@ -312,7 +329,13 @@ export const AGENTS: Record<string, Agent> = {
     modelHint: "an alias (fable, opus, sonnet, haiku) or a full name such as claude-sonnet-5-5",
     listModels: null,
     launchSettings: true,
-    dialogs: [],
+    // Shown before claude takes its first prompt: the folder-trust question ("No, exit"
+    // is preselected, so it takes down+enter). Matched on the visible text only.
+    dialogs: [
+      ["trust this folder", ["down", "enter"]],
+      ["do you trust", ["down", "enter"]],
+      ["trust folder", ["down", "enter"]],
+    ],
     configure: configureClaude,
     launch: launchClaude,
   },
@@ -344,9 +367,11 @@ export const AGENTS: Record<string, Agent> = {
     listModels: ["agy", "models"],
     launchSettings: true,
     // Shown before agy takes its first prompt: the folder-trust question ("Yes" is
-    // preselected) and one-time notices that wait for Esc.
+    // preselected, so it takes enter) and one-time notices that wait for Esc. Matched on
+    // the visible text only; nothing else gets keys.
     dialogs: [
-      ["trust", ["enter"]],
+      ["trust this folder", ["enter"]],
+      ["do you trust", ["enter"]],
       ["esc to dismiss", ["esc"]],
     ],
     configure: configureAgy,
@@ -359,8 +384,8 @@ export const AGENTS: Record<string, Agent> = {
     imports: false,
     skillsDir: join(".agents", "skills"),
     skillsCli: "pi",
-    modelPattern: /^([A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/,
-    modelHint: "provider/model or model, as `pi --list-models` lists it, such as anthropic/claude-opus-4-8",
+    modelPattern: /^([A-Za-z0-9][\w.-]*\/)*[A-Za-z0-9][\w.-]*$/,
+    modelHint: "provider/model or model, as `pi --list-models` lists it, such as anthropic/claude-opus-4-8 or vikey/deepseek/deepseek-v4-flash",
     listModels: ["pi", "--list-models"],
     parseModels: parsePiModels,
     launchSettings: true,
@@ -400,9 +425,11 @@ export const AGENTS: Record<string, Agent> = {
     parseModels: parseQoderModels,
     launchSettings: true,
     // Shown before qoder takes its first prompt: the folder-trust question
-    // ("Do you trust the files in this folder?", "Trust folder" preselected).
+    // ("Do you trust the files in this folder?", "Trust folder" preselected, so it takes
+    // enter). Matched on the visible text only; nothing else gets keys.
     dialogs: [
       ["do you trust the files in this folder", ["enter"]],
+      ["trust folder", ["enter"]],
     ],
     // qoder's idle input line, as the launch's owner-reported screen shows; no
     // test fixture or doc shows another agent's idle line, so only qoder sets one.
@@ -455,9 +482,21 @@ export function availableModels(name: string): Listed<Set<string>> {
               .filter((line) => strip(line) && !line.startsWith("Fetching"))
               .map((line) => strip(line).split(/\s+/)[0]!),
       );
+      // Without an API key some listers print 'No models available ...' with exit 0
+      // instead of failing. A successful run that names no parseable model (or says so
+      // outright) cannot confirm the member's model, the same as a failing CLI: only a
+      // model the list names-but-lacks is a PROBLEM. This covers pi, opencode, agy and
+      // qoder, which all list through here.
+      const listedNone = `${done.stdout}\n${done.stderr}`.includes("No models available");
       if (done.timedOut) modelLists.set(name, [null, `\`${cmd.join(" ")}\` timed out`]);
-      else if (done.code === 0 && ids.size) modelLists.set(name, [ids, null]);
-      else modelLists.set(name, [null, `\`${cmd.join(" ")}\` failed: ${tail(strip(done.stderr || done.stdout), 300)}`]);
+      else if (done.code === 0 && ids.size && !listedNone) modelLists.set(name, [ids, null]);
+      else if (done.code === 0) {
+        const detail = tail(strip(done.stdout || done.stderr), 300);
+        modelLists.set(name, [
+          null,
+          detail ? `\`${cmd.join(" ")}\` listed no models: ${detail}` : `\`${cmd.join(" ")}\` listed no models`,
+        ]);
+      } else modelLists.set(name, [null, `\`${cmd.join(" ")}\` failed: ${tail(strip(done.stderr || done.stdout), 300)}`]);
     }
   }
   return modelLists.get(name)!;
@@ -496,6 +535,9 @@ function parseVariants(output: string, why: string): Listed<Map<string, string[]
       }
       variants.set(`${model.providerID}/${model.id}`, ids);
     }
+    // A successful read that lists no models cannot confirm an effort level, like a
+    // failed one: only a model whose variants lack the level is an error.
+    if (!variants.size) return [null, why];
     return [variants, null];
   } catch {
     return [null, why];

@@ -974,8 +974,20 @@ function qoderArgv(m, label) {
 function launchClaude(h, m, pane, name) {
   const cmd = claudeArgv(m, sessionLabel(m, name));
   h.run(["pane", "run", pane, shlexJoin(cmd)]);
-  if (h.dryRun || h.text(["pane", "read", pane, "--source", "visible"]).includes("Yes, I trust this folder")) {
-    h.run(["pane", "send-keys", pane, "down", "enter"], "only when Claude asks to trust the folder");
+  const dialogs = AGENTS.claude.dialogs;
+  for (let attempt = 0;attempt < dialogs.length + 2; attempt++) {
+    h.settle(name, pane, { dialogs });
+    if (h.dryRun) {
+      for (const [marker, keys] of dialogs) {
+        h.run(["pane", "send-keys", pane, ...keys], `only when the screen shows ${repr(marker)}`);
+      }
+      break;
+    }
+    const screen = h.text(["pane", "read", pane, "--source", "visible"]);
+    const answer = dialogs.find(([marker]) => screen.toLowerCase().includes(marker))?.[1];
+    if (!answer)
+      break;
+    h.run(["pane", "send-keys", pane, ...answer], "only when Claude asks to trust the folder");
   }
   h.settle(name, pane);
   return null;
@@ -1037,9 +1049,13 @@ function configurePi() {
 function parsePiModels(output) {
   const ids = [];
   for (const line of output.split(/\r?\n/).slice(1)) {
-    const [provider, model] = strip(line).split(/\s+/);
-    if (provider && model)
-      ids.push(`${provider}/${model}`, model);
+    const [first, second] = strip(line).split(/\s+/);
+    if (!first)
+      continue;
+    if (first.includes("/"))
+      ids.push(first);
+    else if (second)
+      ids.push(`${first}/${second}`, second);
   }
   return ids;
 }
@@ -1088,7 +1104,11 @@ var AGENTS = {
     modelHint: "an alias (fable, opus, sonnet, haiku) or a full name such as claude-sonnet-5-5",
     listModels: null,
     launchSettings: true,
-    dialogs: [],
+    dialogs: [
+      ["trust this folder", ["down", "enter"]],
+      ["do you trust", ["down", "enter"]],
+      ["trust folder", ["down", "enter"]]
+    ],
     configure: configureClaude,
     launch: launchClaude
   },
@@ -1119,7 +1139,8 @@ var AGENTS = {
     listModels: ["agy", "models"],
     launchSettings: true,
     dialogs: [
-      ["trust", ["enter"]],
+      ["trust this folder", ["enter"]],
+      ["do you trust", ["enter"]],
       ["esc to dismiss", ["esc"]]
     ],
     configure: configureAgy,
@@ -1132,8 +1153,8 @@ var AGENTS = {
     imports: false,
     skillsDir: join(".agents", "skills"),
     skillsCli: "pi",
-    modelPattern: /^([A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/,
-    modelHint: "provider/model or model, as `pi --list-models` lists it, such as anthropic/claude-opus-4-8",
+    modelPattern: /^([A-Za-z0-9][\w.-]*\/)*[A-Za-z0-9][\w.-]*$/,
+    modelHint: "provider/model or model, as `pi --list-models` lists it, such as anthropic/claude-opus-4-8 or vikey/deepseek/deepseek-v4-flash",
     listModels: ["pi", "--list-models"],
     parseModels: parsePiModels,
     launchSettings: true,
@@ -1169,7 +1190,8 @@ var AGENTS = {
     parseModels: parseQoderModels,
     launchSettings: true,
     dialogs: [
-      ["do you trust the files in this folder", ["enter"]]
+      ["do you trust the files in this folder", ["enter"]],
+      ["trust folder", ["enter"]]
     ],
     ready: "type your message",
     configure: configureQoder,
@@ -1203,11 +1225,19 @@ function availableModels(name) {
       const done = run(cmd, { timeoutMs: 120000 });
       const parse = agent(name).parseModels;
       const ids = new Set(parse ? parse(done.stdout) : done.stdout.split(/\r?\n/).filter((line) => strip(line) && !line.startsWith("Fetching")).map((line) => strip(line).split(/\s+/)[0]));
+      const listedNone = `${done.stdout}
+${done.stderr}`.includes("No models available");
       if (done.timedOut)
         modelLists.set(name, [null, `\`${cmd.join(" ")}\` timed out`]);
-      else if (done.code === 0 && ids.size)
+      else if (done.code === 0 && ids.size && !listedNone)
         modelLists.set(name, [ids, null]);
-      else
+      else if (done.code === 0) {
+        const detail = tail(strip(done.stdout || done.stderr), 300);
+        modelLists.set(name, [
+          null,
+          detail ? `\`${cmd.join(" ")}\` listed no models: ${detail}` : `\`${cmd.join(" ")}\` listed no models`
+        ]);
+      } else
         modelLists.set(name, [null, `\`${cmd.join(" ")}\` failed: ${tail(strip(done.stderr || done.stdout), 300)}`]);
     }
   }
@@ -1249,6 +1279,8 @@ function parseVariants(output, why) {
       }
       variants.set(`${model.providerID}/${model.id}`, ids);
     }
+    if (!variants.size)
+      return [null, why];
     return [variants, null];
   } catch {
     return [null, why];
@@ -1358,6 +1390,9 @@ function hcTerminals() {
   }
   return out;
 }
+function isBlockedSend(error) {
+  return error instanceof LaunchError && /(exit 9|blocked)/i.test(error.message);
+}
 
 class Hc {
   dryRun;
@@ -1456,7 +1491,8 @@ class Hc {
         throw new LaunchError(`terminal ${name} is gone while waiting for it: ${tail(strip(output), 400)}`);
       }
     }
-    if (pollScreen(() => this.peekScreen(name), want?.dialogs ?? [], want?.ready, cfg, deadline) === "gone") {
+    const effective = want?.dialogs?.length ? { ...cfg, settleMs: cfg.settleMs * 2 } : cfg;
+    if (pollScreen(() => this.peekScreen(name), want?.dialogs ?? [], want?.ready, effective, deadline) === "gone") {
       throw new LaunchError(`terminal ${name} is gone while waiting for it`);
     }
   }
@@ -1536,8 +1572,19 @@ class Hc {
       const screen = this.readScreen(name).toLowerCase();
       const answer = dialogs.find(([marker]) => screen.includes(marker))?.[1];
       if (!answer) {
-        this.sendPrompt(name, FIRST_PROMPT);
-        return;
+        try {
+          this.sendPrompt(name, FIRST_PROMPT);
+          return;
+        } catch (error) {
+          if (!isBlockedSend(error))
+            throw error;
+          const retry = this.readScreen(name).toLowerCase();
+          const retryAnswer = dialogs.find(([marker]) => retry.includes(marker))?.[1];
+          if (!retryAnswer)
+            throw error;
+          this.sendKeys(name, retryAnswer);
+          continue;
+        }
       }
       this.sendKeys(name, answer);
     }
@@ -2314,7 +2361,7 @@ function modelProblems(members, strict) {
         continue;
       }
       if (why)
-        (strict ? problems : notes).push(`${where}: cannot confirm model ${repr(e.model)}: ${why}`);
+        notes.push(`${where}: cannot confirm model ${repr(e.model)}: ${why}`);
     }
     if (!e.effort)
       continue;
@@ -2640,14 +2687,6 @@ function launchHcAgent(h, m, dir, terminal, session) {
   const spec = agent(m.agent);
   const dialogs = spec.dialogs;
   const ready = spec.ready;
-  if (m.agent === "claude") {
-    if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
-      h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
-    }
-    h.settle(terminal, { dialogs, ready });
-    h.sendPrompt(terminal, FIRST_PROMPT);
-    return;
-  }
   h.settle(terminal, { dialogs, ready });
   if (m.agent === "opencode" && session) {
     const [provider, , modelId] = partition(m.model ?? "", "/");

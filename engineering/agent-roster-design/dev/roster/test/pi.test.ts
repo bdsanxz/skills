@@ -46,6 +46,62 @@ describe("pi members", () => {
     expect((await roster(["check", s.w])).out).toContain("is not a pi model; expected provider/model or model");
   });
 
+  test("three-segment pi model ids pass the shape check and the list", async () => {
+    team({ model: "vikey/deepseek/deepseek-v4-flash", effort: "low" });
+    const done = await roster(["check", s.w]);
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("OK 2 members");
+    expect(done.out).toContain("model vikey/deepseek/deepseek-v4-flash");
+    team({ model: "vikey/deepseek/nope" }); // the shape passes, but the list does not name it
+    const missing = await roster(["check", s.w]);
+    expect(missing.code).toBe(1);
+    expect(missing.out).toContain("is not available to pi; `pi --list-models` lists:");
+    expect(missing.out).toContain("vikey/deepseek/deepseek-v4-flash");
+    team({ model: "a//b" }); // empty segments are still rejected by the shape check
+    expect((await roster(["check", s.w])).out).toContain("is not a pi model; expected provider/model or model");
+  });
+
+  test("launch notes an unconfirmable pi model like check; a listed-but-absent one stays a problem", async () => {
+    team({ model: "anthropic/claude-opus-4-8", effort: "high" });
+    await roster(["build", s.w]);
+    const unconfirmed = await roster(["check", s.w], { PI_FAIL: "1" });
+    expect(unconfirmed.code).toBe(0);
+    expect(unconfirmed.out).toContain("NOTE member 'review': cannot confirm model 'anthropic/claude-opus-4-8'");
+    const dry = await roster(["launch", s.w, "--dry-run"], { PI_FAIL: "1" });
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain("NOTE member 'review': cannot confirm model 'anthropic/claude-opus-4-8'");
+    expect(dry.out).toContain("WOULD LAUNCH review (pi, model anthropic/claude-opus-4-8, effort high)");
+    const launched = await roster(["launch", s.w, "--member", "review"], { PI_FAIL: "1" });
+    expect(launched.code).toBe(0);
+    expect(launched.out).toContain("LAUNCHED review (pi, model anthropic/claude-opus-4-8, effort high)");
+    team({ model: "pi/nope" });
+    const absentCheck = await roster(["check", s.w]);
+    expect(absentCheck.code).toBe(1);
+    expect(absentCheck.out).toContain("is not available to pi; `pi --list-models` lists:");
+    const absentLaunch = await roster(["launch", s.w, "--dry-run"]);
+    expect(absentLaunch.code).toBe(1);
+    expect(absentLaunch.out).toContain("is not available to pi; `pi --list-models` lists:");
+    expect(absentLaunch.out).toContain("Nothing was launched.");
+  });
+
+  test("an empty pi list with exit 0 is unconfirmable, not absent, in check and launch", async () => {
+    team({ model: "anthropic/claude-opus-4-8", effort: "high" });
+    await roster(["build", s.w]);
+    const checked = await roster(["check", s.w], { PI_EMPTY: "1" });
+    expect(checked.code).toBe(0);
+    expect(checked.out).toContain("NOTE member 'review': cannot confirm model 'anthropic/claude-opus-4-8'");
+    expect(checked.out).toContain("listed no models");
+    expect(checked.out).toContain("No models available");
+    expect(checked.out).not.toContain("is not available to pi");
+    const dry = await roster(["launch", s.w, "--dry-run"], { PI_EMPTY: "1" });
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain("NOTE member 'review': cannot confirm model 'anthropic/claude-opus-4-8'");
+    expect(dry.out).toContain("WOULD LAUNCH review (pi, model anthropic/claude-opus-4-8, effort high)");
+    const launched = await roster(["launch", s.w, "--member", "review"], { PI_EMPTY: "1" });
+    expect(launched.code).toBe(0);
+    expect(launched.out).toContain("LAUNCHED review (pi, model anthropic/claude-opus-4-8, effort high)");
+  });
+
   test("build installs skills for pi with no peers extension needed", async () => {
     team({ model: "anthropic/claude-opus-4-8", effort: "high" });
     let done = await roster(["build", s.w], { PEERS_OLD: "1" });
