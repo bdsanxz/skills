@@ -23,7 +23,7 @@ Run the script as `bun scripts/roster.js`, with this skill's directory as the ba
 - Edit the four member files and `roster.json`; never edit a generated `CLAUDE.md` or `AGENTS.md`. Rerun the script instead.
 - Install skills only through the skills CLI (`npx -y skills@latest`), only into a member's cwd (never globally with `-g`), and only the skills the user agreed to. `build` runs the installs for you.
 
-Before Steps 1, 3 and 6, read that step's part of `references/tips.md`: the mistakes earlier squads made there, and how to avoid them.
+Before Steps 1, 3, 5 and 6, read that step's part of `references/tips.md`: the mistakes earlier squads made there, and how to avoid them.
 
 ## Step 1: Read the request and choose how to proceed
 
@@ -144,6 +144,8 @@ Ask one question: create the squad as shown, or change something. Apply each cha
    It prints one `BUILT` line per member. It is safe to run again: it rewrites the generated files and reinstalls the skills. A failed install prints the exact `npx` command and its output; fix the source or skill name in the roster and build again. "did not install" usually means the skill's `SKILL.md` frontmatter is not valid YAML (for example, an unquoted `: ` in its description); check with `npx -y skills@latest add <source> --list`.
 
 5. Read one generated file per agent in full, as the member will see it, and fix the member files for anything that reads wrong.
+
+6. When the squad has pi or opencode members, test `/loop` and `/goal` before calling it done, and only with the user's go-ahead: follow `references/tips.md` ("Test the loop and goal before calling it done"). The roster log decides whether they work, never the final result.
 
 ## Step 6: Launch the squad (only when the user asks)
 

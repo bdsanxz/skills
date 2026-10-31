@@ -50,6 +50,20 @@ Every tip here comes from a real squad: a mistake the designer made, or one the 
 - **Practice:** Give file-writing goals only to members allowed to edit files; give a member that cannot edit files goals it can satisfy by reading, reporting or reviewing.
 - **Why:** The member cannot do what its instructions forbid, so the goal's evaluator keeps finding the condition unmet and the goal never clears.
 
+## Step 5: build the squad
+
+### Test the loop and goal before calling it done
+
+- **Situation:** A squad with opencode or pi members is built, `/loop` and `/goal` look present, and the member finishes the work, so the loop and goal are assumed working.
+- **Practice:** Test them in order, in a scratch folder, with the user's go-ahead first: a live test starts real sessions. Close every test session afterwards (`hcx done`), and report only what the roster log shows:
+  1. Confirm `ROSTER_LOG` is set for the session under test (the build writes it into the opencode member's `opencode.json` loop entry; pi falls back to its default log path). No log file means the sidecar or extension is not running, so the hook is not working.
+  2. Never kill the OpenCode sidecar process or stop the OpenCode service from a test, and never delete or truncate a roster log a running sidecar writes to. The service is shared by every squad on the machine and loads each folder's plugin and MCP sidecar (`roster`) once: killing either leaves the folder still showing `roster` in the sidebar while its tools are dead, so `/goal` and `/loop` silently do nothing.
+  3. After rebuilding the sidecar, the plugin, or the loop extension, restart the session before testing the new code: for opencode, test in a fresh folder or restart the service (`opencode service restart`; confirm with `opencode service --help`), warning the user first since it drops every squad's sessions; for pi, start a new session.
+  4. Set a goal that cannot finish in one turn, for example "append exactly one character per turn until the sentence is complete", so the continuation hook is really exercised.
+  5. Read the log, not the final result: a working goal shows `goal_set`, `goal_check`, `goal_continue` and `goal_achieved` (`timer_scheduled` and `timer_fired` for loops). No events means the sidecar is not running. The model can do the work by itself, so the result alone proves nothing.
+  6. When a goal goes quiet, look for `goal_eval_failed`: an evaluator failure (a non-JSON verdict) is retried after `ROSTER_GOAL_RETRY_MS` (default 10000, in both opencode and pi) up to the failure cap (default 3), then the goal stops.
+- **Why:** The log is the only witness that the hook ran. Every shortcut — trusting the result, reusing a stale session, or touching the shared service — produces a test that passes while the loop and goal are dead.
+
 ## Step 6: launch the squad
 
 ### Keep the whole squad in one workspace, one tab per member
