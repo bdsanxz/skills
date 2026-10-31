@@ -35,9 +35,21 @@ Every tip here comes from real sessions that worked together through this skill:
 
 ### A stored message is never resent
 
-- **Situation:** The send prints `queued, not delivered yet` (not live, or a plain shell), an `UNKNOWN:` line, `(message not started, do not resend; it is stored)`, `(delivery not confirmed by hc)`, or a stored-but-unnotified failure, and you send the same message again.
-- **Practice:** Leave it stored. Fix the cause — start the member, message a live agent instead of a shell, correct the address from the close matches — and send a short `notice` that points to the stored message, or tell the user. Asking for help never runs anything: `--help` or `-h` anywhere before `--` only prints help, even after a target.
-- **Why:** The message is already in the chat. A repeated send stores a duplicate, so the peer reads the same message twice and may act on it twice.
+- **Situation:** The send prints `queued, not delivered yet` (not live, a plain shell, or a target hcx reports as not found), an `UNKNOWN:` line, `(message not started, do not resend; it is stored)`, `(delivery not confirmed)`, or a stored-but-failed notification (including a timeout), and you send the same message again.
+- **Practice:** Leave it stored. A failed or timed-out send is never retried, because it may have landed. Fix the cause — start the member, message a live agent instead of a shell, correct the address from the close matches — and send a short `notice` that points to the stored message, or tell the user. Asking for help never runs anything: `--help` or `-h` anywhere before `--` only prints help, even after a target.
+- **Why:** The message is already in the chat. A repeated send stores a duplicate, so the peer reads the same message twice and may act on it twice — and a timed-out send may already have notified the peer, so the duplicate notifies twice.
+
+### Install hcx when the notification reports not delivered
+
+- **Situation:** The send reports the notification was not delivered with the hint `install hcx >= 0.3.0`, and you resend the message or carry on as if the peer was notified.
+- **Practice:** Stop. Tell the user to install hcx 0.3.0 (`curl -fsSL https://raw.githubusercontent.com/bdsanxz/hcx/main/install.sh | sh`). The message stays stored, so do not resend it: the next send after the install notifies the peer.
+- **Why:** Notifications over herdr-core go only through `hcx send --agent-only --no-footer --json`, which `peers` checks once per process with `hcx --version --json`. Without a new enough hcx nothing is sent, and resending only stores another copy of the same message.
+
+### A delivery-not-confirmed send is not a notified peer
+
+- **Situation:** The send prints `(delivery not confirmed)` and you assume the peer got a turn.
+- **Practice:** Treat it as unconfirmed: the message is stored, but hcx reported no delivery status. Check once in `peers open` whether the peer has read it, and diagnose a stalled exchange with Step 10 instead of assuming it landed.
+- **Why:** Only a line without that marker confirms the peer was notified. Acting as if an unconfirmed message landed leaves both sides waiting on work the other never started.
 
 ## Step 7: receive and reply
 
