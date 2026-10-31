@@ -75,6 +75,8 @@ Step 5).
    own user allowed it.
 6. `hcx send --help` (and `hcx send <tab> --help`) prints hcx's own send help
    instead of sending. A text of `--help` still sends after an explicit `--`.
+7. Typing a command into a plain shell tab needs `hcx send --no-footer`: a
+   footer or the `<hc from>` tag breaks the shell line.
 
 ## Step 3: Spawn an agent
 
@@ -129,6 +131,15 @@ hcx spawn opencode --model provider/model --variant high
    (`unknown opencode model "..."; run opencode and pick one with /models`).
    Without `--model`, opencode starts as before; extra agent flags are kept
    after `--session` (`hcx spawn opencode --model p/m -- --yolo`).
+8. A freshly spawned agent may stop at a folder-trust dialog: read the screen
+   (`hcx read <tab>`) before answering it. pi and agy accept Enter
+   (`hcx send --force --no-footer <tab> ""` or `hcx keys <tab> enter`);
+   Claude lists "No, exit" first and highlights it, so typing a number or
+   sending Enter alone EXITS the session — use `hcx keys <tab> down enter`.
+9. When spawning agents for work, pass the permission-skip flag the user wants
+   (`muse --yolo`, `claude`/`agy` `--dangerously-skip-permissions`): muse
+   without it runs in a sandbox that cannot reach the hc core socket, so
+   `hcx send` from it fails with `cannot start core: Operation not permitted`.
 
 ## Step 4: Clean up with done
 
@@ -176,6 +187,10 @@ A name becomes that tab's agent terminal (or its first terminal when it has no
 agent). Twin names are refused: use an address instead. Addresses, numeric names
 and unknown names pass through untouched. With no arguments, `hcx` prints its own
 help and exits 0.
+
+`hcx keys <tab|tNN> down enter` presses named keys (`up`, `down`, `enter`,
+`esc`, `ctrl+c`, ...); tab names work like everywhere else (hcx forwards every
+hc command it does not handle itself).
 
 ## Operating rules (must follow)
 
