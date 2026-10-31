@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget, parseGoalCommand, goalMaxChecksFromEnv, goalEvalTimeoutFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, shouldSkipGoalCheck, shouldApplyEvalResult, applyGoalSet, buildGoalAck, buildGoalFeedback, goalEvaluatorSystemPrompt, buildEvaluatorPrompt, capTranscript, transcriptToText, parseEvaluatorVerdict, formatGoalElapsed, formatGoalTokens, formatGoalStatus, formatGoalAchieved, goalElapsedMs, shouldLogGoalScheduleCall, GOAL_MAX_EVAL_FAILURES } from "./logic.ts";
+import { parseInterval, clampDelay, replaceTimer, tickMessage, decideTick, consumeTick, clearTickFlags, emptyTickFlags, userMessageText, pendingMaxMs, pendingMaxMsFromEnv, isPendingExpired, shouldClearOnIdle, maxLoopsFromEnv, nextLoopId, shortenTask, findIntervalDuplicate, findDynamicByTask, findLoopById, isCapReached, earliestDueMs, statusText, formatLoopList, parseLoopCommand, resolveDynamicTarget, parseGoalCommand, goalMaxChecksFromEnv, goalEvalTimeoutFromEnv, goalRetryMsFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, shouldScheduleGoalRetry, shouldSkipGoalCheck, shouldApplyEvalResult, applyGoalSet, buildGoalAck, buildGoalFeedback, goalEvaluatorSystemPrompt, buildEvaluatorPrompt, capTranscript, transcriptToText, parseEvaluatorVerdict, formatGoalElapsed, formatGoalTokens, formatGoalStatus, formatGoalAchieved, goalElapsedMs, shouldLogGoalScheduleCall, GOAL_MAX_EVAL_FAILURES } from "./logic.ts";
 import type { LoopSummary } from "./logic.ts";
 assert.deepEqual(parseInterval("30s hello"), { milliseconds: 30000, prompt: "hello" });
 assert.deepEqual(parseInterval("5m /check now"), { milliseconds: 300000, prompt: "/check now" });
@@ -158,6 +158,17 @@ assert.equal(isGoalCapReached(5, 5), true);
 assert.equal(goalEvalTimeoutFromEnv(undefined), 60000);
 assert.equal(goalEvalTimeoutFromEnv("5000"), 5000);
 assert.equal(goalEvalTimeoutFromEnv("bogus"), 60000);
+// Goal fix: one retry check after ROSTER_GOAL_RETRY_MS on evaluator failure.
+assert.equal(goalRetryMsFromEnv(undefined), 10000);
+assert.equal(goalRetryMsFromEnv("5000"), 5000);
+assert.equal(goalRetryMsFromEnv("1500.9"), 1500);
+assert.equal(goalRetryMsFromEnv("bogus"), 10000);
+assert.equal(goalRetryMsFromEnv("0"), 10000);
+assert.equal(goalRetryMsFromEnv("-5"), 10000);
+assert.equal(shouldScheduleGoalRetry(0), true);
+assert.equal(shouldScheduleGoalRetry(2), true);
+assert.equal(shouldScheduleGoalRetry(3), false);
+assert.equal(shouldScheduleGoalRetry(9), false);
 assert.equal(goalTranscriptMaxFromEnv(undefined), 12000);
 assert.equal(goalTranscriptMaxFromEnv("100"), 100);
 assert.equal(GOAL_MAX_EVAL_FAILURES, 3);

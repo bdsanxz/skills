@@ -1,4 +1,7 @@
-import { buildEvaluatorPrompt, compactTranscript, extractTextFromMessages, extractTextFromPromptResult, goalEvalTimeoutMs, goalTranscriptChars, GOAL_HELPER_TITLE_PREFIX, parseGoalVerdict } from "./goal"
+import { buildEvaluatorPrompt, compactTranscript, extractTextFromMessages, extractTextFromPromptResult, goalEvalTimeoutMs, goalTranscriptChars, GOAL_HELPER_TITLE_PREFIX, parseGoalVerdict, verdictFailureDetails } from "./goal"
+import type { GoalVerdictFailureDetails } from "./goal"
+
+export type GoalEvalError = Error & { details?: GoalVerdictFailureDetails }
 
 export type GoalVerdict = { met: boolean; reason: string }
 
@@ -83,8 +86,18 @@ export function createGoalEvaluator(options: {
       // message (`{data:{type:"user", payload:{text}}}`), never the verdict:
       // the assistant reply arrives asynchronously, so poll
       // `session.message.list` until an assistant message carries text.
+      // An exact echo of our own prompt is never verdict text either.
       let text = extractTextFromPromptResult(answered)
+      if (text !== undefined && text.trim() === prompt.trim()) text = undefined
+      // Message shapes seen in the last helper sample, for parse-failure
+      // forensics (roles/part types only, never message text).
+      let lastSample: unknown[] = []
       if (!text) {
+        // Read the FINAL assistant message only: pages arrive most-recent-
+        // first, so reverse to chronological and take the newest assistant
+        // text. Require the same text on two consecutive polls so a
+        // still-streaming partial reply is never parsed as the verdict.
+        let previous: string | undefined
         for (;;) {
           if (signal.aborted) throw new Error(`goal evaluation timed out after ${timeoutMs}ms`)
           const helperMessages = await readJson(
@@ -92,11 +105,13 @@ export function createGoalEvaluator(options: {
             "session.message.list",
           )
           const helperData = Array.isArray((helperMessages as any)?.data) ? (helperMessages as any).data : []
-          const found = extractTextFromMessages(helperData)
-          if (found) {
+          lastSample = helperData
+          const found = extractTextFromMessages([...helperData].reverse())
+          if (found !== undefined && found === previous) {
             text = found
             break
           }
+          previous = found
           await new Promise<void>((resolve, reject) => {
             const timer = setTimeout(resolve, 1000)
             if (signal.aborted) {
@@ -112,7 +127,13 @@ export function createGoalEvaluator(options: {
         }
       }
       if (!text) throw new Error("goal evaluation failed: helper session returned no text")
-      return parseGoalVerdict(text)
+      try {
+        return parseGoalVerdict(text)
+      } catch (error) {
+        const enriched: GoalEvalError = new Error(error instanceof Error ? error.message : String(error))
+        enriched.details = verdictFailureDetails(text, prompt, lastSample)
+        throw enriched
+      }
     } catch (error) {
       if (signal.aborted) throw new Error(`goal evaluation timed out after ${timeoutMs}ms`)
       throw error

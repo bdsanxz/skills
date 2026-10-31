@@ -190,12 +190,23 @@ function goalTranscriptMaxFromEnv(envValue) {
   }
   return 12000;
 }
+function goalRetryMsFromEnv(envValue) {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isFinite(n) && n > 0)
+      return Math.floor(n);
+  }
+  return 1e4;
+}
 function isGoalCapReached(checks, maxChecks) {
   return checks >= maxChecks;
 }
 var GOAL_MAX_EVAL_FAILURES = 3;
 function isGoalEvalGiveUp(failures) {
   return failures >= GOAL_MAX_EVAL_FAILURES;
+}
+function shouldScheduleGoalRetry(evalFailures) {
+  return !isGoalEvalGiveUp(evalFailures);
 }
 function shouldSkipGoalCheck(hasPendingMessages) {
   return hasPendingMessages;
@@ -397,6 +408,13 @@ function pi_roster_default(pi) {
     goalTimer = undefined;
     goalTimerCtx = undefined;
   };
+  let goalRetryTimer;
+  const goalRetryMs = () => goalRetryMsFromEnv(process.env.ROSTER_GOAL_RETRY_MS);
+  const clearGoalRetry = () => {
+    if (goalRetryTimer !== undefined)
+      clearTimeout(goalRetryTimer);
+    goalRetryTimer = undefined;
+  };
   const startGoalTimer = (ctx) => {
     stopGoalTimer();
     goalTimerCtx = ctx;
@@ -567,7 +585,7 @@ function pi_roster_default(pi) {
       }
     }
   });
-  pi.on("agent_end", async (_event, ctx) => {
+  const runGoalEval = async (ctx) => {
     if (!goal) {
       log("goal_eval_skip", { reason: "no_goal" }, ctx);
       return;
@@ -604,6 +622,7 @@ function pi_roster_default(pi) {
     const condition = goal.condition;
     log("goal_eval_start", { condition, generation }, ctx);
     goalEvaluating = true;
+    clearGoalRetry();
     const abort = new AbortController;
     goalAbort = abort;
     const timer = setTimeout(() => abort.abort(), goalEvalTimeoutMs());
@@ -615,6 +634,7 @@ function pi_roster_default(pi) {
       goal = undefined;
       goalGeneration++;
       abortGoalEval();
+      clearGoalRetry();
       stopGoalTimer();
       refreshGoalStatus(ctx);
       log(event, details, ctx);
@@ -650,9 +670,11 @@ function pi_roster_default(pi) {
       const verdict = parseEvaluatorVerdict(text);
       if (!verdict) {
         active.evalFailures++;
-        log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures }, ctx);
+        log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures, reply_chars: text.length, reply_prefix: text.slice(0, 120) }, ctx);
         if (isGoalEvalGiveUp(active.evalFailures)) {
           clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup", elapsed_ms: goalElapsedMs(active.setAtMs, Date.now()), eval_failures: active.evalFailures }, `Goal cleared after ${active.evalFailures} failed evaluations: ${condition}`, "error");
+        } else {
+          scheduleGoalRetry(ctx);
         }
         return;
       }
@@ -696,6 +718,8 @@ function pi_roster_default(pi) {
       log("goal_eval_failed", { reason: error instanceof Error ? error.message : String(error), condition, duration_ms: durationMs, eval_failures: goal.evalFailures }, ctx);
       if (isGoalEvalGiveUp(goal.evalFailures)) {
         clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup", elapsed_ms: goalElapsedMs(goal.setAtMs, Date.now()), eval_failures: goal.evalFailures }, `Goal cleared after ${goal.evalFailures} failed evaluations: ${condition}`, "error");
+      } else {
+        scheduleGoalRetry(ctx);
       }
     } finally {
       clearTimeout(timer);
@@ -706,6 +730,27 @@ function pi_roster_default(pi) {
         goalAbort = undefined;
       goalEvaluating = false;
     }
+  };
+  const scheduleGoalRetry = (ctx) => {
+    if (!goal || !shouldScheduleGoalRetry(goal.evalFailures))
+      return;
+    const generation = goalGeneration;
+    const delayMs = goalRetryMs();
+    clearGoalRetry();
+    const timer = setTimeout(() => {
+      goalRetryTimer = undefined;
+      if (!goal || generation !== goalGeneration)
+        return;
+      runGoalEval(ctx);
+    }, delayMs);
+    goalRetryTimer = timer;
+    try {
+      timer.unref?.();
+    } catch {}
+    log("goal_retry_scheduled", { delay_ms: delayMs, generation, eval_failures: goal.evalFailures }, ctx);
+  };
+  pi.on("agent_end", async (_event, ctx) => {
+    await runGoalEval(ctx);
   });
   pi.registerCommand("goal", {
     description: "Set a session completion condition checked by a Stop hook evaluator",
@@ -728,6 +773,7 @@ function pi_roster_default(pi) {
           goal = undefined;
           goalGeneration++;
           abortGoalEval();
+          clearGoalRetry();
           stopGoalTimer();
           refreshGoalStatus(ctx);
           log("goal_cleared", { condition, reason: "user /goal clear", elapsed_ms: elapsedMs }, ctx);
@@ -736,6 +782,7 @@ function pi_roster_default(pi) {
         }
         goalGeneration++;
         abortGoalEval();
+        clearGoalRetry();
         goal = applyGoalSet(command.condition, Date.now());
         log("goal_set", { condition: command.condition }, ctx);
         refreshGoalStatus(ctx);
@@ -911,6 +958,7 @@ function pi_roster_default(pi) {
     goal = undefined;
     goalGeneration++;
     abortGoalEval();
+    clearGoalRetry();
     stopGoalTimer();
     refreshGoalStatus(ctx);
   });

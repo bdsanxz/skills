@@ -6,13 +6,17 @@ import {
   buildGoalContinuePrompt,
   compactTranscript,
   describeMessage,
+  extractAssistantText,
   extractTextFromMessages,
   extractTextFromPromptResult,
   formatElapsed,
   formatGoalStatus,
   formatTokens,
   goalMaxChecks,
+  goalRetryMs,
   parseGoalVerdict,
+  summarizeHelperMessages,
+  verdictFailureDetails,
 } from "../src/mcp/goal"
 import { createGoalEvaluator } from "../src/mcp/api"
 
@@ -363,6 +367,200 @@ describe("Goal checking loop", () => {
   })
 })
 
+describe("Goal reply extraction (live flat shapes)", () => {
+  test("ignores a user echo carrying verdict-like JSON", () => {
+    const echo = { id: "m-echo", time: { created: 2 }, text: '{"met":true,"reason":"echo"}', type: "user" }
+    expect(extractAssistantText(echo)).toBeUndefined()
+    expect(extractTextFromMessages([echo])).toBeUndefined()
+    const payloadEcho = { id: "m-e2", type: "user", payload: { text: "evaluator prompt" } }
+    expect(extractAssistantText(payloadEcho)).toBeUndefined()
+  })
+
+  test("ignores partial and reasoning-only assistant messages", () => {
+    const empty = { id: "m-p", type: "assistant", content: [{ type: "text", id: "p1", text: "" }] }
+    const reasoning = { id: "m-r", type: "assistant", content: [{ type: "reasoning", text: "thinking hard" }] }
+    const toolOnly = { id: "m-t", type: "assistant", content: [{ type: "toolCall", name: "bash", arguments: {} }] }
+    expect(extractAssistantText(empty)).toBeUndefined()
+    expect(extractTextFromMessages([empty])).toBeUndefined()
+    expect(extractTextFromMessages([reasoning])).toBeUndefined()
+    expect(extractTextFromMessages([toolOnly])).toBeUndefined()
+  })
+
+  test("keeps only text parts and reads the final assistant message", () => {
+    const mixed = { id: "m-m", type: "assistant", content: [{ type: "reasoning", text: "hmm" }, { type: "text", id: "p1", text: '{"met":true,"reason":"ok"}' }] }
+    expect(extractAssistantText(mixed)).toBe('{"met":true,"reason":"ok"}')
+    const first = { info: { role: "assistant" }, parts: [{ type: "text", text: "old verdict" }] }
+    const last = { info: { role: "assistant" }, parts: [{ type: "text", text: "new verdict" }] }
+    expect(extractTextFromMessages([first, last])).toBe("new verdict")
+  })
+
+  test("summarizes shapes without content, and details flag echoes", () => {
+    const prompt = `You are an evaluator\n{"met":boolean,"reason":string}\n${"transcript ".repeat(20)}`
+    const echoSample = [{ id: "m-e", type: "user", payload: { text: prompt } }]
+    expect(summarizeHelperMessages(echoSample)).toEqual({ roles: ["user"], partTypes: ["payload"] })
+    const details = verdictFailureDetails(prompt, prompt, echoSample)
+    expect(details.reply_equals_prompt).toBe(true)
+    expect(details.reply_contains_prompt).toBe(true)
+    expect(details.reply_chars).toBe(prompt.length)
+    expect(details.reply_prefix).toBe(prompt.slice(0, 120))
+    expect(details.reply_prefix).toHaveLength(120)
+    const other = verdictFailureDetails("garbage with no json", prompt, echoSample)
+    expect(other.reply_equals_prompt).toBe(false)
+    expect(other.reply_contains_prompt).toBe(false)
+    expect(other.roles).toEqual(["user"])
+    expect(other.part_types).toEqual(["payload"])
+  })
+
+  test("retry delay defaults and honours the env override", () => {
+    const prev = process.env.ROSTER_GOAL_RETRY_MS
+    delete process.env.ROSTER_GOAL_RETRY_MS
+    expect(goalRetryMs()).toBe(10000)
+    process.env.ROSTER_GOAL_RETRY_MS = "2500"
+    expect(goalRetryMs()).toBe(2500)
+    process.env.ROSTER_GOAL_RETRY_MS = "bogus"
+    expect(goalRetryMs()).toBe(10000)
+    if (prev === undefined) delete process.env.ROSTER_GOAL_RETRY_MS
+    else process.env.ROSTER_GOAL_RETRY_MS = prev
+  })
+})
+
+describe("Goal retry after evaluator failure", () => {
+  test("a failed check retries once after ROSTER_GOAL_RETRY_MS without a new turn", async () => {
+    jest.useFakeTimers()
+    const prevRetry = process.env.ROSTER_GOAL_RETRY_MS
+    process.env.ROSTER_GOAL_RETRY_MS = "1000"
+    try {
+      let calls = 0
+      const { handlers, received, logs } = setup(async () => {
+        calls += 1
+        if (calls === 1) throw new Error("evaluator returned non-JSON output")
+        return { met: false, reason: "second look says not yet" }
+      })
+      const session = tracked[tracked.length - 1]!.session
+      await handlers.call("Goal", { condition: "retry me" }, session)
+      received.splice(0)
+      await handlers.onIdle(session, { type: "session.execution.succeeded" })
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(1)
+      expect(logs.some((entry) => entry.event === "goal_eval_failed")).toBe(true)
+      expect(logs.some((entry) => entry.event === "goal_retry_scheduled" && entry.details?.delay_ms === 1000)).toBe(true)
+      // No new turn end: the retry timer alone re-runs the check.
+      jest.advanceTimersByTime(1000)
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(2)
+      expect(received).toHaveLength(1)
+      expect(received[0]!.prompt).toBe("Stop hook feedback:\n[retry me]: second look says not yet")
+      expect(handlers.goalForTest(session)?.checks).toBe(1)
+    } finally {
+      jest.useRealTimers()
+      if (prevRetry === undefined) delete process.env.ROSTER_GOAL_RETRY_MS
+      else process.env.ROSTER_GOAL_RETRY_MS = prevRetry
+    }
+  })
+
+  test("clearing the goal cancels the pending retry", async () => {
+    jest.useFakeTimers()
+    const prevRetry = process.env.ROSTER_GOAL_RETRY_MS
+    process.env.ROSTER_GOAL_RETRY_MS = "1000"
+    try {
+      let calls = 0
+      const { handlers } = setup(async () => { calls += 1; throw new Error("boom") })
+      const session = tracked[tracked.length - 1]!.session
+      await handlers.call("Goal", { condition: "cancel me" }, session)
+      await handlers.onIdle(session, { type: "session.execution.succeeded" })
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(1)
+      await handlers.call("Goal", { clear: true }, session)
+      jest.advanceTimersByTime(5000)
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(1)
+    } finally {
+      jest.useRealTimers()
+      if (prevRetry === undefined) delete process.env.ROSTER_GOAL_RETRY_MS
+      else process.env.ROSTER_GOAL_RETRY_MS = prevRetry
+    }
+  })
+
+  test("replacing the goal cancels the pending retry of the old condition", async () => {
+    jest.useFakeTimers()
+    const prevRetry = process.env.ROSTER_GOAL_RETRY_MS
+    process.env.ROSTER_GOAL_RETRY_MS = "1000"
+    try {
+      let calls = 0
+      const { handlers } = setup(async () => { calls += 1; throw new Error("boom") })
+      const session = tracked[tracked.length - 1]!.session
+      await handlers.call("Goal", { condition: "first" }, session)
+      await handlers.onIdle(session, { type: "session.execution.succeeded" })
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(1)
+      await handlers.call("Goal", { condition: "second" }, session)
+      jest.advanceTimersByTime(5000)
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(1)
+      expect(handlers.goalForTest(session)?.condition).toBe("second")
+    } finally {
+      jest.useRealTimers()
+      if (prevRetry === undefined) delete process.env.ROSTER_GOAL_RETRY_MS
+      else process.env.ROSTER_GOAL_RETRY_MS = prevRetry
+    }
+  })
+
+  test("retries stop at the evaluator-failure cap", async () => {
+    jest.useFakeTimers()
+    const prevRetry = process.env.ROSTER_GOAL_RETRY_MS
+    const prevMax = process.env.ROSTER_GOAL_MAX_EVAL_FAILURES
+    process.env.ROSTER_GOAL_RETRY_MS = "1000"
+    process.env.ROSTER_GOAL_MAX_EVAL_FAILURES = "2"
+    try {
+      let calls = 0
+      const { handlers, logs } = setup(async () => { calls += 1; throw new Error("model blew up") })
+      const session = tracked[tracked.length - 1]!.session
+      await handlers.call("Goal", { condition: "fragile" }, session)
+      await handlers.onIdle(session, { type: "session.execution.succeeded" })
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(1)
+      expect(handlers.goalForTest(session)).toBeDefined()
+      jest.advanceTimersByTime(1000)
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(2)
+      expect(handlers.goalForTest(session)).toBeUndefined()
+      expect(logs.some((entry) => entry.event === "goal_cap_reached" && entry.details?.reason === "eval_failed")).toBe(true)
+      jest.advanceTimersByTime(30000)
+      await handlers.flushGoalsForTest()
+      expect(calls).toBe(2)
+    } finally {
+      jest.useRealTimers()
+      if (prevRetry === undefined) delete process.env.ROSTER_GOAL_RETRY_MS
+      else process.env.ROSTER_GOAL_RETRY_MS = prevRetry
+      if (prevMax === undefined) delete process.env.ROSTER_GOAL_MAX_EVAL_FAILURES
+      else process.env.ROSTER_GOAL_MAX_EVAL_FAILURES = prevMax
+    }
+  })
+
+  test("parse-failure forensics land in the goal_eval_failed log", async () => {
+    const failure = new Error("evaluator returned non-JSON output") as Error & { details?: Record<string, unknown> }
+    failure.details = {
+      reply_chars: 42,
+      reply_equals_prompt: true,
+      reply_contains_prompt: true,
+      roles: ["user"],
+      part_types: ["payload"],
+      reply_prefix: "You are a session Stop-hook",
+    }
+    const { handlers, logs } = setup(async () => { throw failure })
+    const session = tracked[tracked.length - 1]!.session
+    await handlers.call("Goal", { condition: "forensics" }, session)
+    await handlers.onIdle(session, { type: "session.execution.succeeded" })
+    await handlers.flushGoalsForTest()
+    const failed = logs.find((entry) => entry.event === "goal_eval_failed")
+    expect(failed?.details?.reply_equals_prompt).toBe(true)
+    expect(failed?.details?.reply_contains_prompt).toBe(true)
+    expect(failed?.details?.reply_chars).toBe(42)
+    expect(failed?.details?.reply_prefix).toBe("You are a session Stop-hook")
+    expect(failed?.details?.roles).toEqual(["user"])
+  })
+})
+
 describe("Goal evaluator HTTP calls", () => {
   test("uses session.get without a body, reuses the model, and deletes the helper", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
@@ -477,5 +675,125 @@ describe("Goal evaluator HTTP calls", () => {
     const evaluate = createGoalEvaluator({ baseURL: "http://127.0.0.1:4097", fetchImpl: fetchMock })
     await expect(evaluate("s2", "whatever")).rejects.toThrow("session.prompt")
     expect(deleted).toHaveLength(1)
+  })
+
+  test("a typeless echo of our own prompt is polled, not parsed as the verdict", async () => {
+    // Regression test for the live stall: an echo shaped like
+    // `{data:{text}}` (no type) used to be read as the verdict, and parsing
+    // the evaluator prompt template failed with non-JSON output.
+    let helperLists = 0
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith("/api/session/s-echo") && (!init?.method || init.method === "GET")) {
+        return Response.json({ data: { id: "s-echo", model: { providerID: "p", id: "m" } } })
+      }
+      if (url.includes("/api/session/s-echo/message")) {
+        return Response.json({ data: [] })
+      }
+      if (url.endsWith("/api/session") && init?.method === "POST") {
+        return Response.json({ data: { id: "helper-echo" } })
+      }
+      if (url.includes("/api/session/helper-echo/prompt")) {
+        const body = JSON.parse(String(init?.body))
+        return Response.json({ data: { id: "m-e", text: body.text } })
+      }
+      if (url.includes("/api/session/helper-echo/message")) {
+        helperLists += 1
+        if (helperLists === 1) {
+          return Response.json({ data: [{ id: "m-e", type: "user", text: "waiting" }], cursor: {} })
+        }
+        return Response.json({
+          data: [
+            { id: "m-e", type: "user", text: "waiting" },
+            { id: "m-r", type: "assistant", content: [{ type: "text", id: "p1", text: '{"met":true,"reason":"echo ignored, verdict read"}' }] },
+          ],
+          cursor: {},
+        })
+      }
+      if (url.endsWith("/api/session/helper-echo") && init?.method === "DELETE") {
+        return new Response(null, { status: 204 })
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    const evaluate = createGoalEvaluator({ baseURL: "http://127.0.0.1:4097", fetchImpl: fetchMock })
+    await expect(evaluate("s-echo", "do the thing")).resolves.toEqual({ met: true, reason: "echo ignored, verdict read" })
+    expect(helperLists).toBeGreaterThan(1)
+  })
+
+  test("a partial assistant reply is not parsed until it stops changing", async () => {
+    const partial = '{"met": false, "reason": "still'
+    const complete = '{"met": false, "reason": "still working"}'
+    let helperLists = 0
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith("/api/session/s-part") && (!init?.method || init.method === "GET")) {
+        return Response.json({ data: { id: "s-part", model: { providerID: "p", id: "m" } } })
+      }
+      if (url.includes("/api/session/s-part/message")) {
+        return Response.json({ data: [] })
+      }
+      if (url.endsWith("/api/session") && init?.method === "POST") {
+        return Response.json({ data: { id: "helper-part" } })
+      }
+      if (url.includes("/api/session/helper-part/prompt")) {
+        return Response.json({ data: { id: "m-e", type: "user", payload: { text: "echo" } } })
+      }
+      if (url.includes("/api/session/helper-part/message")) {
+        helperLists += 1
+        const reply = helperLists === 1 ? undefined : helperLists === 2 ? partial : complete
+        const data = [
+          { id: "m-e", type: "user", text: "echo" },
+          ...(reply === undefined ? [] : [{ id: "m-r", type: "assistant", content: [{ type: "text", id: "p1", text: reply }] }]),
+        ]
+        return Response.json({ data, cursor: {} })
+      }
+      if (url.endsWith("/api/session/helper-part") && init?.method === "DELETE") {
+        return new Response(null, { status: 204 })
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    const evaluate = createGoalEvaluator({ baseURL: "http://127.0.0.1:4097", fetchImpl: fetchMock })
+    await expect(evaluate("s-part", "do the thing")).resolves.toEqual({ met: false, reason: "still working" })
+    expect(helperLists).toBeGreaterThanOrEqual(3)
+  })
+
+  test("a stable non-JSON reply fails with echo/shape forensics", async () => {
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith("/api/session/s-bad") && (!init?.method || init.method === "GET")) {
+        return Response.json({ data: { id: "s-bad", model: { providerID: "p", id: "m" } } })
+      }
+      if (url.includes("/api/session/s-bad/message")) {
+        return Response.json({ data: [] })
+      }
+      if (url.endsWith("/api/session") && init?.method === "POST") {
+        return Response.json({ data: { id: "helper-bad" } })
+      }
+      if (url.includes("/api/session/helper-bad/prompt")) {
+        return Response.json({ data: { id: "m-e", type: "user", payload: { text: "echo" } } })
+      }
+      if (url.includes("/api/session/helper-bad/message")) {
+        return Response.json({
+          data: [
+            { id: "m-e", type: "user", payload: { text: "echo" } },
+            { id: "m-r", type: "assistant", content: [{ type: "reasoning", text: "hmm" }, { type: "text", id: "p1", text: "thinking out loud" }] },
+          ],
+          cursor: {},
+        })
+      }
+      if (url.endsWith("/api/session/helper-bad") && init?.method === "DELETE") {
+        return new Response(null, { status: 204 })
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    const evaluate = createGoalEvaluator({ baseURL: "http://127.0.0.1:4097", fetchImpl: fetchMock })
+    const error = await evaluate("s-bad", "do the thing").then(() => { throw new Error("should have failed") }, (failure: unknown) => failure as { message: string; details?: Record<string, unknown> })
+    expect(error.message).toContain("non-JSON")
+    expect(error.details?.reply_chars).toBe("thinking out loud".length)
+    expect(error.details?.reply_prefix).toBe("thinking out loud")
+    expect(error.details?.reply_equals_prompt).toBe(false)
+    expect(error.details?.reply_contains_prompt).toBe(false)
+    expect(error.details?.roles).toEqual(["user", "assistant"])
+    expect(error.details?.part_types).toEqual(["payload", "reasoning", "text"])
   })
 })

@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
-import { buildGoalAckPrompt, buildGoalCapPrompt, buildGoalContinuePrompt, buildGoalEvalFailedPrompt, formatGoalStatus, goalMaxChecks, goalMaxEvalFailures, type GoalState } from "./goal"
+import { buildGoalAckPrompt, buildGoalCapPrompt, buildGoalContinuePrompt, buildGoalEvalFailedPrompt, formatGoalStatus, goalMaxChecks, goalMaxEvalFailures, goalRetryMs, type GoalState } from "./goal"
 
 export const autonomousSentinel = "<<autonomous-loop-dynamic>>"
 
@@ -54,6 +54,34 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
   const jobs = new Map<string, Job>()
   const goals = new Map<string, GoalState>()
   const goalGenerations = new Map<string, number>()
+  // One pending evaluator-failure retry per session. A failed check ends the
+  // chain of turns (no continue turn is injected), so without this timer the
+  // goal would stall forever; the retry re-runs the check once after
+  // ROSTER_GOAL_RETRY_MS instead of waiting for a turn end that never comes.
+  const goalRetries = new Map<string, ReturnType<typeof setTimeout>>()
+
+  function clearGoalRetry(sessionID: string): void {
+    const timer = goalRetries.get(sessionID)
+    if (timer !== undefined) clearTimeout(timer)
+    goalRetries.delete(sessionID)
+  }
+
+  async function scheduleGoalRetry(sessionID: string, generation: number): Promise<void> {
+    clearGoalRetry(sessionID)
+    const delayMs = goalRetryMs()
+    const timer = setTimeout(() => {
+      goalRetries.delete(sessionID)
+      const current = goals.get(sessionID)
+      // Clear/replace/stop/session end during the wait wins: a stale retry
+      // never evaluates a goal that is gone or has moved on.
+      if (!current || current.generation !== generation) return
+      const check = runGoalCheck(sessionID)
+      goalChecks.add(check)
+      void check.then(() => goalChecks.delete(check), () => goalChecks.delete(check))
+    }, delayMs)
+    goalRetries.set(sessionID, timer)
+    await log("goal_retry_scheduled", sessionID, { delay_ms: delayMs, generation })
+  }
   const helpers = new Set<string>()
   const goalChecks = new Set<Promise<void>>()
   const busy = new Set<string>()
@@ -129,6 +157,7 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
     const existing = goals.get(sessionID)
     goalGenerations.set(sessionID, (goalGenerations.get(sessionID) ?? 0) + 1)
     goals.delete(sessionID)
+    clearGoalRetry(sessionID)
     await log("goal_cleared", sessionID, { condition: condition ?? existing?.condition, reason })
   }
 
@@ -169,6 +198,8 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
     }
     const generation = goal.generation
     goal.evalInFlight = true
+    // A fresh evaluation supersedes any pending failure retry.
+    clearGoalRetry(sessionID)
     const started = clock()
     try {
       const verdict = await options.evaluate(sessionID, goal.condition)
@@ -197,13 +228,18 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
       if (!current || current.generation !== generation) return
       current.evalFailures += 1
       const message = error instanceof Error ? error.message : String(error)
-      await log("goal_eval_failed", sessionID, { condition: current.condition, error: message, failures: current.evalFailures })
+      const failureDetails = (error as { details?: Record<string, unknown> } | null)?.details
+      await log("goal_eval_failed", sessionID, { condition: current.condition, error: message, failures: current.evalFailures, ...(failureDetails ?? {}) })
       if (current.evalFailures >= goalMaxEvalFailures()) {
         const condition = current.condition
         const failures = current.evalFailures
         await clearGoal(sessionID, "eval_failed", condition)
         await log("goal_cap_reached", sessionID, { condition, reason: "eval_failed", failures })
         await deliver(sessionID, buildGoalEvalFailedPrompt(condition), "Goal", goalKey(sessionID))
+      } else {
+        // Below the give-up cap the goal stays set but no turn follows, so
+        // schedule one retry instead of stalling until a turn end arrives.
+        await scheduleGoalRetry(sessionID, generation)
       }
     } finally {
       const current = goals.get(sessionID)
@@ -393,6 +429,8 @@ export function createRosterHandlers(inject: Injector, log: Log, clock = () => D
           const replaced = goals.has(sessionID)
           const generation = (goalGenerations.get(sessionID) ?? 0) + 1
           goalGenerations.set(sessionID, generation)
+          // Replacing the goal cancels any pending failure retry of the old one.
+          clearGoalRetry(sessionID)
           goals.set(sessionID, { condition, setAt: clock(), checks: 0, evalFailures: 0, evalInFlight: false, generation, lastReason: undefined })
           await log("goal_set", sessionID, { condition, replaced })
           await deliver(sessionID, buildGoalAckPrompt(condition), "Goal", goalKey(sessionID))

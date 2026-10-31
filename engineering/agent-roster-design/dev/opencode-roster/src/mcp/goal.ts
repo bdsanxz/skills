@@ -5,6 +5,7 @@ export const GOAL_MAX_CHECKS_DEFAULT = 30
 export const GOAL_EVAL_TIMEOUT_MS_DEFAULT = 60_000
 export const GOAL_TRANSCRIPT_CHARS_DEFAULT = 12_000
 export const GOAL_MAX_EVAL_FAILURES_DEFAULT = 3
+export const GOAL_RETRY_MS_DEFAULT = 10_000
 export const GOAL_HELPER_TITLE_PREFIX = "roster-goal-eval"
 
 function envInt(name: string, fallback: number, min: number): number {
@@ -31,6 +32,11 @@ export function goalTranscriptChars(): number {
 /** Consecutive evaluator failures before the goal gives up. */
 export function goalMaxEvalFailures(): number {
   return envInt("ROSTER_GOAL_MAX_EVAL_FAILURES", GOAL_MAX_EVAL_FAILURES_DEFAULT, 1)
+}
+
+/** Milliseconds after an evaluator failure before one retry check runs. */
+export function goalRetryMs(): number {
+  return envInt("ROSTER_GOAL_RETRY_MS", GOAL_RETRY_MS_DEFAULT, 1)
 }
 
 /** The one meta turn injected when a goal is set (verbatim from the spec). */
@@ -90,6 +96,62 @@ function partText(part: unknown): string | undefined {
   if (part !== null && typeof part === "object") {
     const text = (part as Record<string, unknown>).text
     if (typeof text === "string" && text.length > 0) return text
+  }
+  return undefined
+}
+
+/**
+ * Text of one content/part entry for REPLY extraction. Only plain text
+ * counts: reasoning, tool-call, and other typed blocks are ignored so they
+ * can never become (part of) the evaluator verdict. Untyped entries with
+ * text keep working for the older `{info, parts}` shapes.
+ */
+function replyPartText(part: unknown): string | undefined {
+  if (typeof part === "string") return part.length > 0 ? part : undefined
+  if (part !== null && typeof part === "object") {
+    const record = part as Record<string, unknown>
+    const type = record.type
+    if (type !== undefined && type !== "text") return undefined
+    if (typeof record.text === "string" && record.text.length > 0) return record.text
+  }
+  return undefined
+}
+
+/** Join only the text parts of content/part entries (reply extraction). */
+function joinReplyParts(chunks: unknown[]): string | undefined {
+  const texts = chunks.map(replyPartText).filter((entry): entry is string => entry !== undefined)
+  return texts.length > 0 ? texts.join("\n") : undefined
+}
+
+function messageRole(message: Record<string, unknown>): string {
+  const info = (message.info ?? {}) as Record<string, unknown>
+  return (
+    (typeof info.role === "string" && info.role) ||
+    (typeof message.role === "string" && message.role) ||
+    (typeof message.type === "string" && message.type) ||
+    "unknown"
+  )
+}
+
+/**
+ * Assistant-only text of one message for REPLY extraction. The role must be
+ * assistant and only `{type:"text"}` (or untyped) parts count, so a user echo
+ * carrying the evaluator prompt (which contains a `{"met":...}` template)
+ * and reasoning/tool parts never match. Returns undefined when the message
+ * carries no assistant text (e.g. a still-streaming partial reply).
+ */
+export function extractAssistantText(message: unknown): string | undefined {
+  if (message === null || typeof message !== "object") return undefined
+  const record = message as Record<string, unknown>
+  if (messageRole(record) !== "assistant") return undefined
+  const chunks: unknown[] = []
+  if (Array.isArray(record.parts)) chunks.push(...record.parts)
+  if (Array.isArray(record.content)) chunks.push(...record.content)
+  if (chunks.length > 0) return joinReplyParts(chunks)
+  for (const key of ["content", "text", "body"]) {
+    if (typeof record[key] === "string" && (record[key] as string).length > 0) {
+      return record[key] as string
+    }
   }
   return undefined
 }
@@ -168,22 +230,90 @@ export function extractTextFromPromptResult(body: unknown): string | undefined {
     const chunks: unknown[] = []
     if (Array.isArray(record.parts)) chunks.push(...record.parts)
     if (Array.isArray(record.content)) chunks.push(...record.content)
-    if (chunks.length > 0) {
-      const texts = chunks.map(partText).filter((entry): entry is string => entry !== undefined)
-      if (texts.length > 0) return texts.join("\n")
-    }
+    if (chunks.length > 0) return joinReplyParts(chunks)
   }
   return undefined
 }
 
-/** Newest assistant text in a `session.message.list` result, if any (live flat `{type:"assistant", content:[…]}` or `{info, parts}` forms; user echoes never match). */
+/**
+ * Newest assistant text in a chronological `session.message.list` result, if
+ * any. Callers pass messages oldest-first (reverse `order=desc` pages
+ * first); the LAST assistant message carrying text wins, so a user echo that
+ * repeats the evaluator prompt (or a still-streaming partial reply) is never
+ * read as the verdict. Reasoning/tool parts are ignored.
+ */
 export function extractTextFromMessages(messages: unknown): string | undefined {
   if (!Array.isArray(messages)) return undefined
   for (let index = messages.length - 1; index >= 0; index--) {
-    const described = describeMessage(messages[index])
-    if (described.role === "assistant" && described.text.trim().length > 0) return described.text
+    const text = extractAssistantText(messages[index])
+    if (text !== undefined && text.trim().length > 0) return text
   }
   return undefined
+}
+
+/**
+ * Roles and content/part entry types seen in one helper message sample.
+ * Content-free: only shape names, never message text.
+ */
+export function summarizeHelperMessages(messages: unknown): { roles: string[]; partTypes: string[] } {
+  const roles: string[] = []
+  const partTypes: string[] = []
+  const push = (list: string[], value: string): void => {
+    if (!list.includes(value) && list.length < 12) list.push(value)
+  }
+  if (!Array.isArray(messages)) return { roles, partTypes }
+  for (const message of messages) {
+    if (message === null || typeof message !== "object") {
+      push(roles, typeof message)
+      continue
+    }
+    const record = message as Record<string, unknown>
+    push(roles, messageRole(record))
+    const chunks: unknown[] = []
+    if (Array.isArray(record.parts)) chunks.push(...record.parts)
+    if (Array.isArray(record.content)) chunks.push(...record.content)
+    for (const chunk of chunks) {
+      if (typeof chunk === "string") push(partTypes, "string")
+      else if (chunk !== null && typeof chunk === "object") {
+        const type = (chunk as Record<string, unknown>).type
+        push(partTypes, typeof type === "string" && type.length > 0 ? type : "untyped")
+      } else push(partTypes, "other")
+    }
+    // Flat shapes may carry text directly on the message (no parts array).
+    if (chunks.length === 0) {
+      if (typeof record.text === "string") push(partTypes, "text-field")
+      else if (record.payload !== null && typeof record.payload === "object") push(partTypes, "payload")
+    }
+  }
+  return { roles, partTypes }
+}
+
+export type GoalVerdictFailureDetails = {
+  reply_chars: number
+  reply_equals_prompt: boolean
+  reply_contains_prompt: boolean
+  roles: string[]
+  part_types: string[]
+  reply_prefix: string
+}
+
+/**
+ * Forensic fields for a verdict parse failure: reply size, whether the reply
+ * equals or contains the evaluator prompt text (an echo of our own user
+ * message), the message roles/part types seen in the last helper sample, and
+ * the first 120 characters of the evaluator's REPLY only. Never includes
+ * transcript or condition text.
+ */
+export function verdictFailureDetails(reply: string, prompt: string, messages: unknown): GoalVerdictFailureDetails {
+  const summary = summarizeHelperMessages(messages)
+  return {
+    reply_chars: reply.length,
+    reply_equals_prompt: reply.trim() === prompt.trim(),
+    reply_contains_prompt: prompt.length > 0 && reply.includes(prompt),
+    roles: summary.roles,
+    part_types: summary.partTypes,
+    reply_prefix: reply.slice(0, 120),
+  }
 }
 
 export function formatElapsed(ms: number): string {

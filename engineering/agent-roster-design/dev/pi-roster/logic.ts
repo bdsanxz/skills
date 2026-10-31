@@ -279,6 +279,15 @@ export function goalTranscriptMaxFromEnv(envValue: string | undefined): number {
   return 12000;
 }
 
+/** Milliseconds after an evaluator failure before one retry check runs. Default 10000. */
+export function goalRetryMsFromEnv(envValue: string | undefined): number {
+  if (envValue !== undefined) {
+    const n = Number(envValue);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return 10000;
+}
+
 /** True once the goal has used up its unmet-check budget. */
 export function isGoalCapReached(checks: number, maxChecks: number): boolean {
   return checks >= maxChecks;
@@ -290,6 +299,15 @@ export const GOAL_MAX_EVAL_FAILURES = 3;
 /** True once evaluator failures hit the give-up threshold. */
 export function isGoalEvalGiveUp(failures: number): boolean {
   return failures >= GOAL_MAX_EVAL_FAILURES;
+}
+
+/**
+ * True while another failure retry is still allowed: the goal stays set and
+ * the failure count is below the give-up threshold, so one retry check may
+ * be scheduled instead of stalling until a turn end that may never come.
+ */
+export function shouldScheduleGoalRetry(evalFailures: number): boolean {
+  return !isGoalEvalGiveUp(evalFailures);
 }
 
 /**
