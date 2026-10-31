@@ -1,0 +1,9 @@
+{
+  "name": "setup-custom-inferences-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun ./test.js",
+    "mock": "bun ./mock-server.js"
+  }
+}
