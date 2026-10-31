@@ -16,6 +16,7 @@ import {
   truthy,
   which,
 } from "./core";
+import { type Screen, pollScreen, waitConfig } from "./wait";
 
 export const FIRST_PROMPT = "Read your instructions, then wait for messages from your squad.";
 export const WAIT_MS = "60000";
@@ -51,14 +52,14 @@ export class Herdr {
     readonly dryRun: boolean,
   ) {}
 
-  call(args: string[], note?: string): [number, string] {
+  call(args: string[], note?: string, timeoutMs: number = TIMEOUT_MS): [number, string] {
     const cmd = ["herdr", "--session", this.session, ...args];
     if (this.dryRun) {
       print("RUN " + shlexJoin(cmd) + (note ? `   # ${note}` : ""));
       return [0, ""];
     }
-    const done = run(cmd, { timeoutMs: TIMEOUT_MS });
-    if (done.timedOut) throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within 120 s`);
+    const done = run(cmd, { timeoutMs });
+    if (done.timedOut) throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within ${Math.round(timeoutMs / 1000)} s`);
     return [done.code, done.stdout + done.stderr];
   }
 
@@ -111,10 +112,42 @@ export class Herdr {
     }
   }
 
-  /** Return once herdr reports the agent idle or blocked on a dialog; never polls. */
-  settle(name: string, pane: string) {
-    const [code, output] = this.call(["agent", "wait", name, "--until", "idle", "--until", "blocked", "--timeout", "90000"]);
-    if (code !== 0) throw new LaunchError(`${name} in pane ${pane} did not settle within 90 s: ${tail(strip(output), 400)}`);
+  /** Wait until herdr reports the agent idle or blocked on a dialog; when it reports
+   * no status for the agent, fall back to a bounded screen poll (a known dialog,
+   * the agent's idle input line, a settled screen, or the overall cap). A
+   * vanished pane throws; anything else carries on to the first prompt. Dry
+   * runs print the short wait and return. */
+  settle(name: string, pane: string, want?: { dialogs?: Dialog[]; ready?: string | null }) {
+    const cfg = waitConfig();
+    const args = ["agent", "wait", name, "--until", "idle", "--until", "blocked", "--timeout", String(cfg.shortMs)];
+    if (this.dryRun) {
+      this.call(args);
+      return;
+    }
+    const deadline = Date.now() + cfg.waitMs;
+    if (cfg.shortMs > 0) {
+      const [code, output] = this.call(args, undefined, cfg.shortMs + 30000);
+      if (code === 0) return;
+      if (/no such|not found|unknown|no pane|bad pane|gone/i.test(output)) {
+        throw new LaunchError(`${name} in pane ${pane} is gone while waiting for it: ${tail(strip(output), 400)}`);
+      }
+      // No status to report: poll the agent's screen instead.
+    }
+    if (pollScreen(() => this.peekAgent(name), want?.dialogs ?? [], want?.ready, cfg, deadline) === "gone") {
+      throw new LaunchError(`${name} in pane ${pane} is gone while waiting for it`);
+    }
+  }
+
+  /** Read the agent's visible screen, reporting a vanished pane as gone instead of
+   * throwing. A read that fails any other way reads as empty: the poll keeps
+   * waiting, and the cap bounds it. */
+  private peekAgent(name: string): Screen {
+    const [code, output] = this.call(["agent", "read", name, "--source", "visible"]);
+    if (code !== 0) {
+      if (/no such|not found|unknown|no pane|bad pane|gone/i.test(output)) return { gone: true, text: "" };
+      return { gone: false, text: "" };
+    }
+    return { gone: false, text: output };
   }
 
   /** Run `opencode api <operation>` against OpenCode's background service; return its JSON. */
@@ -146,14 +179,14 @@ export class Herdr {
   }
 
   /** Send the first prompt, answering the agent's known dialogs while herdr says it is blocked. */
-  firstPrompt(name: string, pane: string, dialogs: Dialog[]) {
+  firstPrompt(name: string, pane: string, dialogs: Dialog[], ready?: string | null) {
     if (this.dryRun) {
       for (const [marker, keys] of dialogs) {
         this.run(["agent", "send-keys", name, ...keys], `only when the screen shows ${repr(marker)}`);
       }
     }
     for (let attempt = 0; attempt < dialogs.length + 2; attempt++) {
-      this.settle(name, pane);
+      this.settle(name, pane, { dialogs, ready });
       const [code, output] = this.call(["agent", "prompt", name, FIRST_PROMPT]);
       if (code === 0) return;
       if (!output.includes("agent_blocked") && !output.includes("agent_not_ready")) {

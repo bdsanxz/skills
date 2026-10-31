@@ -19,6 +19,7 @@ import {
   which,
 } from "./core";
 import { FIRST_PROMPT, type Dialog } from "./herdr";
+import { type Screen, pollScreen, waitConfig } from "./wait";
 
 const TIMEOUT_MS = 120000;
 
@@ -99,14 +100,14 @@ export function hcTerminals(): HcTerminal[] | null {
 export class Hc {
   constructor(readonly dryRun: boolean) {}
 
-  call(args: string[], note?: string): [number, string] {
+  call(args: string[], note?: string, timeoutMs: number = TIMEOUT_MS): [number, string] {
     const cmd = ["hc", ...args];
     if (this.dryRun) {
       print("RUN " + shlexJoin(cmd) + (note ? `   # ${note}` : ""));
       return [0, ""];
     }
-    const done = run(cmd, { timeoutMs: TIMEOUT_MS });
-    if (done.timedOut) throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within 120 s`);
+    const done = run(cmd, { timeoutMs });
+    if (done.timedOut) throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within ${Math.round(timeoutMs / 1000)} s`);
     return [done.code, done.stdout + done.stderr];
   }
 
@@ -193,12 +194,43 @@ export class Hc {
     );
   }
 
-  /** Wait until the terminal stops working (idle) or exits; timeouts only check in. */
-  settle(name: string) {
-    const [code, output] = this.call(["wait", name, "--timeout", "90"]);
-    if (code !== 0 && /no such terminal|not found|unknown/i.test(output)) {
-      throw new LaunchError(`terminal ${name} is gone while waiting for it: ${tail(strip(output), 400)}`);
+  /** Wait until the terminal is ready: a short status wait first (agents that report
+   * one behave as before), then a bounded screen poll for runtimes `hc wait`
+   * reports no turn status for. The poll stops when the terminal is gone, a
+   * known dialog or the agent's idle input line appears, the screen settles, or
+   * the overall cap is reached; a vanished terminal throws, anything else
+   * carries on to the first prompt. Dry runs print the short wait and return. */
+  settle(name: string, want?: { dialogs?: Dialog[]; ready?: string | null }) {
+    const cfg = waitConfig();
+    const timeout = String(Math.max(1, Math.ceil(cfg.shortMs / 1000)));
+    if (this.dryRun) {
+      this.call(["wait", name, "--timeout", timeout]);
+      return;
     }
+    const deadline = Date.now() + cfg.waitMs;
+    if (cfg.shortMs > 0) {
+      const [code, output] = this.call(["wait", name, "--timeout", timeout], undefined, cfg.shortMs + 30000);
+      if (code === 0) return;
+      if (/no such terminal|not found|unknown/i.test(output)) {
+        throw new LaunchError(`terminal ${name} is gone while waiting for it: ${tail(strip(output), 400)}`);
+      }
+      // No turn status (idle agents, runtimes hc misclassifies): poll the screen instead.
+    }
+    if (pollScreen(() => this.peekScreen(name), want?.dialogs ?? [], want?.ready, cfg, deadline) === "gone") {
+      throw new LaunchError(`terminal ${name} is gone while waiting for it`);
+    }
+  }
+
+  /** Read the screen, reporting a vanished terminal as gone instead of throwing. A
+   * read that fails any other way reads as empty: the poll keeps waiting, and
+   * the cap bounds it. */
+  private peekScreen(name: string): Screen {
+    const [code, output] = this.call(["read", name]);
+    if (code !== 0) {
+      if (/no such terminal|not found|unknown/i.test(output)) return { gone: true, text: "" };
+      return { gone: false, text: "" };
+    }
+    return { gone: false, text: output };
   }
 
   readScreen(name: string): string {
@@ -261,14 +293,14 @@ export class Hc {
   }
 
   /** Send the first prompt, answering the agent's known dialogs from its screen. */
-  firstPrompt(name: string, dialogs: Dialog[]) {
+  firstPrompt(name: string, dialogs: Dialog[], ready?: string | null) {
     if (this.dryRun) {
       for (const [marker, keys] of dialogs) {
         this.sendKeys(name, keys, `only when the screen shows ${repr(marker)}`);
       }
     }
     for (let attempt = 0; attempt < dialogs.length + 2; attempt++) {
-      this.settle(name);
+      this.settle(name, { dialogs, ready });
       const screen = this.readScreen(name).toLowerCase();
       const answer = dialogs.find(([marker]) => screen.includes(marker))?.[1];
       if (!answer) {
