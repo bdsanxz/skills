@@ -39,7 +39,8 @@ The reply names your tab when that name resolves uniquely back to it, otherwise
 your address. With `--json` (or piped stdout) the result adds the versioned
 contract-1 fields next to hc's own (`status`, `turn`, `started`, …): `delivered`
 (`true`/`false`/`null`), `route` (`hcx` or `hcx-raw`), `agent` (the target's
-agent kind; an opencode tab behind a login shell counts as an agent), `program`
+agent kind; an opencode or qoder tab behind a login shell counts as an agent, qoder
+reported as `qoder`), `program`
 (the foreground program when `agent` stays a shell kind), and `note` (read
 before resending when `delivered: false`; the no-status reason when `delivered:
 null` — do not blindly resend). The fields are stable within contract 1; check
@@ -61,7 +62,7 @@ Step 5).
    kind is checked first and a plain shell is refused (kind `plain_shell`, exit
    4: `use --no-footer to type a command`), since the text and footer would run
    as shell commands. `--no-footer` works for every target, including a plain
-   shell or an opencode TUI. A raw send to a terminal address (`t7`) skips the
+   shell, an opencode TUI or a qoder tab. A raw send to a terminal address (`t7`) skips the
    tab lookup: no sender name or resolution is needed.
 4. When the target must be an agent — especially for automated or `--no-footer`
    sends where typing into a shell would run as commands — add `--agent-only`:
