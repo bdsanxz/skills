@@ -31,7 +31,9 @@ Print your caller context and find your notify target:
 printf '%s\n' "$HERDR_WORKSPACE_ID" "$HERDR_TAB_ID" "$HERDR_PANE_ID"
 ```
 
-Your notify target is your pane ID (`$HERDR_PANE_ID`), or your herdr-core terminal (`$HC_TERMINAL_ID`) when you run outside the old herdr: `run` uses it by default, so the notify turn reaches this session through `herdr agent prompt` (or `hc send`). When the user names another member to receive it (a herdr agent name, pane ID or hc terminal), pass it with `--notify <target>` instead. If you are in neither (no `HERDR_PANE_ID` and no `HC_TERMINAL_ID`), the job still runs, but its notify is skipped; say so, and read the job back explicitly.
+Your notify target is your pane ID (`$HERDR_PANE_ID`), or your herdr-core terminal (`$HC_TERMINAL_ID`) when you run outside the old herdr: `run` uses it by default. When the user names another member to receive it (a herdr agent name, pane ID or hc terminal), pass it with `--notify <target>` instead. If you are in neither (no `HERDR_PANE_ID` and no `HC_TERMINAL_ID`), the job still runs, but its notify is skipped; say so, and read the job back explicitly.
+
+Notify turns go over the old herdr server (`herdr agent prompt`) when it runs, else herdr-core. There, an agent target is notified untagged with `hcx send --no-footer`: no `<hc from>` tag and no sender footer. It needs hcx 0.1.3 or newer; an older hcx falls back to the tagged `hc send`. A plain shell, or a kind that cannot be determined, keeps the tagged `hc send`. An opencode tab counts as an agent even when it is listed as a shell: its foreground program is checked once more. Tip: never send the notify yourself with `hc` or `hcx`; `run` already routes it.
 
 ## Step 2: Start a job
 
@@ -42,7 +44,11 @@ agent-shell run --name e2e --heartbeat 5m -- sh -c './scripts/e2e.sh'
 agent-shell run --name quick --no-heartbeat -- sh -c './scripts/fast.sh'
 ```
 
-The command is everything after `--`; use `sh -c '...'` for shell features (pipes, redirects, `&&`). Give a short kebab-case `--name` (`build`, `test-e2e`), and `--cwd` when the command must run elsewhere. Every job sends a progress turn with its last output line every 2 minutes by default, so you can tell stuck from working; `--heartbeat <duration>` (minimum `1s`, e.g. `30s`, `5m`) changes the interval and `--no-heartbeat` disables progress turns, leaving only the completion turn. The output prints the job id, the notify target, the heartbeat setting and the read command. For a quick command, pass `--wait <duration>` (e.g. `5s`) to wait for it to finish and print its output and exit status inline instead of ending your turn. End your turn there.
+The command is everything after `--`; use `sh -c '...'` for shell features (pipes, redirects, `&&`). Give a short kebab-case `--name` (`build`, `test-e2e`), and `--cwd` when the command must run elsewhere. A bad `--cwd` (missing or not a directory) or a missing executable exits 2 at `run` and creates no job. Tip: fix the directory or command and run again; do not `show` or `check` an id that was never printed.
+
+Every job sends a progress turn with its last output line every 2 minutes by default, so you can tell stuck from working. `--heartbeat <duration>` (minimum `1s`, e.g. `30s`, `5m`) changes the interval. `--no-heartbeat`, `--heartbeat 0` and `--heartbeat off` all disable progress turns, leaving only the completion turn. Tip: a short job with heartbeats disabled sends no progress turn; do not read that as stuck.
+
+The output prints the job id, the notify target, the heartbeat setting and the read command. For a quick command, pass `--wait <duration>` (e.g. `5s`) to wait for it to finish and print its output and exit status inline instead of ending your turn. It exits with the job's exit code, and 124 on timeout. Tip: use `--wait` only for a quick command; a long job still needs fire and forget. End your turn there.
 
 ## Step 3: Read the result
 
@@ -53,15 +59,21 @@ agent-shell check <id>
 agent-shell show <id>
 ```
 
-`check` prints one `ok`/`FAIL` line per item — finished state, recorded exit code, readable output, delivered notify — plus a `check <id>: 4/4 pass` summary. It exits 0 only when all four pass. A killed job fails the check (partial output, no notify); a running job exits 2. When the check passes, read the output with `show` (state, exit code, notify detail, output tail) or `tail`. Act on it in your next turn: report the failure, fix it, or continue the work that needed it.
+`check` prints one `ok`/`FAIL` line per record — finished state, recorded exit code, readable output, delivered completion notify — then a `check <id>: 4/4 pass` summary, then a `success` line for the job's own outcome (separate from the records). It exits 0 only when all four records pass and the job succeeded (exit 0). It exits 1 when any record fails or the job itself failed. A job with no notify target prints `ok notify: n/a`, not a failure. Tip: read the `success` line, not just the `4/4` count; a failed job can pass its records and still exit 1.
+
+A killed job fails the check (partial output, no notify). A running or unknown job exits 2. When progress notifies were sent, the last one prints as `progress notify: ...` after the notify line; it is informational and changes no pass count. When the check passes, read the output with `show` or `tail`. `show` prints state, exit code, the `error` field, the notify result, the heartbeat setting and the output tail. Tip: a non-integer `--tail` / `--lines` exits 2; pass a positive integer.
+
+A job that fails to start is still recorded as `failed` with its start error in the `error` field, and still sends its completion notify. The final status is written before the completion notify is sent, so `show` after the completion turn already sees the final state. Tip: trust `show` once the completion turn arrives; do not re-read it as still running. Act on it in your next turn: report the failure, fix it, or continue the work that needed it.
 
 ## Step 4: Manage jobs
 
 ```bash
 agent-shell list             # running first, then newest done
-agent-shell kill <id>        # stop a running job; a killed job gets no notify
+agent-shell kill <id>        # stop a running job only (exit 2 otherwise); a killed job gets no notify
 agent-shell clean            # remove finished jobs
 agent-shell clean --older-than 7d
 ```
 
-A killed job keeps its partial output readable and gets no completion notify. `show` prints the heartbeat setting (`heartbeat 120000ms` or `heartbeat off`) plus the progress count once one was sent. `clean` never touches running jobs.
+`kill` refuses with exit 2 unless the job is still running, leaving a finished job's result untouched. The child is signalled only when its process start time still matches, so a reused PID is never killed. Tip: do not `kill` a finished job to clean it up; use `clean`.
+
+A killed job keeps its partial output readable and gets no completion notify. `show` prints the heartbeat setting (`heartbeat 120000ms` or `heartbeat off`) plus the progress count once one was sent. `clean` never touches running jobs. Tip: `clean` removes only finished jobs; a running job survives it.
