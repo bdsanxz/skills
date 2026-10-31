@@ -34,12 +34,16 @@ beforeAll(async () => {
 
 afterAll(() => tearDown(s));
 
-/** herdr-core launch env: the old server is stopped, a live core has no terminals. */
+/** herdr-core launch env: the old server is stopped, a live core has no terminals.
+ * AGY_HOME points nowhere real and the shared session wait is short, so agy
+ * launches note the missing conversation fast instead of waiting it out. */
 const hcEnv = (extra: Record<string, string | undefined> = {}) => ({
   HERDR_SESSIONS: '{"sessions":[{"name":"default","default":true,"running":false}]}',
   HC_LS_CODE: "0",
   HC_JSON: JSON.stringify({ terminals: [] }),
   HCAPP_JSON: JSON.stringify({ spaces: [{ id: "sp-test", name: "squad-demo" }] }),
+  AGY_HOME: path.join(s.tmp, "agy-wait-empty"),
+  ROSTER_QODER_WAIT_MS: "300",
   ...extra,
 });
 
@@ -139,7 +143,11 @@ describe("bounded readiness waits", () => {
     clear(s.herdrLog);
     const dry = await roster(["launch", s.w, "--dry-run", "--member", "docs"]);
     expect(dry.out).toContain("agent wait demo-docs --until idle --until blocked --timeout 10000");
-    const done = await roster(["launch", s.w, "--member", "docs"]);
+    const done = await roster(["launch", s.w, "--member", "docs"], {
+      AGY_HOME: path.join(s.tmp, "agy-wait-empty"),
+      ROSTER_QODER_WAIT_MS: "300",
+      ROSTER_QODER_INTERVAL_MS: "20",
+    });
     expect(done.code).toBe(0);
     expect(done.out).toContain("LAUNCHED docs (agy");
     expect(read(s.herdrLog)).toContain("agent wait demo-docs --until idle --until blocked --timeout 10000");

@@ -61,6 +61,15 @@ async function check(name: string, want: string, args: string[], env: Record<str
   return done;
 }
 
+/** Stub env for a real agy launch with no fresh conversation: AGY_HOME points
+ * nowhere real and the shared session wait is short, so launch notes the
+ * missing conversation fast instead of waiting it out. */
+const agyFast = () => ({
+  AGY_HOME: path.join(s.tmp, "agy-empty"),
+  ROSTER_QODER_WAIT_MS: "300",
+  ROSTER_QODER_INTERVAL_MS: "20",
+});
+
 const m = (r: RosterData, index: number): MemberData => r.members[index]!;
 const models = (r: RosterData) => r.defaults!.models!;
 const file = (...parts: string[]) => read(path.join(W, ...parts));
@@ -491,6 +500,7 @@ describe("launch", () => {
       "launch starts every member",
       "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in herdr session default, tab 3 'docs', pane w9:p3",
       ["launch", W],
+      agyFast(),
     );
     const log = read(s.herdrLog);
     has("claude started with its model", log, "pane run w9:p1 claude --dangerously-skip-permissions -n demo-lead --model claude-haiku-4-5");
@@ -566,7 +576,7 @@ describe("launch", () => {
     has("squad directory shows the effort", file("api", "AGENTS.md"), "`lead` | claude | claude-haiku-4-5 | low |");
     has("claude gets the overridden effort", read(s.herdrLog), "--model claude-haiku-4-5 --effort low");
     clear(s.herdrLog);
-    await check("agy launches with its effort", "LAUNCHED docs (agy, model gem-flash, effort high)", ["launch", W, "--member", "docs", "--model", "docs=gem-flash", "--effort", "docs=high"]);
+    await check("agy launches with its effort", "LAUNCHED docs (agy, model gem-flash, effort high)", ["launch", W, "--member", "docs", "--model", "docs=gem-flash", "--effort", "docs=high"], agyFast());
     has("agy gets --model and --effort", read(s.herdrLog), "--kind agy --pane w9:p1 -- --dangerously-skip-permissions --model gem-flash --effort high");
     await check("launch refuses an unsupported effort", "is not supported by agy with gem-fast", ["launch", W, "--effort", "docs=high"]);
     await roster(["build", W, "--member", "lead"]);
@@ -610,7 +620,7 @@ describe("launch", () => {
 
   test("one workspace, one tab per member in hierarchy order", async () => {
     clear(s.herdrLog);
-    await roster(["launch", W]);
+    await roster(["launch", W], agyFast());
     const log = read(s.herdrLog);
     has("one workspace for the squad", String(log.split("\n").filter((line) => line.includes("workspace create")).length), "1");
     has("the supervisor's tab comes first", log, "tab rename w9:t1 lead");
@@ -634,6 +644,7 @@ describe("launch", () => {
       HERDR_TAB_BASE: "10",
       HERDR_WORKSPACES: SQUAD_WS,
       HERDR_PANES: '{"label":"lead","pane_id":"w9:p1","tab_id":"w9:t1"},{"label":"api","pane_id":"w9:p2","tab_id":"w9:t2"}',
+      ...agyFast(),
     });
     lacks("it makes no second workspace", read(s.herdrLog), "workspace create");
     lacks("a last member moves nobody", read(s.herdrLog), "pane move");
@@ -696,7 +707,7 @@ describe("herdr-core launch", () => {
     clear(s.hcxLog);
     clear(s.hcappLog);
     clear(s.herdrLog);
-    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]) };
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), ...agyFast() };
     await check(
       "hc launch starts the member",
       "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in Herdr app space squad-demo",
@@ -715,7 +726,7 @@ describe("herdr-core launch", () => {
     clear(s.hcappLog);
     clear(s.herdrLog);
     const noHcx = `${partialBin(s, "nohcx", ["npx", "claude", "opencode", "agy", "pi", "muse", "herdr", "hc", "herdr-app", "peers", "agent-shell"])}:/usr/bin:/bin`;
-    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), PATH: noHcx };
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), PATH: noHcx, ...agyFast() };
     await check(
       "hc fallback launch starts the member",
       "LAUNCHED docs (agy, model gem-fast, effort the agent's own default) in Herdr app space squad-demo",
@@ -731,7 +742,7 @@ describe("herdr-core launch", () => {
     clear(s.hcxLog);
     clear(s.hcappLog);
     clear(s.herdrLog);
-    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), HCX_FAIL: "1" };
+    const env = { ...hcLive([]), ...hcSpace([{ id: "sp-test", name: "squad-demo" }]), HCX_FAIL: "1", ...agyFast() };
     const done = await roster(["launch", W, "--member", "docs"], env);
     has("launch carries on after hcx fails", done.out, "LAUNCHED docs (agy, model gem-fast");
     has("hcx failure warns", done.out, "WARN `hcx send t-test2` failed (exit 1)");
@@ -817,7 +828,7 @@ describe("display names", () => {
     await roster(["launch", W, "--member", "lead"]);
     has("claude session name", read(s.herdrLog), "-n 'Lena [demo-lead]'");
     clear(s.herdrLog);
-    await roster(["launch", W, "--member", "docs"]);
+    await roster(["launch", W, "--member", "docs"], agyFast());
     has("unnamed member's pane is labelled with its member name", read(s.herdrLog), "pane rename w9:p1 docs");
     edit(s, (r) => {
       delete m(r, 0).display_name;
@@ -964,8 +975,10 @@ describe("member sessions", () => {
   function fixtureAgy(dir: string, id: string, cwd: string) {
     const db = path.join(dir, "conversation_summaries.db");
     const conn = new Database(db, { create: true });
-    conn.exec("CREATE TABLE conversation_summaries (conversation_id TEXT, workspace_uris TEXT)");
-    conn.query("INSERT INTO conversation_summaries (conversation_id, workspace_uris) VALUES (?, ?)").run(id, JSON.stringify([`file://${cwd}`]));
+    conn.exec("CREATE TABLE conversation_summaries (conversation_id TEXT, workspace_uris TEXT, last_user_input_time INTEGER)");
+    // Dated ahead of the launch below, so the row counts as newer than the
+    // launch start the way a conversation started by the launch would.
+    conn.query("INSERT INTO conversation_summaries (conversation_id, workspace_uris, last_user_input_time) VALUES (?, ?, ?)").run(id, JSON.stringify([`file://${cwd}`]), Date.now() + 120000);
     conn.close();
   }
 

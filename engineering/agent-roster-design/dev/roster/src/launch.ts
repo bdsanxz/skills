@@ -46,7 +46,7 @@ import {
   writeIdentity,
   writeInstructions,
 } from "./roster";
-import { findSession, qoderWaitConfig, sessionLive, validSession, waitForQoderSession } from "./sessions";
+import { findSession, qoderWaitConfig, sessionLive, validSession, waitForAgySession, waitForQoderSession } from "./sessions";
 
 export type LaunchArgs = {
   workspace: string;
@@ -187,10 +187,10 @@ function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session:
 
 /** Record the member's runtime session in roster.json, so rebuild and a later launch
  * know which session is the member's. The id is what the launch established, else the
- * runtime's newest session in the member's directory. For qoder the session file only
- * appears after the member processes its first prompt, so the lookup waits for a file
- * newer than the member's launch start; when none appears nothing is recorded and a
- * NOTE says why. peers send/open never read it. */
+ * runtime's newest session in the member's directory. For qoder the session file, and
+ * for agy the conversation row, only appear after the member processes its first
+ * prompt, so the lookup waits for one newer than the member's launch start; when none
+ * appears nothing is recorded and a NOTE says why. peers send/open never read it. */
 function recordSession(
   args: LaunchArgs,
   roster: Roster,
@@ -211,6 +211,18 @@ function recordSession(
       print(
         `NOTE member ${repr(m.name)}: qoder session id could not be recorded: ` +
           `no new session file appeared within ${within} of the first prompt; ` +
+          `relaunch with --member ${m.name} to record it`,
+      );
+      return;
+    }
+  } else if (m.agent === "agy" || m.agent === "antigravity") {
+    id = waitForAgySession(dir, sinceMs);
+    if (!id) {
+      const cfg = qoderWaitConfig();
+      const within = cfg.timeoutMs >= 1000 ? `${Math.round(cfg.timeoutMs / 1000)} s` : `${cfg.timeoutMs} ms`;
+      print(
+        `NOTE member ${repr(m.name)}: agy session id could not be recorded: ` +
+          `no new conversation appeared within ${within} of the first prompt; ` +
           `relaunch with --member ${m.name} to record it`,
       );
       return;
