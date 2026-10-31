@@ -167,8 +167,24 @@ if [ "$1" = ls ]; then
   exit 0
 fi
 if [ "$1" = run ]; then echo '{"address":"t99","name":"hc-test"}'; exit 0; fi
-if [ "$1" = wait ]; then exit 0; fi
-if [ "$1" = read ]; then exit 0; fi
+if [ "$1" = wait ]; then
+  if [ "\${HC_WAIT:-}" = timeout ]; then echo "hc wait $2: timed out" >&2; exit 1; fi
+  if [ "\${HC_WAIT:-}" = gone ]; then echo "no such terminal $2" >&2; exit 1; fi
+  exit 0
+fi
+if [ "$1" = read ]; then
+  if [ "\${HC_READ_GONE:-}" = 1 ]; then echo "no such terminal $2" >&2; exit 1; fi
+  if grep -q "keys $2 enter" "$HC_LOG" 2>/dev/null; then printf '%s' "\${HC_IDLE_TEXT:-ready > type your message}"; exit 0; fi
+  if [ "\${HC_DIALOG_LATE:-}" = 1 ]; then
+    n=$(grep -c "^read $2" "$HC_LOG")
+    if [ "$n" -ge "\${HC_DIALOG_AFTER:-4}" ]; then echo 'Do you trust the files in this folder?'; exit 0; fi
+    echo "booting $n ..."
+    exit 0
+  fi
+  if [ "\${HC_CHANGING:-}" = 1 ]; then echo "output $(grep -c '^read' "$HC_LOG") $(date +%s%N)"; exit 0; fi
+  printf '%s' "\${HC_READ_TEXT:-}"
+  exit 0
+fi
 if [ "$1" = send ]; then exit 0; fi
 if [ "$1" = keys ]; then exit 0; fi
 echo "unexpected hc call: $*" >&2; exit 9

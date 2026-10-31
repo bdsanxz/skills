@@ -158,16 +158,18 @@ function readOpencodeModelHc(h: Hc, dir: string, member: string, session: string
 
 /** Settle one member's tab, answer its known dialogs, and send the first prompt. */
 function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session: string | null) {
-  const dialogs = agent(m.agent).dialogs;
+  const spec = agent(m.agent);
+  const dialogs = spec.dialogs;
+  const ready = spec.ready;
   if (m.agent === "claude") {
     if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
       h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
     }
-    h.settle(terminal);
+    h.settle(terminal, { dialogs, ready });
     h.sendPrompt(terminal, FIRST_PROMPT);
     return;
   }
-  h.settle(terminal);
+  h.settle(terminal, { dialogs, ready });
   if (m.agent === "opencode" && session) {
     const [provider, , modelId] = partition(m.model ?? "", "/");
     const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
@@ -185,7 +187,7 @@ function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session:
       }
     }
   }
-  h.firstPrompt(terminal, dialogs);
+  h.firstPrompt(terminal, dialogs, ready);
 }
 
 /** Record the member's runtime session in roster.json, so rebuild and a later launch

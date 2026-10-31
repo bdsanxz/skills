@@ -530,6 +530,56 @@ function parseCommand(prog, command, argv) {
   return values;
 }
 
+// src/wait.ts
+var WAIT_MS = 90000;
+var SHORT_WAIT_MS = 1e4;
+var SETTLE_MS = 3000;
+var POLL_MS = 1000;
+function envMs(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "")
+    return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0)
+    return fallback;
+  return Math.floor(n);
+}
+function waitConfig() {
+  return {
+    waitMs: envMs("ROSTER_WAIT_MS", WAIT_MS),
+    shortMs: envMs("ROSTER_SHORT_WAIT_MS", SHORT_WAIT_MS),
+    settleMs: envMs("ROSTER_SETTLE_MS", SETTLE_MS),
+    pollMs: envMs("ROSTER_POLL_MS", POLL_MS)
+  };
+}
+function pollScreen(read, dialogs, ready, cfg, deadline) {
+  const markers = dialogs.map(([marker]) => marker);
+  const want = (ready ?? "").toLowerCase();
+  let last = "\x00";
+  let changedAt = Date.now();
+  for (;; ) {
+    const now = Date.now();
+    const screen = read();
+    if (screen.gone)
+      return "gone";
+    const text = screen.text.toLowerCase();
+    if (text !== last) {
+      last = text;
+      changedAt = now;
+    }
+    if (markers.some((marker) => text.includes(marker)))
+      return "dialog";
+    if (want !== "" && text.includes(want))
+      return "ready";
+    if (strip(text) !== "" && now - changedAt >= cfg.settleMs)
+      return "stable";
+    if (now >= deadline)
+      return "capped";
+    if (cfg.pollMs > 0)
+      sleep(Math.min(cfg.pollMs, Math.max(deadline - now, 0)));
+  }
+}
+
 // src/herdr.ts
 var FIRST_PROMPT = "Read your instructions, then wait for messages from your squad.";
 var TIMEOUT_MS = 120000;
@@ -554,15 +604,15 @@ class Herdr {
     this.session = session;
     this.dryRun = dryRun;
   }
-  call(args, note) {
+  call(args, note, timeoutMs = TIMEOUT_MS) {
     const cmd = ["herdr", "--session", this.session, ...args];
     if (this.dryRun) {
       print("RUN " + shlexJoin(cmd) + (note ? `   # ${note}` : ""));
       return [0, ""];
     }
-    const done = run(cmd, { timeoutMs: TIMEOUT_MS });
+    const done = run(cmd, { timeoutMs });
     if (done.timedOut)
-      throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within 120 s`);
+      throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within ${Math.round(timeoutMs / 1000)} s`);
     return [done.code, done.stdout + done.stderr];
   }
   run(args, note) {
@@ -609,10 +659,34 @@ class Herdr {
       return {};
     }
   }
-  settle(name, pane) {
-    const [code, output] = this.call(["agent", "wait", name, "--until", "idle", "--until", "blocked", "--timeout", "90000"]);
-    if (code !== 0)
-      throw new LaunchError(`${name} in pane ${pane} did not settle within 90 s: ${tail(strip(output), 400)}`);
+  settle(name, pane, want) {
+    const cfg = waitConfig();
+    const args = ["agent", "wait", name, "--until", "idle", "--until", "blocked", "--timeout", String(cfg.shortMs)];
+    if (this.dryRun) {
+      this.call(args);
+      return;
+    }
+    const deadline = Date.now() + cfg.waitMs;
+    if (cfg.shortMs > 0) {
+      const [code, output] = this.call(args, undefined, cfg.shortMs + 30000);
+      if (code === 0)
+        return;
+      if (/no such|not found|unknown|no pane|bad pane|gone/i.test(output)) {
+        throw new LaunchError(`${name} in pane ${pane} is gone while waiting for it: ${tail(strip(output), 400)}`);
+      }
+    }
+    if (pollScreen(() => this.peekAgent(name), want?.dialogs ?? [], want?.ready, cfg, deadline) === "gone") {
+      throw new LaunchError(`${name} in pane ${pane} is gone while waiting for it`);
+    }
+  }
+  peekAgent(name) {
+    const [code, output] = this.call(["agent", "read", name, "--source", "visible"]);
+    if (code !== 0) {
+      if (/no such|not found|unknown|no pane|bad pane|gone/i.test(output))
+        return { gone: true, text: "" };
+      return { gone: false, text: "" };
+    }
+    return { gone: false, text: output };
   }
   opencodeApi(cwd, operation, params = {}, data) {
     const cmd = ["opencode", "api", operation];
@@ -642,14 +716,14 @@ class Herdr {
       throw new LaunchError(`\`${shlexJoin(cmd)}\` printed ${repr(parsed)}, not a JSON object`);
     return parsed;
   }
-  firstPrompt(name, pane, dialogs) {
+  firstPrompt(name, pane, dialogs, ready) {
     if (this.dryRun) {
       for (const [marker, keys] of dialogs) {
         this.run(["agent", "send-keys", name, ...keys], `only when the screen shows ${repr(marker)}`);
       }
     }
     for (let attempt = 0;attempt < dialogs.length + 2; attempt++) {
-      this.settle(name, pane);
+      this.settle(name, pane, { dialogs, ready });
       const [code, output] = this.call(["agent", "prompt", name, FIRST_PROMPT]);
       if (code === 0)
         return;
@@ -940,13 +1014,13 @@ function launchOpencode(h, m, pane, name, dir) {
     throw new LaunchError(`\`opencode api session.create\` returned no session id: ${tail(dumps(created), 400)}`);
   }
   h.startAgent(name, "opencode", pane, ["--session", session]);
-  h.settle(name, pane);
+  h.settle(name, pane, { dialogs, ready: AGENTS.opencode.ready });
   const [provider, , modelId] = partition(m.model, "/");
   const model = { providerID: provider, id: modelId, ...m.effort ? { variant: m.effort } : {} };
   h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
   const now = readOpencodeModel(h, dir, m.name, session);
   if (now === null) {
-    h.firstPrompt(name, pane, dialogs);
+    h.firstPrompt(name, pane, dialogs, AGENTS.opencode.ready);
     return session || null;
   }
   const variant = m.effort || "default";
@@ -954,7 +1028,7 @@ function launchOpencode(h, m, pane, name, dir) {
   if (!h.dryRun && !same) {
     throw new LaunchError(`OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`);
   }
-  h.firstPrompt(name, pane, dialogs);
+  h.firstPrompt(name, pane, dialogs, AGENTS.opencode.ready);
   return session || null;
 }
 function configurePi() {
@@ -972,19 +1046,19 @@ function parsePiModels(output) {
 function launchPi(h, m, pane, name) {
   const args = piArgv(m, sessionLabel(m, name), [PI_ROSTER]).slice(1);
   h.startAgent(name, "pi", pane, args);
-  h.firstPrompt(name, pane, AGENTS.pi.dialogs);
+  h.firstPrompt(name, pane, AGENTS.pi.dialogs, AGENTS.pi.ready);
   return null;
 }
 function launchAgy(h, m, pane, name) {
   const args = agyArgv(m).slice(1);
   h.startAgent(name, "agy", pane, args, true);
-  h.firstPrompt(name, pane, AGENTS.agy.dialogs);
+  h.firstPrompt(name, pane, AGENTS.agy.dialogs, AGENTS.agy.ready);
   return null;
 }
 function launchMuse(h, m, pane, name) {
   const args = museArgv(m).slice(1);
   h.startAgent(name, "muse", pane, args);
-  h.firstPrompt(name, pane, AGENTS.muse.dialogs);
+  h.firstPrompt(name, pane, AGENTS.muse.dialogs, AGENTS.muse.ready);
   return null;
 }
 function parseQoderModels(output) {
@@ -999,7 +1073,7 @@ function parseQoderModels(output) {
 function launchQoder(h, m, pane, name) {
   const args = qoderArgv(m, sessionLabel(m, name)).slice(1);
   h.startAgent(name, "qoder", pane, args, true);
-  h.firstPrompt(name, pane, AGENTS.qoder.dialogs);
+  h.firstPrompt(name, pane, AGENTS.qoder.dialogs, AGENTS.qoder.ready);
   return null;
 }
 var AGENTS = {
@@ -1097,6 +1171,7 @@ var AGENTS = {
     dialogs: [
       ["do you trust the files in this folder", ["enter"]]
     ],
+    ready: "type your message",
     configure: configureQoder,
     launch: launchQoder
   }
@@ -1289,15 +1364,15 @@ class Hc {
   constructor(dryRun) {
     this.dryRun = dryRun;
   }
-  call(args, note) {
+  call(args, note, timeoutMs = TIMEOUT_MS2) {
     const cmd = ["hc", ...args];
     if (this.dryRun) {
       print("RUN " + shlexJoin(cmd) + (note ? `   # ${note}` : ""));
       return [0, ""];
     }
-    const done = run(cmd, { timeoutMs: TIMEOUT_MS2 });
+    const done = run(cmd, { timeoutMs });
     if (done.timedOut)
-      throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within 120 s`);
+      throw new LaunchError(`\`${shlexJoin(cmd)}\` did not answer within ${Math.round(timeoutMs / 1000)} s`);
     return [done.code, done.stdout + done.stderr];
   }
   run(args, note) {
@@ -1365,11 +1440,34 @@ class Hc {
   tabNew(space, tab, folder, argv) {
     return this.appTerminal(["tab.new", "--space", space, "--name", tab, "--folder", folder, "--argv", dumps(argv)], `tab ${tab}`, `<${tab}>`);
   }
-  settle(name) {
-    const [code, output] = this.call(["wait", name, "--timeout", "90"]);
-    if (code !== 0 && /no such terminal|not found|unknown/i.test(output)) {
-      throw new LaunchError(`terminal ${name} is gone while waiting for it: ${tail(strip(output), 400)}`);
+  settle(name, want) {
+    const cfg = waitConfig();
+    const timeout = String(Math.max(1, Math.ceil(cfg.shortMs / 1000)));
+    if (this.dryRun) {
+      this.call(["wait", name, "--timeout", timeout]);
+      return;
     }
+    const deadline = Date.now() + cfg.waitMs;
+    if (cfg.shortMs > 0) {
+      const [code, output] = this.call(["wait", name, "--timeout", timeout], undefined, cfg.shortMs + 30000);
+      if (code === 0)
+        return;
+      if (/no such terminal|not found|unknown/i.test(output)) {
+        throw new LaunchError(`terminal ${name} is gone while waiting for it: ${tail(strip(output), 400)}`);
+      }
+    }
+    if (pollScreen(() => this.peekScreen(name), want?.dialogs ?? [], want?.ready, cfg, deadline) === "gone") {
+      throw new LaunchError(`terminal ${name} is gone while waiting for it`);
+    }
+  }
+  peekScreen(name) {
+    const [code, output] = this.call(["read", name]);
+    if (code !== 0) {
+      if (/no such terminal|not found|unknown/i.test(output))
+        return { gone: true, text: "" };
+      return { gone: false, text: "" };
+    }
+    return { gone: false, text: output };
   }
   readScreen(name) {
     if (this.dryRun)
@@ -1427,14 +1525,14 @@ class Hc {
       throw new LaunchError(`\`${shlexJoin(cmd)}\` printed ${repr(parsed)}, not a JSON object`);
     return parsed;
   }
-  firstPrompt(name, dialogs) {
+  firstPrompt(name, dialogs, ready) {
     if (this.dryRun) {
       for (const [marker, keys] of dialogs) {
         this.sendKeys(name, keys, `only when the screen shows ${repr(marker)}`);
       }
     }
     for (let attempt = 0;attempt < dialogs.length + 2; attempt++) {
-      this.settle(name);
+      this.settle(name, { dialogs, ready });
       const screen = this.readScreen(name).toLowerCase();
       const answer = dialogs.find(([marker]) => screen.includes(marker))?.[1];
       if (!answer) {
@@ -2539,16 +2637,18 @@ function readOpencodeModelHc(h, dir, member, session) {
   }
 }
 function launchHcAgent(h, m, dir, terminal, session) {
-  const dialogs = agent(m.agent).dialogs;
+  const spec = agent(m.agent);
+  const dialogs = spec.dialogs;
+  const ready = spec.ready;
   if (m.agent === "claude") {
     if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
       h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
     }
-    h.settle(terminal);
+    h.settle(terminal, { dialogs, ready });
     h.sendPrompt(terminal, FIRST_PROMPT);
     return;
   }
-  h.settle(terminal);
+  h.settle(terminal, { dialogs, ready });
   if (m.agent === "opencode" && session) {
     const [provider, , modelId] = partition(m.model ?? "", "/");
     const model = { providerID: provider, id: modelId, ...m.effort ? { variant: m.effort } : {} };
@@ -2562,7 +2662,7 @@ function launchHcAgent(h, m, dir, terminal, session) {
       }
     }
   }
-  h.firstPrompt(terminal, dialogs);
+  h.firstPrompt(terminal, dialogs, ready);
 }
 function recordSession(args, roster, m, dir, established, sinceMs) {
   if (args.dryRun)

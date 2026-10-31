@@ -65,6 +65,10 @@ export type Agent = {
   launchSettings: boolean;
   settingsNote?: string;
   dialogs: Dialog[];
+  /** Lower-case substring of the agent's idle input line; when the launch screen
+   * poll sees it, the agent is ready. Only set when the text is verified; when
+   * it is unset, readiness is the settle window. */
+  ready?: string;
   configure: (workspace: string, dir: string, member: Member) => string | null;
   /** Start the member; returns the runtime session id when the launch establishes one, else null. */
   launch: (h: Herdr, member: Member, pane: string, name: string, dir: string) => string | null;
@@ -202,7 +206,7 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
     throw new LaunchError(`\`opencode api session.create\` returned no session id: ${tail(dumps(created), 400)}`);
   }
   h.startAgent(name, "opencode", pane, ["--session", session]);
-  h.settle(name, pane);
+  h.settle(name, pane, { dialogs, ready: AGENTS.opencode!.ready });
   const [provider, , modelId] = partition(m.model, "/");
   const model: JsonObject = { providerID: provider, id: modelId, ...(m.effort ? { variant: m.effort } : {}) };
   h.opencodeApi(dir, "session.switchModel", { sessionID: session }, { model });
@@ -212,7 +216,7 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
   // never aborts the launch: warn and carry on with the first prompt.
   const now = readOpencodeModel(h, dir, m.name, session);
   if (now === null) {
-    h.firstPrompt(name, pane, dialogs);
+    h.firstPrompt(name, pane, dialogs, AGENTS.opencode!.ready);
     return session || null;
   }
   const variant = m.effort || "default";
@@ -222,7 +226,7 @@ function launchOpencode(h: Herdr, m: Member, pane: string, name: string, dir: st
       `OpenCode session ${session} reports model ${repr(now)}, not ${m.model} with variant ${variant}`,
     );
   }
-  h.firstPrompt(name, pane, dialogs);
+  h.firstPrompt(name, pane, dialogs, AGENTS.opencode!.ready);
   // The session this launch created, for roster.json.
   return session || null;
 }
@@ -249,7 +253,7 @@ function launchPi(h: Herdr, m: Member, pane: string, name: string): string | nul
   // and the native /goal. pi's --thinking takes every level.
   const args = piArgv(m, sessionLabel(m, name), [PI_ROSTER]).slice(1);
   h.startAgent(name, "pi", pane, args);
-  h.firstPrompt(name, pane, AGENTS.pi!.dialogs);
+  h.firstPrompt(name, pane, AGENTS.pi!.dialogs, AGENTS.pi!.ready);
   // pi's session id is known only to its runtime; launch records it by lookup instead.
   return null;
 }
@@ -257,7 +261,7 @@ function launchPi(h: Herdr, m: Member, pane: string, name: string): string | nul
 function launchAgy(h: Herdr, m: Member, pane: string, name: string): string | null {
   const args = agyArgv(m).slice(1);
   h.startAgent(name, "agy", pane, args, true);
-  h.firstPrompt(name, pane, AGENTS.agy!.dialogs);
+  h.firstPrompt(name, pane, AGENTS.agy!.dialogs, AGENTS.agy!.ready);
   // The conversation id is known only to its runtime; launch records it by lookup instead.
   return null;
 }
@@ -267,7 +271,7 @@ function launchMuse(h: Herdr, m: Member, pane: string, name: string): string | n
   // cwd is trusted so its AGENTS.md and project skills load without asking.
   const args = museArgv(m).slice(1);
   h.startAgent(name, "muse", pane, args);
-  h.firstPrompt(name, pane, AGENTS.muse!.dialogs);
+  h.firstPrompt(name, pane, AGENTS.muse!.dialogs, AGENTS.muse!.ready);
   // Muse's session id is known only to its runtime; launch records it by lookup instead.
   return null;
 }
@@ -291,7 +295,7 @@ function parseQoderModels(output: string) {
 function launchQoder(h: Herdr, m: Member, pane: string, name: string): string | null {
   const args = qoderArgv(m, sessionLabel(m, name)).slice(1);
   h.startAgent(name, "qoder", pane, args, true);
-  h.firstPrompt(name, pane, AGENTS.qoder!.dialogs);
+  h.firstPrompt(name, pane, AGENTS.qoder!.dialogs, AGENTS.qoder!.ready);
   // Qoder's session id is known only to its runtime; launch records it by lookup instead.
   return null;
 }
@@ -400,6 +404,9 @@ export const AGENTS: Record<string, Agent> = {
     dialogs: [
       ["do you trust the files in this folder", ["enter"]],
     ],
+    // qoder's idle input line, as the launch's owner-reported screen shows; no
+    // test fixture or doc shows another agent's idle line, so only qoder sets one.
+    ready: "type your message",
     configure: configureQoder,
     launch: launchQoder,
   },
