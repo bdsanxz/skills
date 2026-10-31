@@ -81,7 +81,7 @@ Step 5).
 ## Step 3: Spawn an agent
 
 ```bash
-hcx spawn <muse|pi|claude|opencode> [--name N] [--space S] [--folder DIR] [--task TEXT] [--json] [agent flags...]
+hcx spawn <muse|pi|claude|opencode|agy|qoder|...> [--name N] [--space S] [--folder DIR] [--task TEXT] [--json] [agent flags...]
 hcx spawn opencode [--model provider/model] [--variant level] [...]
 ```
 
@@ -91,6 +91,8 @@ hang under the session that started it and is not ended with it.
 ```bash
 hcx spawn muse --yolo
 hcx spawn claude --dangerously-skip-permissions
+hcx spawn agy --dangerously-skip-permissions
+hcx spawn qoder --dangerously-skip-permissions   # runs qodercli
 hcx spawn pi --task "review src/"
 hcx spawn pi --space SWE --name reviewer   # open the tab in another space
 hcx spawn opencode --model provider/model --variant high
@@ -123,8 +125,15 @@ hcx spawn opencode --model provider/model --variant high
    prints one object instead: `name`, `terminal`, `agent`, `space`, `folder`,
    plus `model` and `variant` when given, `tab` when known, and the opencode
    `session` id when one was created.
-6. `hcx spawn --help` prints spawn help. A first argument that is not a known
-   agent is refused.
+6. `hcx spawn --help` prints spawn help, the known agents and where the agents
+   file lives. A first argument that is not a known agent is refused and the
+   error lists the known ones. Built-ins are muse, pi, claude, opencode, agy and
+   qoder (it runs `qodercli`). More agents come from `$HCX_AGENTS_FILE`, else
+   `${XDG_CONFIG_HOME:-~/.config}/hcx/agents.json`: a JSON object mapping an
+   agent name to a command, a string or an argv array
+   (`{"myagent": ["mycmd", "--flag"]}`); a same-named entry overrides a built-in.
+   A malformed file makes only `hcx spawn` fail, with an error naming the file
+   and the key: tell the user to fix it, do not edit it yourself.
 7. `hcx spawn opencode --model provider/model --variant level` checks the model
    and variant against OpenCode's model list first and refuses before any
    session or tab exists when the model is unknown or disabled
@@ -137,7 +146,7 @@ hcx spawn opencode --model provider/model --variant high
    Claude lists "No, exit" first and highlights it, so typing a number or
    sending Enter alone EXITS the session — use `hcx keys <tab> down enter`.
 9. When spawning agents for work, pass the permission-skip flag the user wants
-   (`muse --yolo`, `claude`/`agy` `--dangerously-skip-permissions`): muse
+   (`muse --yolo`, `claude`/`agy`/`qoder` `--dangerously-skip-permissions`): muse
    without it runs in a sandbox that cannot reach the hc core socket, so
    `hcx send` from it fails with `cannot start core: Operation not permitted`.
 
