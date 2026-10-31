@@ -36,7 +36,10 @@ sender footer:
 
 The footer is added when `HC_TERMINAL_ID` is set; without it the text arrives as-is.
 The reply names your tab when that name resolves uniquely back to it, otherwise
-your address. With `--json` (or piped stdout) the result adds the versioned
+your address. Output is text by default: `send` prints one line such as
+`sent to Mira (t5, muse): delivered, status idle, turn 3` (or `not delivered` /
+`delivery unconfirmed` plus the reason). Pass `--json` when a script or you must
+parse the result; then it adds the versioned
 contract-1 fields next to hc's own (`status`, `turn`, `started`, …): `delivered`
 (`true`/`false`/`null`), `route` (`hcx` or `hcx-raw`), `agent` (the target's
 agent kind; an opencode or qoder tab behind a login shell counts as an agent, qoder
@@ -173,17 +176,20 @@ hcx run [hc run args...]
 `--no-parent`), so a terminal you open is not your child. Pass `--parent <tNN>`
 explicitly when you want to be its parent.
 
-Every other command is passed straight to `hc` with inherited stdio, so output,
-errors and exit code are `hc`'s own — including `hcx ls --json`, `hcx read Zytra`
-and unknown commands (which show `hc`'s error). `hcx --version` (`-V`) prints
+Output is text by default and JSON only with `--json`. `hcx ls` prints a table,
+`hcx get` prints `key: value` lines and `hcx keys` prints `sent keys to <addr>`;
+`hcx ls --json`, `hcx get --json` and the like forward hc's JSON. Every other
+command is passed straight to `hc` with inherited stdio, so output, errors and
+exit code are `hc`'s own — including `hcx read Zytra` and unknown commands
+(which show `hc`'s error). `hcx --version` (`-V`) prints
 `hcx <version>` on the first line and `hc <version>` on the second.
 `hcx --version --json` prints the machine contract
 (`hcx`, `hc`, `contract`, `capabilities`): contract 1 with capabilities
 `no-footer`, `agent-only`, `json-delivery`. Check `contract` and the capability
 you need before using a flag an older hcx would read as text; the `send --json`
 fields are part of the same contract and stable within contract 1. hcx's own
-errors follow hc's shape: with `--json`, or whenever stderr is piped, they print
-`{"error":{"kind","message","hint"}}`. Kinds are `ambiguous`, `usage` (exit 2),
+errors print `hcx: <message>` and `hint: <hint>` on stderr by default; with
+`--json` they print `{"error":{"kind","message","hint"}}`. Kinds are `ambiguous`, `usage` (exit 2),
 `not_found` (exit 3), `plain_shell` (exit 4: a refused shell or, with
 `--agent-only`, an unknown kind) and `timeout` (a killed `hc send`: the message
 may have landed, never retry), else `error` (exit 1). `plain_shell`, `timeout`
