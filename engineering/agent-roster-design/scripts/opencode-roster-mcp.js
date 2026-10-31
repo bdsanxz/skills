@@ -23751,6 +23751,7 @@ var GOAL_MAX_CHECKS_DEFAULT = 30;
 var GOAL_EVAL_TIMEOUT_MS_DEFAULT = 60000;
 var GOAL_TRANSCRIPT_CHARS_DEFAULT = 12000;
 var GOAL_MAX_EVAL_FAILURES_DEFAULT = 3;
+var GOAL_RETRY_MS_DEFAULT = 1e4;
 var GOAL_HELPER_TITLE_PREFIX = "roster-goal-eval";
 function envInt(name, fallback, min) {
   const raw = Number(process.env[name]);
@@ -23769,6 +23770,9 @@ function goalTranscriptChars() {
 }
 function goalMaxEvalFailures() {
   return envInt("ROSTER_GOAL_MAX_EVAL_FAILURES", GOAL_MAX_EVAL_FAILURES_DEFAULT, 1);
+}
+function goalRetryMs() {
+  return envInt("ROSTER_GOAL_RETRY_MS", GOAL_RETRY_MS_DEFAULT, 1);
 }
 function buildGoalAckPrompt(condition) {
   return `A session-scoped Stop hook is now active with condition: "${condition}". Briefly acknowledge the goal, then immediately start (or continue) working toward it \u2014 treat the condition itself as your directive and do not pause to ask the user what to do. The hook will block stopping until the condition holds. It auto-clears once the condition is met \u2014 do not tell the user to run \`/goal clear\` after success; that's only for clearing a goal early.`;
@@ -23829,6 +23833,48 @@ function partText(part) {
   }
   return;
 }
+function replyPartText(part) {
+  if (typeof part === "string")
+    return part.length > 0 ? part : undefined;
+  if (part !== null && typeof part === "object") {
+    const record = part;
+    const type = record.type;
+    if (type !== undefined && type !== "text")
+      return;
+    if (typeof record.text === "string" && record.text.length > 0)
+      return record.text;
+  }
+  return;
+}
+function joinReplyParts(chunks) {
+  const texts = chunks.map(replyPartText).filter((entry) => entry !== undefined);
+  return texts.length > 0 ? texts.join(`
+`) : undefined;
+}
+function messageRole(message) {
+  const info = message.info ?? {};
+  return typeof info.role === "string" && info.role || typeof message.role === "string" && message.role || typeof message.type === "string" && message.type || "unknown";
+}
+function extractAssistantText(message) {
+  if (message === null || typeof message !== "object")
+    return;
+  const record = message;
+  if (messageRole(record) !== "assistant")
+    return;
+  const chunks = [];
+  if (Array.isArray(record.parts))
+    chunks.push(...record.parts);
+  if (Array.isArray(record.content))
+    chunks.push(...record.content);
+  if (chunks.length > 0)
+    return joinReplyParts(chunks);
+  for (const key of ["content", "text", "body"]) {
+    if (typeof record[key] === "string" && record[key].length > 0) {
+      return record[key];
+    }
+  }
+  return;
+}
 function describeMessage(message) {
   if (typeof message === "string")
     return { role: "unknown", text: message };
@@ -23881,12 +23927,8 @@ function extractTextFromPromptResult(body) {
       chunks.push(...record.parts);
     if (Array.isArray(record.content))
       chunks.push(...record.content);
-    if (chunks.length > 0) {
-      const texts = chunks.map(partText).filter((entry) => entry !== undefined);
-      if (texts.length > 0)
-        return texts.join(`
-`);
-    }
+    if (chunks.length > 0)
+      return joinReplyParts(chunks);
   }
   return;
 }
@@ -23894,11 +23936,61 @@ function extractTextFromMessages(messages) {
   if (!Array.isArray(messages))
     return;
   for (let index = messages.length - 1;index >= 0; index--) {
-    const described = describeMessage(messages[index]);
-    if (described.role === "assistant" && described.text.trim().length > 0)
-      return described.text;
+    const text = extractAssistantText(messages[index]);
+    if (text !== undefined && text.trim().length > 0)
+      return text;
   }
   return;
+}
+function summarizeHelperMessages(messages) {
+  const roles = [];
+  const partTypes = [];
+  const push = (list, value) => {
+    if (!list.includes(value) && list.length < 12)
+      list.push(value);
+  };
+  if (!Array.isArray(messages))
+    return { roles, partTypes };
+  for (const message of messages) {
+    if (message === null || typeof message !== "object") {
+      push(roles, typeof message);
+      continue;
+    }
+    const record = message;
+    push(roles, messageRole(record));
+    const chunks = [];
+    if (Array.isArray(record.parts))
+      chunks.push(...record.parts);
+    if (Array.isArray(record.content))
+      chunks.push(...record.content);
+    for (const chunk of chunks) {
+      if (typeof chunk === "string")
+        push(partTypes, "string");
+      else if (chunk !== null && typeof chunk === "object") {
+        const type = chunk.type;
+        push(partTypes, typeof type === "string" && type.length > 0 ? type : "untyped");
+      } else
+        push(partTypes, "other");
+    }
+    if (chunks.length === 0) {
+      if (typeof record.text === "string")
+        push(partTypes, "text-field");
+      else if (record.payload !== null && typeof record.payload === "object")
+        push(partTypes, "payload");
+    }
+  }
+  return { roles, partTypes };
+}
+function verdictFailureDetails(reply, prompt, messages) {
+  const summary = summarizeHelperMessages(messages);
+  return {
+    reply_chars: reply.length,
+    reply_equals_prompt: reply.trim() === prompt.trim(),
+    reply_contains_prompt: prompt.length > 0 && reply.includes(prompt),
+    roles: summary.roles,
+    part_types: summary.partTypes,
+    reply_prefix: reply.slice(0, 120)
+  };
 }
 function formatElapsed(ms) {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -23975,17 +24067,23 @@ function createGoalEvaluator(options) {
         signal
       }), "session.prompt");
       let text = extractTextFromPromptResult(answered);
+      if (text !== undefined && text.trim() === prompt.trim())
+        text = undefined;
+      let lastSample = [];
       if (!text) {
+        let previous;
         for (;; ) {
           if (signal.aborted)
             throw new Error(`goal evaluation timed out after ${timeoutMs}ms`);
           const helperMessages = await readJson(await fetchImpl(`${base}/api/session/${encodeURIComponent(helperID)}/message?limit=5&order=desc`, { headers: headers(), signal }), "session.message.list");
           const helperData = Array.isArray(helperMessages?.data) ? helperMessages.data : [];
-          const found = extractTextFromMessages(helperData);
-          if (found) {
+          lastSample = helperData;
+          const found = extractTextFromMessages([...helperData].reverse());
+          if (found !== undefined && found === previous) {
             text = found;
             break;
           }
+          previous = found;
           await new Promise((resolve, reject) => {
             const timer = setTimeout(resolve, 1000);
             if (signal.aborted) {
@@ -24002,7 +24100,13 @@ function createGoalEvaluator(options) {
       }
       if (!text)
         throw new Error("goal evaluation failed: helper session returned no text");
-      return parseGoalVerdict(text);
+      try {
+        return parseGoalVerdict(text);
+      } catch (error) {
+        const enriched = new Error(error instanceof Error ? error.message : String(error));
+        enriched.details = verdictFailureDetails(text, prompt, lastSample);
+        throw enriched;
+      }
     } catch (error) {
       if (signal.aborted)
         throw new Error(`goal evaluation timed out after ${timeoutMs}ms`);
@@ -24083,6 +24187,28 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
   const jobs = new Map;
   const goals = new Map;
   const goalGenerations = new Map;
+  const goalRetries = new Map;
+  function clearGoalRetry(sessionID) {
+    const timer = goalRetries.get(sessionID);
+    if (timer !== undefined)
+      clearTimeout(timer);
+    goalRetries.delete(sessionID);
+  }
+  async function scheduleGoalRetry(sessionID, generation) {
+    clearGoalRetry(sessionID);
+    const delayMs = goalRetryMs();
+    const timer = setTimeout(() => {
+      goalRetries.delete(sessionID);
+      const current = goals.get(sessionID);
+      if (!current || current.generation !== generation)
+        return;
+      const check = runGoalCheck(sessionID);
+      goalChecks.add(check);
+      check.then(() => goalChecks.delete(check), () => goalChecks.delete(check));
+    }, delayMs);
+    goalRetries.set(sessionID, timer);
+    await log("goal_retry_scheduled", sessionID, { delay_ms: delayMs, generation });
+  }
   const helpers = new Set;
   const goalChecks = new Set;
   const busy = new Set;
@@ -24160,6 +24286,7 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
     const existing = goals.get(sessionID);
     goalGenerations.set(sessionID, (goalGenerations.get(sessionID) ?? 0) + 1);
     goals.delete(sessionID);
+    clearGoalRetry(sessionID);
     await log("goal_cleared", sessionID, { condition: condition ?? existing?.condition, reason });
   }
   function sessionHasPendingTick(sessionID) {
@@ -24201,6 +24328,7 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
     }
     const generation = goal.generation;
     goal.evalInFlight = true;
+    clearGoalRetry(sessionID);
     const started = clock();
     try {
       const verdict = await options.evaluate(sessionID, goal.condition);
@@ -24230,13 +24358,16 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
         return;
       current.evalFailures += 1;
       const message = error instanceof Error ? error.message : String(error);
-      await log("goal_eval_failed", sessionID, { condition: current.condition, error: message, failures: current.evalFailures });
+      const failureDetails = error?.details;
+      await log("goal_eval_failed", sessionID, { condition: current.condition, error: message, failures: current.evalFailures, ...failureDetails ?? {} });
       if (current.evalFailures >= goalMaxEvalFailures()) {
         const condition = current.condition;
         const failures = current.evalFailures;
         await clearGoal(sessionID, "eval_failed", condition);
         await log("goal_cap_reached", sessionID, { condition, reason: "eval_failed", failures });
         await deliver(sessionID, buildGoalEvalFailedPrompt(condition), "Goal", goalKey(sessionID));
+      } else {
+        await scheduleGoalRetry(sessionID, generation);
       }
     } finally {
       const current = goals.get(sessionID);
@@ -24430,6 +24561,7 @@ function createRosterHandlers(inject, log, clock = () => Date.now(), options = {
           const replaced = goals.has(sessionID);
           const generation = (goalGenerations.get(sessionID) ?? 0) + 1;
           goalGenerations.set(sessionID, generation);
+          clearGoalRetry(sessionID);
           goals.set(sessionID, { condition, setAt: clock(), checks: 0, evalFailures: 0, evalInFlight: false, generation, lastReason: undefined });
           await log("goal_set", sessionID, { condition, replaced });
           await deliver(sessionID, buildGoalAckPrompt(condition), "Goal", goalKey(sessionID));

@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { applyGoalSet, buildEvaluatorPrompt, buildGoalAck, buildGoalFeedback, capTranscript, formatGoalAchieved, formatGoalElapsed, formatGoalStatus, goalElapsedMs, goalEvalTimeoutFromEnv, goalEvaluatorSystemPrompt, goalMaxChecksFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, parseEvaluatorVerdict, parseGoalCommand, shouldApplyEvalResult, shouldSkipGoalCheck, transcriptToText, clampDelay, decideTick, earliestDueMs, findDynamicByTask, findIntervalDuplicate, findLoopById, formatLoopList, isCapReached, isPendingExpired, maxLoopsFromEnv, nextLoopId, parseInterval, parseLoopCommand, pendingMaxMsFromEnv, replaceTimer, resolveDynamicTarget, shouldClearOnIdle, statusText, tickMessage, userMessageText, shouldLogGoalScheduleCall } from "./logic";
+import { applyGoalSet, buildEvaluatorPrompt, buildGoalAck, buildGoalFeedback, capTranscript, formatGoalAchieved, formatGoalElapsed, formatGoalStatus, goalElapsedMs, goalEvalTimeoutFromEnv, goalEvaluatorSystemPrompt, goalMaxChecksFromEnv, goalRetryMsFromEnv, goalTranscriptMaxFromEnv, isGoalCapReached, isGoalEvalGiveUp, parseEvaluatorVerdict, parseGoalCommand, shouldApplyEvalResult, shouldScheduleGoalRetry, shouldSkipGoalCheck, transcriptToText, clampDelay, decideTick, earliestDueMs, findDynamicByTask, findIntervalDuplicate, findLoopById, formatLoopList, isCapReached, isPendingExpired, maxLoopsFromEnv, nextLoopId, parseInterval, parseLoopCommand, pendingMaxMsFromEnv, replaceTimer, resolveDynamicTarget, shouldClearOnIdle, statusText, tickMessage, userMessageText, shouldLogGoalScheduleCall } from "./logic";
 import type { GoalState, LoopMode, LoopSummary } from "./logic";
 
 export default function (pi: ExtensionAPI) {
@@ -54,6 +54,18 @@ export default function (pi: ExtensionAPI) {
     if (goalTimer !== undefined) clearInterval(goalTimer);
     goalTimer = undefined;
     goalTimerCtx = undefined;
+  };
+  // One pending evaluator-failure retry. A failed check ends the chain of
+  // turns (no followUp is injected), so without this timer the goal would
+  // stall forever; the retry re-runs the check once after
+  // ROSTER_GOAL_RETRY_MS instead of waiting for an agent_end that never
+  // comes. Cancelled by clear/replace/shutdown (generation guard) and still
+  // bounded by the give-up cap.
+  let goalRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  const goalRetryMs = (): number => goalRetryMsFromEnv(process.env.ROSTER_GOAL_RETRY_MS);
+  const clearGoalRetry = (): void => {
+    if (goalRetryTimer !== undefined) clearTimeout(goalRetryTimer);
+    goalRetryTimer = undefined;
   };
   const startGoalTimer = (ctx: any): void => {
     stopGoalTimer();
@@ -206,7 +218,7 @@ export default function (pi: ExtensionAPI) {
       }
     }
   });
-  pi.on("agent_end", async (_event, ctx) => {
+  const runGoalEval = async (ctx: any): Promise<void> => {
     // Session Stop hook: evaluate the active goal after every agent turn.
     // Every branch logs (goal_eval_skip / goal_skipped_background /
     // goal_eval_stale / goal_eval_start / goal_check / goal_eval_failed /
@@ -242,6 +254,8 @@ export default function (pi: ExtensionAPI) {
     const condition = goal.condition;
     log("goal_eval_start", { condition, generation }, ctx);
     goalEvaluating = true;
+    // A fresh evaluation supersedes any pending failure retry.
+    clearGoalRetry();
     const abort = new AbortController();
     goalAbort = abort;
     const timer = setTimeout(() => abort.abort(), goalEvalTimeoutMs());
@@ -251,6 +265,7 @@ export default function (pi: ExtensionAPI) {
       goal = undefined;
       goalGeneration++;
       abortGoalEval();
+      clearGoalRetry();
       stopGoalTimer();
       refreshGoalStatus(ctx);
       log(event, details, ctx);
@@ -286,9 +301,13 @@ export default function (pi: ExtensionAPI) {
       const verdict = parseEvaluatorVerdict(text);
       if (!verdict) {
         active.evalFailures++;
-        log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures }, ctx);
+        // Forensics are the reply only: size plus the first 120 chars of the
+        // evaluator's reply. Never the transcript or condition text.
+        log("goal_eval_failed", { reason: "unparseable_verdict", condition, duration_ms: durationMs, eval_failures: active.evalFailures, reply_chars: text.length, reply_prefix: text.slice(0, 120) }, ctx);
         if (isGoalEvalGiveUp(active.evalFailures)) {
           clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup", elapsed_ms: goalElapsedMs(active.setAtMs, Date.now()), eval_failures: active.evalFailures }, `Goal cleared after ${active.evalFailures} failed evaluations: ${condition}`, "error");
+        } else {
+          scheduleGoalRetry(ctx);
         }
         return;
       }
@@ -325,6 +344,8 @@ export default function (pi: ExtensionAPI) {
       log("goal_eval_failed", { reason: error instanceof Error ? error.message : String(error), condition, duration_ms: durationMs, eval_failures: goal.evalFailures }, ctx);
       if (isGoalEvalGiveUp(goal.evalFailures)) {
         clearActiveGoal("goal_cleared", { condition, reason: "eval_failed_giveup", elapsed_ms: goalElapsedMs(goal.setAtMs, Date.now()), eval_failures: goal.evalFailures }, `Goal cleared after ${goal.evalFailures} failed evaluations: ${condition}`, "error");
+      } else {
+        scheduleGoalRetry(ctx);
       }
     } finally {
       clearTimeout(timer);
@@ -332,7 +353,24 @@ export default function (pi: ExtensionAPI) {
       if (goalAbort === abort) goalAbort = undefined;
       goalEvaluating = false;
     }
-  });
+  };
+  const scheduleGoalRetry = (ctx: any): void => {
+    if (!goal || !shouldScheduleGoalRetry(goal.evalFailures)) return;
+    const generation = goalGeneration;
+    const delayMs = goalRetryMs();
+    clearGoalRetry();
+    const timer = setTimeout(() => {
+      goalRetryTimer = undefined;
+      // Clear/replace/shutdown during the wait wins: a stale retry never
+      // evaluates a goal that is gone or has moved on.
+      if (!goal || generation !== goalGeneration) return;
+      void runGoalEval(ctx);
+    }, delayMs);
+    goalRetryTimer = timer;
+    try { (timer as unknown as { unref?: () => unknown }).unref?.(); } catch { /* ignore */ }
+    log("goal_retry_scheduled", { delay_ms: delayMs, generation, eval_failures: goal.evalFailures }, ctx);
+  };
+  pi.on("agent_end", async (_event, ctx) => { await runGoalEval(ctx); });
   pi.registerCommand("goal", {
     description: "Set a session completion condition checked by a Stop hook evaluator",
     handler: async (args, ctx) => {
@@ -351,6 +389,7 @@ export default function (pi: ExtensionAPI) {
           goal = undefined;
           goalGeneration++;
           abortGoalEval();
+          clearGoalRetry();
           stopGoalTimer();
           refreshGoalStatus(ctx);
           log("goal_cleared", { condition, reason: "user /goal clear", elapsed_ms: elapsedMs }, ctx);
@@ -359,6 +398,7 @@ export default function (pi: ExtensionAPI) {
         }
         goalGeneration++;
         abortGoalEval();
+        clearGoalRetry();
         goal = applyGoalSet(command.condition, Date.now());
         log("goal_set", { condition: command.condition }, ctx);
         refreshGoalStatus(ctx);
@@ -512,6 +552,7 @@ export default function (pi: ExtensionAPI) {
     goal = undefined;
     goalGeneration++;
     abortGoalEval();
+    clearGoalRetry();
     stopGoalTimer();
     refreshGoalStatus(ctx);
   });
