@@ -5,15 +5,15 @@
 //
 // Liveness is what the runtime lists right now: an opencode session the service lists,
 // a claude session `claude agents` lists, a muse session whose lease process still runs.
-// agy conversations and pi session files persist after their sessions end, so an outside
-// process cannot tell a live one: for those runtimes liveness is unknown (null) and no
-// warning is printed.
+// agy conversations, pi session files and qoder session files persist after their
+// sessions end, so an outside process cannot tell a live one: for those runtimes
+// liveness is unknown (null) and no warning is printed.
 
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { run, which } from "./core";
+import { run, sleep, which } from "./core";
 
 /** A recorded member session, as roster.json holds it. */
 export interface MemberSession {
@@ -265,6 +265,106 @@ function museLive(id: string): boolean | null {
   }
 }
 
+/** Where Qoder CLI keeps its data; QODER_CONFIG_DIR (its --config-dir) names another root. */
+function qoderHome(): string {
+  return envNonempty("QODER_CONFIG_DIR") ?? path.join(home(), ".qoder");
+}
+
+/** Qoder's directory for a project: the working directory with every
+ * non-alphanumeric as a dash (qodercli 1.1.81; names past 200 characters are cut
+ * there with a base-36 hash of the full path). */
+function qoderProjectDir(cwd: string): string {
+  const name = canonical(cwd).replace(/[^a-zA-Z0-9]/g, "-");
+  if (name.length <= 200) return name;
+  let hash = 5381;
+  const full = canonical(cwd);
+  for (let index = 0; index < full.length; index++) hash = (hash * 33) ^ full.charCodeAt(index);
+  return `${name.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
+}
+
+/** Saved qoder sessions with both file times, oldest change first. Each session is
+ * one <id>.jsonl file in the project's directory; the files outlive their runs. */
+function qoderSessionFiles(cwd: string): { id: string; modified: number; born: number }[] {
+  const root = path.join(qoderHome(), "projects", qoderProjectDir(cwd));
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: { id: string; modified: number; born: number }[] = [];
+  for (const e of entries) {
+    if (e.isDirectory() || !e.name.endsWith(".jsonl")) continue;
+    let modified = 0;
+    let born = 0;
+    try {
+      const st = fs.statSync(path.join(root, e.name));
+      modified = st.mtimeMs;
+      born = st.birthtimeMs;
+    } catch {
+      continue;
+    }
+    out.push({ id: e.name.slice(0, -".jsonl".length), modified, born });
+  }
+  out.sort((a, b) => a.modified - b.modified);
+  return out;
+}
+
+/** Saved qoder sessions, oldest change first: their id each. Each session is one
+ * <id>.jsonl file in the project's directory; the files outlive their runs. */
+function qoderSessions(cwd: string): { id: string; modified: number }[] {
+  return qoderSessionFiles(cwd).map(({ id, modified }) => ({ id, modified }));
+}
+
+function parseWaitEnv(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
+
+/** How long launch waits for a new qoder session file after the first prompt,
+ * and how often it looks. Both are injectable for tests through the environment;
+ * a zero timeout means a single lookup with no sleep. */
+export function qoderWaitConfig(): { timeoutMs: number; intervalMs: number } {
+  return {
+    timeoutMs: parseWaitEnv(process.env.ROSTER_QODER_WAIT_MS, 30000),
+    intervalMs: parseWaitEnv(process.env.ROSTER_QODER_INTERVAL_MS, 1000),
+  };
+}
+
+/** The newest qoder session id whose file is at or after `sinceMs` (mtime or
+ * birthtime), or null. A file older than the launch start belongs to an earlier
+ * run and must not count as the new member's session. */
+export function findQoderSessionSince(cwd: string, sinceMs: number): string | null {
+  const mine = qoderSessionFiles(cwd).filter((s) => s.modified >= sinceMs || s.born >= sinceMs);
+  return mine.length ? mine[mine.length - 1]!.id : null;
+}
+
+/** Poll for the qoder session file newer than `sinceMs` until it appears or the
+ * timeout passes. The file only appears after the member processes its first
+ * prompt, so the lookup runs after that prompt was delivered. Returns the newest
+ * matching id, or null when none appears in time. */
+export function waitForQoderSession(
+  cwd: string,
+  sinceMs: number,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): string | null {
+  const cfg = qoderWaitConfig();
+  const timeoutMs = opts?.timeoutMs ?? cfg.timeoutMs;
+  const intervalMs = opts?.intervalMs ?? cfg.intervalMs;
+  const start = Date.now();
+  for (;;) {
+    const found = findQoderSessionSince(cwd, sinceMs);
+    if (found) return found;
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs) return null;
+    const remaining = timeoutMs - elapsed;
+    if (remaining <= 0) return null;
+    if (intervalMs > 0) sleep(Math.min(intervalMs, remaining));
+  }
+}
+
 /** The id of the runtime's newest session working in `cwd`, or null when none is known. */
 export function findSession(runtime: string, cwd: string): string | null {
   try {
@@ -296,6 +396,10 @@ export function findSession(runtime: string, cwd: string): string | null {
         for (const s of museSessions()) if (match(s.dir)) found = s.id;
         return found;
       }
+      case "qoder": {
+        const mine = qoderSessions(cwd);
+        return mine.length ? mine[mine.length - 1]!.id : null;
+      }
       default:
         return null;
     }
@@ -326,6 +430,8 @@ export function sessionLive(runtime: string, id: string): boolean | null {
         }
         return museLive(id);
       }
+      case "qoder":
+        return null;
       default:
         return null;
     }

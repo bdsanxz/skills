@@ -846,6 +846,9 @@ function configureAgy() {
 function configureMuse() {
   return null;
 }
+function configureQoder() {
+  return null;
+}
 function claudeBaseArgv(m, label) {
   const cmd = ["claude", "--dangerously-skip-permissions", "-n", label];
   if (m.model)
@@ -884,6 +887,14 @@ function museArgv(m) {
     args.push("--model", m.model);
   if (m.effort)
     args.push("--effort", m.effort);
+  return args;
+}
+function qoderArgv(m, label) {
+  const args = ["qodercli", "--dangerously-skip-permissions", "-n", label];
+  if (m.model)
+    args.push("-m", m.model);
+  if (m.effort)
+    args.push("--reasoning-effort", m.effort);
   return args;
 }
 function launchClaude(h, m, pane, name) {
@@ -976,6 +987,21 @@ function launchMuse(h, m, pane, name) {
   h.firstPrompt(name, pane, AGENTS.muse.dialogs);
   return null;
 }
+function parseQoderModels(output) {
+  const ids = [];
+  for (const line of output.split(/\r?\n/)) {
+    const id = strip(line).split(/\s+/)[0];
+    if (id && id.toLowerCase() !== "model")
+      ids.push(id);
+  }
+  return ids;
+}
+function launchQoder(h, m, pane, name) {
+  const args = qoderArgv(m, sessionLabel(m, name)).slice(1);
+  h.startAgent(name, "qoder", pane, args, true);
+  h.firstPrompt(name, pane, AGENTS.qoder.dialogs);
+  return null;
+}
 var AGENTS = {
   claude: {
     label: "Claude Code",
@@ -1055,6 +1081,24 @@ var AGENTS = {
     dialogs: [],
     configure: configureMuse,
     launch: launchMuse
+  },
+  qoder: {
+    label: "Qoder CLI",
+    command: "qodercli",
+    instructions: "AGENTS.md",
+    imports: false,
+    skillsDir: join(".qoder", "skills"),
+    skillsCli: "qoder",
+    modelPattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    modelHint: "a model id from `qodercli --list-models`, such as Qwen3.8-Flash",
+    listModels: ["qodercli", "--list-models"],
+    parseModels: parseQoderModels,
+    launchSettings: true,
+    dialogs: [
+      ["do you trust the files in this folder", ["enter"]]
+    ],
+    configure: configureQoder,
+    launch: launchQoder
   }
 };
 var LEGACY_AGENTS = { antigravity: "agy" };
@@ -1136,8 +1180,9 @@ function parseVariants(output, why) {
   }
 }
 function effortLevels(member) {
-  if (member.agent === "claude" || member.agent === "pi" || member.agent === "muse")
+  if (member.agent === "claude" || member.agent === "pi" || member.agent === "muse" || member.agent === "qoder") {
     return [new Set(LEVELS), null];
+  }
   if (!member.model) {
     return [
       null,
@@ -1767,6 +1812,85 @@ function museLive(id) {
     return false;
   }
 }
+function qoderHome() {
+  return envNonempty("QODER_CONFIG_DIR") ?? path3.join(home2(), ".qoder");
+}
+function qoderProjectDir(cwd) {
+  const name = canonical(cwd).replace(/[^a-zA-Z0-9]/g, "-");
+  if (name.length <= 200)
+    return name;
+  let hash = 5381;
+  const full = canonical(cwd);
+  for (let index = 0;index < full.length; index++)
+    hash = hash * 33 ^ full.charCodeAt(index);
+  return `${name.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
+}
+function qoderSessionFiles(cwd) {
+  const root = path3.join(qoderHome(), "projects", qoderProjectDir(cwd));
+  let entries = [];
+  try {
+    entries = fs4.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const e of entries) {
+    if (e.isDirectory() || !e.name.endsWith(".jsonl"))
+      continue;
+    let modified = 0;
+    let born = 0;
+    try {
+      const st = fs4.statSync(path3.join(root, e.name));
+      modified = st.mtimeMs;
+      born = st.birthtimeMs;
+    } catch {
+      continue;
+    }
+    out.push({ id: e.name.slice(0, -".jsonl".length), modified, born });
+  }
+  out.sort((a, b) => a.modified - b.modified);
+  return out;
+}
+function qoderSessions(cwd) {
+  return qoderSessionFiles(cwd).map(({ id, modified }) => ({ id, modified }));
+}
+function parseWaitEnv(raw, fallback) {
+  if (raw === undefined || raw.trim() === "")
+    return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0)
+    return fallback;
+  return Math.floor(n);
+}
+function qoderWaitConfig() {
+  return {
+    timeoutMs: parseWaitEnv(process.env.ROSTER_QODER_WAIT_MS, 30000),
+    intervalMs: parseWaitEnv(process.env.ROSTER_QODER_INTERVAL_MS, 1000)
+  };
+}
+function findQoderSessionSince(cwd, sinceMs) {
+  const mine = qoderSessionFiles(cwd).filter((s) => s.modified >= sinceMs || s.born >= sinceMs);
+  return mine.length ? mine[mine.length - 1].id : null;
+}
+function waitForQoderSession(cwd, sinceMs, opts) {
+  const cfg = qoderWaitConfig();
+  const timeoutMs = opts?.timeoutMs ?? cfg.timeoutMs;
+  const intervalMs = opts?.intervalMs ?? cfg.intervalMs;
+  const start = Date.now();
+  for (;; ) {
+    const found = findQoderSessionSince(cwd, sinceMs);
+    if (found)
+      return found;
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs)
+      return null;
+    const remaining = timeoutMs - elapsed;
+    if (remaining <= 0)
+      return null;
+    if (intervalMs > 0)
+      sleep(Math.min(intervalMs, remaining));
+  }
+}
 function findSession(runtime, cwd) {
   try {
     const want = canonical(cwd);
@@ -1805,6 +1929,10 @@ function findSession(runtime, cwd) {
             found = s.id;
         return found;
       }
+      case "qoder": {
+        const mine = qoderSessions(cwd);
+        return mine.length ? mine[mine.length - 1].id : null;
+      }
       default:
         return null;
     }
@@ -1834,6 +1962,8 @@ function sessionLive(runtime, id) {
         }
         return museLive(id);
       }
+      case "qoder":
+        return null;
       default:
         return null;
     }
@@ -2384,6 +2514,8 @@ function hcMemberArgv(h, m, dir, label) {
       return { argv: agyArgv(m), session: null };
     case "muse":
       return { argv: museArgv(m), session: null };
+    case "qoder":
+      return { argv: qoderArgv(m, label), session: null };
     default:
       throw new LaunchError(`unknown agent ${repr(m.agent)} for member ${repr(m.name)}`);
   }
@@ -2432,10 +2564,25 @@ function launchHcAgent(h, m, dir, terminal, session) {
   }
   h.firstPrompt(terminal, dialogs);
 }
-function recordSession(args, roster, m, dir, established) {
+function recordSession(args, roster, m, dir, established, sinceMs) {
   if (args.dryRun)
     return;
-  const id = established ?? findSession(m.agent, dir);
+  let id;
+  if (established) {
+    id = established;
+  } else if (m.agent === "qoder") {
+    id = waitForQoderSession(dir, sinceMs);
+    if (!id) {
+      const cfg = qoderWaitConfig();
+      const within = cfg.timeoutMs >= 1000 ? `${Math.round(cfg.timeoutMs / 1000)} s` : `${cfg.timeoutMs} ms`;
+      print(`NOTE member ${repr(m.name)}: qoder session id could not be recorded: ` + `no new session file appeared within ${within} of the first prompt; ` + `relaunch with --member ${m.name} to record it`);
+      return;
+    }
+  } else {
+    id = findSession(m.agent, dir);
+    if (!id)
+      return;
+  }
   if (!id)
     return;
   const raw = roster.members.find((r) => r.name === m.name);
@@ -2676,6 +2823,7 @@ function cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultS
         continue;
       const m = byName.get(tab.member);
       failed = [m, null];
+      const memberStart = Date.now();
       const dir = join(workspace, m.cwd);
       const label = display(m);
       const { argv, session } = hcMemberArgv(h, m, dir, sessionLabel(m, `${squad}-${m.name}`));
@@ -2694,7 +2842,7 @@ function cmdLaunchHc(args, workspace, roster, members, tabs, terminals, defaultS
       launched.push([m, terminal]);
       const settings = agent(m.agent).launchSettings ? `model ${m.model || "the agent's own default"}, effort ${m.effort || "the agent's own default"}` : `model and effort managed by ${agent(m.agent).label}`;
       print(`${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${m.name}${shown(m)} (${m.agent}, ${settings}) ` + `in Herdr app space ${space}, tab ${repr(label)} (terminal ${terminal})`);
-      recordSession(args, roster, m, dir, h.dryRun ? null : session);
+      recordSession(args, roster, m, dir, h.dryRun ? null : session, memberStart);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed)
@@ -2823,6 +2971,7 @@ function cmdLaunch(args, defaultSources) {
         continue;
       }
       let pane;
+      const memberStart = Date.now();
       [ws, pane] = openTab(h, roster, workspace, m, ws);
       waiting.set(n, pane);
       failed = [m, pane];
@@ -2833,7 +2982,7 @@ function cmdLaunch(args, defaultSources) {
       launched.push([m, pane]);
       const settings = spec.launchSettings ? `model ${m.model || "the agent's own default"}, effort ${m.effort || "the agent's own default"}` : `model and effort managed by ${spec.label}`;
       print(`${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${n}${shown(m)} (${m.agent}, ${settings}) ` + `in herdr session ${session}, tab ${tab.number} ${repr(display(m))}, pane ${pane}`);
-      recordSession(args, roster, m, dir, established);
+      recordSession(args, roster, m, dir, established, memberStart);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed)
@@ -2929,8 +3078,8 @@ var CHECK = {
   description: `
 Use it after writing roster.json and the member files, and again after every fix, until it
 prints OK. Validates each member's agent (${AGENT_NAMES}), model and effort: the model must
-have the agent's form, and for opencode, agy and pi it must be one that \`opencode models\`,
-\`agy models\` or \`pi --list-models\` lists (a NOTE says when the CLI is missing); the effort
+have the agent's form, and for opencode, agy, pi and qoder it must be one that \`opencode models\`,
+\`agy models\`, \`pi --list-models\` or \`qodercli --list-models\` lists (a NOTE says when the CLI is missing); the effort
 (${LEVEL_NAMES}) must be
 one the agent and model support (opencode: the model's variants in \`opencode api model.list\`).
 A defaults.effort a member cannot use moves to its nearest level, with a NOTE.
@@ -2966,7 +3115,7 @@ var ASSEMBLE = {
   description: `
 Use it after roster.json changes (a summary, reports_to, agent, model, effort or display
 name), since every member's squad directory shows them. Writes CLAUDE.md (claude) or
-AGENTS.md (opencode, agy, pi), which references the member's four files by path and lists the
+AGENTS.md (opencode, agy, pi, muse, qoder), which references the member's four files by path and lists the
 squad with each member's display name, agent, model and effort, and .peers.json, which
 records the member's role, display name, agent, model and effort. Installs nothing.`,
   positionals: [WORKSPACE],
@@ -3006,7 +3155,7 @@ own setup: for opencode it merges only the loop entry
 (mcp.servers.roster: the sidecar command, ROSTER_LOG and codemode false) into its opencode.json,
 keeping every other key, and places the loop plugin under .opencode/plugins/.
 For a pi member nothing needs writing, since launch loads its loop extension
-with -e. Claude, agy and muse members need no per-agent files.
+with -e. Claude, agy, muse and qoder members need no per-agent files.
 Peers needs no per-agent setup: every notification arrives through one herdr agent prompt.
 It never writes a model or effort into an opencode member's
 opencode.json, and never overwrites the file: a second build changes nothing. Needs npx (Node.js).`,
@@ -3054,7 +3203,8 @@ hierarchy order, the supervisor first. Each tab holds one pane that fills it, so
 dialogs are read at full size. It starts each member with its agent's own command, model and
 effort: claude --model --effort, agy --model --effort,
 pi --model --thinking (with --approve and the loop extension, -e, from this skill's
-scripts/), and for opencode, whose TUI takes
+scripts/), qoder -m --reasoning-effort (with --dangerously-skip-permissions),
+and for opencode, whose TUI takes
 neither flag, OpenCode's API: it creates the member's session (its loop tools come from the
 sidecar and plugin the build placed, so the command line needs no extra flag), opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
@@ -3147,8 +3297,9 @@ files:
   reads   <workspace>/roster.json, and PROJECT.md, ROLE.md, COMMUNICATIONS.md and
           MEMORY.md in each member's <workspace>/<cwd>/
   writes  assemble, build and launch: each member's CLAUDE.md or AGENTS.md, and its
-          .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
-          opencode, agy, pi and muse), for
+          .peers.json. build: its skills (.claude/skills/ for claude,
+          .agents/skills/ for opencode, agy, pi and muse, .qoder/skills/ for
+          qoder), for
           opencode its opencode.json (only the
           mcp.servers.roster entry) and .opencode/plugins/, and the peers
           and agent-shell CLIs in ~/.local/bin when they are missing.
@@ -3180,7 +3331,8 @@ agent, model and effort, highest precedence first:
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
   pi --model and --thinking (with the loop extension);
-  muse --model and --effort;
+  muse --model and --effort; qoder -m and --reasoning-effort (with
+  --dangerously-skip-permissions);
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
@@ -3191,8 +3343,9 @@ agent, model and effort, highest precedence first:
   effort there.
 
 effort levels:
-  ${LEVEL_NAMES}. claude, pi and muse take every level for every
-  model (pi clamps it to what the model supports); opencode the
+  ${LEVEL_NAMES}. claude, pi, muse and qoder take every level for every
+  model (pi clamps it to what the model supports; qoder validates it against
+  the model itself at startup); opencode the
   model's variants that are levels (from \`opencode api model.list\`); agy the levels
   \`agy models\` lists for the model. opencode and agy need a model for an effort level,
   to check it. A level the member's own "effort" or --effort names that its agent and
@@ -3203,7 +3356,8 @@ effort levels:
 a mixed team in roster.json:
   A Claude lead on opus at high effort, an OpenCode member on beam-free at low effort,
   an OpenCode member on whatever its opencode.json or /models sets, an agy member on
-  Gemini Flash at medium effort, and a pi member on Claude Opus at high thinking:
+  Gemini Flash at medium effort, a pi member on Claude Opus at high thinking,
+  and a qoder member on Qwen Flash at medium effort:
     "members": [
       {"name": "lead", "display_name": "Lena", "agent": "claude", "model": "opus",
        "effort": "high", ...},
@@ -3213,7 +3367,9 @@ a mixed team in roster.json:
       {"name": "web", "agent": "agy", "model": "gemini-3.8-flash",
        "effort": "medium", ...},
       {"name": "review", "agent": "pi", "model": "anthropic/claude-opus-4-8",
-       "effort": "high", ...}]
+       "effort": "high", ...},
+      {"name": "bench", "agent": "qoder", "model": "Qwen3.8-Flash",
+       "effort": "medium", ...}]
 
 layout:
   The whole squad lives in one herdr workspace, squad-<squad>, with one tab per member.
