@@ -87,6 +87,13 @@ function configureMuse() {
   return null;
 }
 
+/** Qoder needs no per-member files: its /loop and /goal are built in, every notification
+ * arrives through one `herdr agent prompt` typed into its TUI, and its skills load from
+ * the .qoder/skills directory the build installs. */
+function configureQoder() {
+  return null;
+}
+
 export function claudeBaseArgv(m: Member, label: string): string[] {
   const cmd = ["claude", "--dangerously-skip-permissions", "-n", label];
   if (m.model) cmd.push("--model", m.model);
@@ -121,6 +128,13 @@ export function museArgv(m: Member): string[] {
   const args = ["muse", "--yolo"];
   if (m.model) args.push("--model", m.model);
   if (m.effort) args.push("--effort", m.effort);
+  return args;
+}
+
+export function qoderArgv(m: Member, label: string): string[] {
+  const args = ["qodercli", "--dangerously-skip-permissions", "-n", label];
+  if (m.model) args.push("-m", m.model);
+  if (m.effort) args.push("--reasoning-effort", m.effort);
   return args;
 }
 
@@ -258,6 +272,30 @@ function launchMuse(h: Herdr, m: Member, pane: string, name: string): string | n
   return null;
 }
 
+/** `qodercli --list-models` prints a MODEL header line, then one model id per line.
+ * Model ids keep their case (Qwen3.8-Flash); each line's first word is the id. */
+function parseQoderModels(output: string) {
+  const ids: string[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    const id = strip(line).split(/\s+/)[0]!;
+    if (id && id.toLowerCase() !== "model") ids.push(id);
+  }
+  return ids;
+}
+
+/** Qoder peers run with --dangerously-skip-permissions like claude and agy: nobody answers
+ * a peer's approval prompts. Startup blocks on the folder-trust dialog, so start tolerates
+ * agent_not_ready the way agy does; firstPrompt answers the dialog from the screen text.
+ * hc and hcx report the tab as a plain shell with no turn status, so readiness here is the
+ * terminal settling, not an agent-idle report. */
+function launchQoder(h: Herdr, m: Member, pane: string, name: string): string | null {
+  const args = qoderArgv(m, sessionLabel(m, name)).slice(1);
+  h.startAgent(name, "qoder", pane, args, true);
+  h.firstPrompt(name, pane, AGENTS.qoder!.dialogs);
+  // Qoder's session id is known only to its runtime; launch records it by lookup instead.
+  return null;
+}
+
 export const AGENTS: Record<string, Agent> = {
   claude: {
     label: "Claude Code",
@@ -342,6 +380,28 @@ export const AGENTS: Record<string, Agent> = {
     dialogs: [],
     configure: configureMuse,
     launch: launchMuse,
+  },
+  qoder: {
+    label: "Qoder CLI",
+    command: "qodercli",
+    instructions: "AGENTS.md",
+    // Qoder reads @-imports in AGENTS.md, but only approves ones inside the project;
+    // the roster references absolute member paths, so members read the files instead.
+    imports: false,
+    skillsDir: join(".qoder", "skills"),
+    skillsCli: "qoder",
+    modelPattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    modelHint: "a model id from `qodercli --list-models`, such as Qwen3.8-Flash",
+    listModels: ["qodercli", "--list-models"],
+    parseModels: parseQoderModels,
+    launchSettings: true,
+    // Shown before qoder takes its first prompt: the folder-trust question
+    // ("Do you trust the files in this folder?", "Trust folder" preselected).
+    dialogs: [
+      ["do you trust the files in this folder", ["enter"]],
+    ],
+    configure: configureQoder,
+    launch: launchQoder,
   },
 };
 // Older rosters name the agent in "runtime", and agy as "antigravity".
@@ -437,8 +497,12 @@ function parseVariants(output: string, why: string): Listed<Map<string, string[]
 
 /** [levels the member's agent and model support, null], or [null, why they cannot be known]. */
 export function effortLevels(member: { agent: string; model: string | null }): Listed<Set<string>> {
-  // claude --effort takes every level for every model; pi --thinking and muse --effort too.
-  if (member.agent === "claude" || member.agent === "pi" || member.agent === "muse") return [new Set(LEVELS), null];
+  // claude --effort takes every level for every model; pi --thinking, muse --effort and
+  // qoder --reasoning-effort too (qodercli 1.1.81 parses none, low, medium, high, xhigh and
+  // max itself, and validates each against the model at startup).
+  if (member.agent === "claude" || member.agent === "pi" || member.agent === "muse" || member.agent === "qoder") {
+    return [new Set(LEVELS), null];
+  }
   if (!member.model) {
     return [
       null,

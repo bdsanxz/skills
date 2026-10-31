@@ -117,8 +117,8 @@ const CHECK: Command = {
   description: `
 Use it after writing roster.json and the member files, and again after every fix, until it
 prints OK. Validates each member's agent (${AGENT_NAMES}), model and effort: the model must
-have the agent's form, and for opencode, agy and pi it must be one that \`opencode models\`,
-\`agy models\` or \`pi --list-models\` lists (a NOTE says when the CLI is missing); the effort
+have the agent's form, and for opencode, agy, pi and qoder it must be one that \`opencode models\`,
+\`agy models\`, \`pi --list-models\` or \`qodercli --list-models\` lists (a NOTE says when the CLI is missing); the effort
 (${LEVEL_NAMES}) must be
 one the agent and model support (opencode: the model's variants in \`opencode api model.list\`).
 A defaults.effort a member cannot use moves to its nearest level, with a NOTE.
@@ -155,7 +155,7 @@ const ASSEMBLE: Command = {
   description: `
 Use it after roster.json changes (a summary, reports_to, agent, model, effort or display
 name), since every member's squad directory shows them. Writes CLAUDE.md (claude) or
-AGENTS.md (opencode, agy, pi), which references the member's four files by path and lists the
+AGENTS.md (opencode, agy, pi, muse, qoder), which references the member's four files by path and lists the
 squad with each member's display name, agent, model and effort, and .peers.json, which
 records the member's role, display name, agent, model and effort. Installs nothing.`,
   positionals: [WORKSPACE],
@@ -199,7 +199,7 @@ own setup: for opencode it merges only the loop entry
 (mcp.servers.roster: the sidecar command, ROSTER_LOG and codemode false) into its opencode.json,
 keeping every other key, and places the loop plugin under .opencode/plugins/.
 For a pi member nothing needs writing, since launch loads its loop extension
-with -e. Claude, agy and muse members need no per-agent files.
+with -e. Claude, agy, muse and qoder members need no per-agent files.
 Peers needs no per-agent setup: every notification arrives through one herdr agent prompt.
 It never writes a model or effort into an opencode member's
 opencode.json, and never overwrites the file: a second build changes nothing. Needs npx (Node.js).`,
@@ -246,7 +246,8 @@ hierarchy order, the supervisor first. Each tab holds one pane that fills it, so
 dialogs are read at full size. It starts each member with its agent's own command, model and
 effort: claude --model --effort, agy --model --effort,
 pi --model --thinking (with --approve and the loop extension, -e, from this skill's
-scripts/), and for opencode, whose TUI takes
+scripts/), qoder -m --reasoning-effort (with --dangerously-skip-permissions),
+and for opencode, whose TUI takes
 neither flag, OpenCode's API: it creates the member's session (its loop tools come from the
 sidecar and plugin the build placed, so the command line needs no extra flag), opens the TUI on it with
 --session, sets the model with the effort as its variant (session.switchModel), and confirms
@@ -345,8 +346,9 @@ files:
   reads   <workspace>/roster.json, and PROJECT.md, ROLE.md, COMMUNICATIONS.md and
           MEMORY.md in each member's <workspace>/<cwd>/
   writes  assemble, build and launch: each member's CLAUDE.md or AGENTS.md, and its
-          .peers.json. build: its skills (.claude/skills/, or .agents/skills/ for
-          opencode, agy, pi and muse), for
+          .peers.json. build: its skills (.claude/skills/ for claude,
+          .agents/skills/ for opencode, agy, pi and muse, .qoder/skills/ for
+          qoder), for
           opencode its opencode.json (only the
           mcp.servers.roster entry) and .opencode/plugins/, and the peers
           and agent-shell CLIs in ~/.local/bin when they are missing.
@@ -378,7 +380,8 @@ agent, model and effort, highest precedence first:
 
   How launch applies them: claude --model and --effort; agy --model and --effort;
   pi --model and --thinking (with the loop extension);
-  muse --model and --effort;
+  muse --model and --effort; qoder -m and --reasoning-effort (with
+  --dangerously-skip-permissions);
   opencode, whose TUI takes neither flag, through OpenCode's API: launch creates the
   member's session (session.create), opens the TUI on it (--session), sets the model
   with the effort as its variant (session.switchModel), reads the session back to
@@ -389,8 +392,9 @@ agent, model and effort, highest precedence first:
   effort there.
 
 effort levels:
-  ${LEVEL_NAMES}. claude, pi and muse take every level for every
-  model (pi clamps it to what the model supports); opencode the
+  ${LEVEL_NAMES}. claude, pi, muse and qoder take every level for every
+  model (pi clamps it to what the model supports; qoder validates it against
+  the model itself at startup); opencode the
   model's variants that are levels (from \`opencode api model.list\`); agy the levels
   \`agy models\` lists for the model. opencode and agy need a model for an effort level,
   to check it. A level the member's own "effort" or --effort names that its agent and
@@ -401,7 +405,8 @@ effort levels:
 a mixed team in roster.json:
   A Claude lead on opus at high effort, an OpenCode member on beam-free at low effort,
   an OpenCode member on whatever its opencode.json or /models sets, an agy member on
-  Gemini Flash at medium effort, and a pi member on Claude Opus at high thinking:
+  Gemini Flash at medium effort, a pi member on Claude Opus at high thinking,
+  and a qoder member on Qwen Flash at medium effort:
     "members": [
       {"name": "lead", "display_name": "Lena", "agent": "claude", "model": "opus",
        "effort": "high", ...},
@@ -411,7 +416,9 @@ a mixed team in roster.json:
       {"name": "web", "agent": "agy", "model": "gemini-3.8-flash",
        "effort": "medium", ...},
       {"name": "review", "agent": "pi", "model": "anthropic/claude-opus-4-8",
-       "effort": "high", ...}]
+       "effort": "high", ...},
+      {"name": "bench", "agent": "qoder", "model": "Qwen3.8-Flash",
+       "effort": "medium", ...}]
 
 layout:
   The whole squad lives in one herdr workspace, squad-<squad>, with one tab per member.

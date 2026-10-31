@@ -9,6 +9,7 @@ Each member runs one agent with one model at one effort level, set on its own, i
 | `agy` | Antigravity CLI | a model id, such as `gemini-3.8-flash`, or one fixed to a level, such as `gemini-3.8-flash-low` | `agy models` | `agy --model <model> --effort <level>` |
 | `pi` | pi | `provider/model` or the bare model, as `pi --list-models` lists them, such as `anthropic/claude-opus-4-8` | `pi --list-models` | `pi --model <model> --thinking <level>`, with `--approve` and the loop extension (`-e`) |
 | `muse` | Muse Code | a model id such as `muse-spark-1.3` | no list; `check` checks the form | `muse --yolo --model <model> --effort <level>` |
+| `qoder` | Qoder CLI | a model id from `qodercli --list-models`, such as `Qwen3.8-Flash` | `qodercli --list-models` | `qodercli --dangerously-skip-permissions -m <model> --reasoning-effort <level>` |
 
 ## OpenCode: model and effort through its API
 
@@ -39,12 +40,13 @@ The effort level sets how hard the member's model thinks before it answers. The 
 | `agy` | the levels `agy models` lists for the model: `gemini-3.8-flash-low`, `-medium` and `-high` give `gemini-3.8-flash` those three levels. A model without such ids has none. An id fixed to a level takes only that level | `agy --effort <level>` |
 | `pi` | every level, for every model; pi clamps it to what the model supports | `pi --thinking <level>` |
 | `muse` | every level, for every model | `muse --effort <level>` |
+| `qoder` | every level, for every model; qoder validates it against the model itself at startup | `qodercli --reasoning-effort <level>` |
 
-opencode and agy need a model to take an effort level, so that `check` can confirm the level. claude, pi and muse need none.
+opencode and agy need a model to take an effort level, so that `check` can confirm the level. claude, pi, muse and qoder need none. (`--reasoning-effort` also takes `none`, `off` and `auto`, which the roster never passes: a member with no effort uses the model's own default.)
 
 ## Choose them
 
-1. Read what is installed: `command -v claude opencode agy pi muse`, the models each lists (`opencode models`, `agy models`, `pi --list-models`; claude and muse list none), and the levels each model has (above). Propose only installed agents, listed models and levels the model has.
+1. Read what is installed: `command -v claude opencode agy pi muse qodercli`, the models each lists (`opencode models`, `agy models`, `pi --list-models`, `qodercli --list-models`; claude and muse list none), and the levels each model has (above). Propose only installed agents, listed models and levels the model has.
 2. Pick by the member's work:
    - The lead plans, reviews and decides, and receives every completion: give it the strongest model the user is willing to pay for, at `high`. Default: `claude` with its default model.
    - A member that reasons through hard problems (architecture, debugging, security review, tricky algorithms): `high`, or `xhigh` or `max` when the user accepts the slower, costlier answers.
@@ -54,7 +56,7 @@ opencode and agy need a model to take an effort level, so that `check` can confi
 3. Keep repeated choices in `defaults` instead of on each member: `"defaults": {"agent": "opencode", "models": {"opencode": "opencode/beam-free"}, "effort": "low"}`.
 4. Leave a model or effort out when the agent's own default is fine. Say so in the member's summary to the user: "uses agy's default model", "uses the model's default effort", or for opencode "uses its opencode.json or /models".
 
-A mixed team: a claude lead on opus at high effort, an opencode member on beam-free at low effort, an opencode member on whatever its own `opencode.json` or `/models` sets, an agy member on Gemini Flash at medium effort, a pi member on Claude Opus at high effort, and a muse member on muse-spark at high effort.
+A mixed team: a claude lead on opus at high effort, an opencode member on beam-free at low effort, an opencode member on whatever its own `opencode.json` or `/models` sets, an agy member on Gemini Flash at medium effort, a pi member on Claude Opus at high effort, a muse member on muse-spark at high effort, and a qoder member on Qwen Flash at medium effort.
 
 ```json
 "members": [
@@ -63,9 +65,16 @@ A mixed team: a claude lead on opus at high effort, an opencode member on beam-f
   {"name": "docs", "agent": "opencode", ...},
   {"name": "web", "agent": "agy", "model": "gemini-3.8-flash", "effort": "medium", ...},
   {"name": "review", "agent": "pi", "model": "anthropic/claude-opus-4-8", "effort": "high", ...},
-  {"name": "spike", "agent": "muse", "model": "muse-spark-1.3", "effort": "high", ...}
+  {"name": "spike", "agent": "muse", "model": "muse-spark-1.3", "effort": "high", ...},
+  {"name": "bench", "agent": "qoder", "model": "Qwen3.8-Flash", "effort": "medium", ...}
 ]
 ```
+
+## Qoder: readiness without turn status
+
+Herdr and hc report a qoder tab as a plain shell (`zsh`, program `qodercli-<version>`) and give no turn status for it; only `hcx` (0.4.1 and later) recognises it as agent `qoder`. So `launch` cannot wait for a qoder member to go idle the way it does for tracked agents: readiness is the terminal settling (no new output), the folder-trust dialog ("Do you trust the files in this folder?") is answered from the screen text, and the first prompt goes through `hcx send` (untagged; `hc send` when `hcx` is missing or fails) on herdr-core, or `herdr agent prompt` on the old server. A qoder member's session is recorded by lookup after its first prompt: the file only appears once the member processes that prompt, so `launch` polls for up to about 30 s for a `<id>.jsonl` file under `~/.qoder/projects/<encoded cwd>/` newer than the launch start, records the newest one, ignores files older than the launch, and prints a NOTE recording nothing when none appears in time (relaunch the member to record it). Liveness is unknown: the files outlive their runs, so `check` never warns that a recorded qoder session is dead.
+
+Qoder's `/loop` and `/goal` are built in, so the roster's loop wiring (the sidecar, plugin and extension that pi and opencode members get) does not apply to qoder members: the build writes nothing for them, and their instruction file carries no Loop section.
 
 ## Where a member's agent, model and effort come from
 
@@ -81,9 +90,9 @@ The first that is set wins.
 
 `check`, `build` and `launch` refuse, with one `PROBLEM` line each:
 
-- an agent that is not `claude`, `opencode`, `agy`, `pi` or `muse`, in a member, in `defaults` or in `--agent`;
+- an agent that is not `claude`, `opencode`, `agy`, `pi`, `muse` or `qoder`, in a member, in `defaults` or in `--agent`;
 - a model that does not have its agent's form, such as `haiku` for `opencode`;
-- a model that `opencode models`, `agy models` or `pi --list-models` does not list (claude and muse list none; `check` only checks their form);
+- a model that `opencode models`, `agy models`, `pi --list-models` or `qodercli --list-models` does not list (claude and muse list none; `check` only checks their form);
 - an effort that is not one of the five levels, in a member, in `defaults` or in `--effort`;
 - an effort, set on the member or with `--effort`, that the member's agent and model do not support. The line names the levels the model has and the nearest one; nothing is changed for you;
 - an effort for an opencode or agy member that has no model;

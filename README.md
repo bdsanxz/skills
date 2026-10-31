@@ -90,7 +90,7 @@ Most skills need nothing beyond your agent. The rest bring their own scripts and
 | `edd`, `tasks`, `research-market`, `agents-creator`, `get-knowledge` | [Bun](https://bun.sh) |
 | `setup-custom-inferences` | [Bun](https://bun.sh) |
 | `peers` | The [`peers`](https://github.com/bdsanxz/peers) command on your `PATH` (see below). [herdr](https://herdr.dev) is needed to start visible peers. |
-| `agent-roster-design` | Bun, herdr, and the agents you choose for the squad (`claude`, `opencode`, `agy` or `pi`). `peers` is installed when it is missing. |
+| `agent-roster-design` | Bun, herdr, and the agents you choose for the squad (`claude`, `opencode`, `agy`, `pi`, `muse` or `qodercli`). `peers` is installed when it is missing. |
 
 Install the `peers` command at `~/.local/bin/peers` with:
 

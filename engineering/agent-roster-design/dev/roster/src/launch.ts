@@ -28,7 +28,7 @@ import {
   tail,
   which,
 } from "./core";
-import { type Member, agent, agyArgv, claudeBaseArgv, museArgv, piArgv } from "./agents";
+import { type Member, agent, agyArgv, claudeBaseArgv, museArgv, piArgv, qoderArgv } from "./agents";
 import { Hc, appSpaces, haveApp, hcSpaceName, hcTerminals } from "./hc";
 import { FIRST_PROMPT, Herdr, field, herdrSession, list, text } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
@@ -46,7 +46,7 @@ import {
   writeIdentity,
   writeInstructions,
 } from "./roster";
-import { findSession, sessionLive, validSession } from "./sessions";
+import { findSession, qoderWaitConfig, sessionLive, validSession, waitForQoderSession } from "./sessions";
 
 export type LaunchArgs = {
   workspace: string;
@@ -120,6 +120,8 @@ function hcMemberArgv(h: Hc, m: Member, dir: string, label: string): { argv: str
       return { argv: agyArgv(m), session: null };
     case "muse":
       return { argv: museArgv(m), session: null };
+    case "qoder":
+      return { argv: qoderArgv(m, label), session: null };
     default:
       throw new LaunchError(`unknown agent ${repr(m.agent)} for member ${repr(m.name)}`);
   }
@@ -188,16 +190,38 @@ function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session:
 
 /** Record the member's runtime session in roster.json, so rebuild and a later launch
  * know which session is the member's. The id is what the launch established, else the
- * runtime's newest session in the member's directory. peers send/open never read it. */
+ * runtime's newest session in the member's directory. For qoder the session file only
+ * appears after the member processes its first prompt, so the lookup waits for a file
+ * newer than the member's launch start; when none appears nothing is recorded and a
+ * NOTE says why. peers send/open never read it. */
 function recordSession(
   args: LaunchArgs,
   roster: Roster,
   m: Member,
   dir: string,
   established: string | null,
+  sinceMs: number,
 ): void {
   if (args.dryRun) return;
-  const id = established ?? findSession(m.agent, dir);
+  let id: string | null;
+  if (established) {
+    id = established;
+  } else if (m.agent === "qoder") {
+    id = waitForQoderSession(dir, sinceMs);
+    if (!id) {
+      const cfg = qoderWaitConfig();
+      const within = cfg.timeoutMs >= 1000 ? `${Math.round(cfg.timeoutMs / 1000)} s` : `${cfg.timeoutMs} ms`;
+      print(
+        `NOTE member ${repr(m.name)}: qoder session id could not be recorded: ` +
+          `no new session file appeared within ${within} of the first prompt; ` +
+          `relaunch with --member ${m.name} to record it`,
+      );
+      return;
+    }
+  } else {
+    id = findSession(m.agent, dir);
+    if (!id) return;
+  }
   if (!id) return;
   const raw = (roster.members as JsonObject[]).find((r) => r.name === m.name);
   if (!isObject(raw)) return;
@@ -458,6 +482,7 @@ export function cmdLaunchHc(
       if (!wanted.has(tab.member)) continue;
       const m = byName.get(tab.member)!;
       failed = [m, null];
+      const memberStart = Date.now();
       const dir = join(workspace, m.cwd);
       const label = display(m);
       const { argv, session } = hcMemberArgv(h, m, dir, sessionLabel(m, `${squad}-${m.name}`));
@@ -481,7 +506,7 @@ export function cmdLaunchHc(
         `${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${m.name}${shown(m)} (${m.agent}, ${settings}) ` +
           `in Herdr app space ${space}, tab ${repr(label)} (terminal ${terminal})`,
       );
-      recordSession(args, roster, m, dir, h.dryRun ? null : session);
+      recordSession(args, roster, m, dir, h.dryRun ? null : session, memberStart);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed) throw error;
@@ -623,6 +648,7 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
         continue;
       }
       let pane: string;
+      const memberStart = Date.now();
       [ws, pane] = openTab(h, roster, workspace, m, ws);
       waiting.set(n, pane);
       failed = [m, pane];
@@ -638,7 +664,7 @@ export function cmdLaunch(args: LaunchArgs, defaultSources: SkillSources) {
         `${args.dryRun ? "WOULD LAUNCH" : "LAUNCHED"} ${n}${shown(m)} (${m.agent}, ${settings}) ` +
           `in herdr session ${session}, tab ${tab.number} ${repr(display(m))}, pane ${pane}`,
       );
-      recordSession(args, roster, m, dir, established);
+      recordSession(args, roster, m, dir, established, memberStart);
     }
   } catch (error) {
     if (!(error instanceof LaunchError) || !failed) throw error;

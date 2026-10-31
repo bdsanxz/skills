@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do
     --skill) skills+=("$2"); shift ;;
   esac; shift
 done
-[ "$agent" = claude-code ] && dir=.claude/skills || dir=.agents/skills
+[ "$agent" = claude-code ] && dir=.claude/skills || { [ "$agent" = qoder ] && dir=.qoder/skills || dir=.agents/skills; }
 for s in "\${skills[@]}"; do
   [ "$s" = broken ] && { echo "No matching skills found for: broken"; exit 1; }
   [ "$s" = silent ] && continue
@@ -73,6 +73,12 @@ echo "unexpected pi call: $*" >&2; exit 9
 /** muse: present so launch finds its command; no listable models, like claude. */
 const MUSE = `#!/bin/bash
 echo "unexpected muse call: $*" >&2; exit 9
+`;
+
+/** qodercli: lists its models with a MODEL header line, then one mixed-case id per line. */
+const QODERCLI = `#!/bin/bash
+[ "$*" = --list-models ] && printf 'MODEL\nQwen3.8-Flash\nDeepSeek-Flash\n' && exit 0
+echo "unexpected qodercli call: $*" >&2; exit 9
 `;
 
 /** herdr: logs every call; answers like herdr does. HERDR_SESSIONS sets \`session list\`,
@@ -202,7 +208,7 @@ export type Squad = {
   hcappLog: string;
 };
 
-const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, herdr: HERDR, hc: HC, hcx: HCX, "herdr-app": HCAPP, peers: PEERS, "agent-shell": AGENT_SHELL };
+const STUBS: Record<string, string> = { npx: NPX, claude: CLAUDE, opencode: OPENCODE, agy: AGY, pi: PI, muse: MUSE, qodercli: QODERCLI, herdr: HERDR, hc: HC, hcx: HCX, "herdr-app": HCAPP, peers: PEERS, "agent-shell": AGENT_SHELL };
 let savedEnv: Record<string, string | undefined> = {};
 
 /** A fresh temporary directory with the stubs first on PATH, and an empty workspace. */
