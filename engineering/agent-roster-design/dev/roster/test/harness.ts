@@ -41,8 +41,12 @@ echo "unexpected claude call: $*" >&2; exit 9
 const OPENCODE = `#!/bin/bash
 echo "$*" >>"$OPENCODE_LOG"; echo "opencode $*" >>"$HERDR_LOG"
 case "$*" in
-  models) printf 'opencode/big-pickle\\nopencode/beam-free\\n' ;;
-  "api model.list") echo '{"data":[{"providerID":"opencode","id":"big-pickle","variants":[]},
+  models)
+    [ "\${OPENCODE_EMPTY:-}" = 1 ] && { echo 'No models available. Use /login to add an API key.'; exit 0; }
+    printf 'opencode/big-pickle\\nopencode/beam-free\\n' ;;
+  "api model.list")
+    [ "\${OPENCODE_VARIANTS_EMPTY:-}" = 1 ] && { echo '{"data":[]}'; exit 0; }
+    echo '{"data":[{"providerID":"opencode","id":"big-pickle","variants":[]},
     {"providerID":"opencode","id":"beam-free","variants":[{"id":"none"},{"id":"low"},{"id":"medium"},{"id":"high"},{"id":"xhigh"},{"id":"max"}]}]}' ;;
   "api session.create"*) echo "{\\"data\\":{\\"id\\":\\"ses_test1\\",\\"cwd\\":\\"$PWD\\"}}" ;;
   "api session.switchModel"*) m=\${@: -1}; m=\${m#\\{\\"model\\": }; echo "\${m%\\}}" >"$OPENCODE_LOG.model" ;;
@@ -60,13 +64,24 @@ esac
 `;
 
 const AGY = `#!/bin/bash
-[ "$*" = models ] && printf 'Fetching available models...\\ngem-fast\\tGem Fast\\ngem-pro\\tGem Pro\\ngem-flash-low\\tGem Flash (Low)\\ngem-flash-high\\tGem Flash (High)\\n' && exit 0
+if [ "$*" = models ]; then
+  [ "\${AGY_EMPTY:-}" = 1 ] && { echo 'No models available. Use /login to add an API key.'; exit 0; }
+  printf 'Fetching available models...\\ngem-fast\\tGem Fast\\ngem-pro\\tGem Pro\\ngem-flash-low\\tGem Flash (Low)\\ngem-flash-high\\tGem Flash (High)\\n' && exit 0
+fi
 echo "unexpected agy call: $*" >&2; exit 9
 `;
 
-/** pi: lists its models as pi --list-models does: a header, then provider and model columns. */
+/** pi: lists its models as pi --list-models does: a header, then provider and model columns,
+ * plus one three-segment id in a single column. PI_FAIL=1 makes the list fail, as when the
+ * CLI cannot run (a missing API key in the environment). PI_EMPTY=1 prints the no-key
+ * message with exit 0: a header row, then 'No models available ...', which must read as
+ * unconfirmable (NOTE), not as a listed-but-absent model (PROBLEM). */
 const PI = `#!/bin/bash
-[ "$*" = --list-models ] && printf 'provider   model            context  max-out  thinking  images\\nanthropic  claude-opus-4-8  1M       128K     yes       yes\\nopenai     gpt-5            400K     128K     yes       yes\\n' && exit 0
+if [ "$*" = --list-models ]; then
+  [ "\${PI_FAIL:-}" = 1 ] && { echo "pi: no API key for vikey (set VIKEY_API_KEY)" >&2; exit 1; }
+  [ "\${PI_EMPTY:-}" = 1 ] && { printf 'provider   model                        context  max-out  thinking  images\\nNo models available. Use /login to add an API key.\\n'; exit 0; }
+  printf 'provider   model                        context  max-out  thinking  images\\nanthropic  claude-opus-4-8              1M       128K     yes       yes\\nopenai     gpt-5                        400K     128K     yes       yes\\nvikey/deepseek/deepseek-v4-flash    1M       128K     yes       yes\\n' && exit 0
+fi
 echo "unexpected pi call: $*" >&2; exit 9
 `;
 
@@ -75,9 +90,13 @@ const MUSE = `#!/bin/bash
 echo "unexpected muse call: $*" >&2; exit 9
 `;
 
-/** qodercli: lists its models with a MODEL header line, then one mixed-case id per line. */
+/** qodercli: lists its models with a MODEL header line, then one mixed-case id per line.
+ * QODER_EMPTY=1 prints the no-key message with exit 0, which reads as unconfirmable. */
 const QODERCLI = `#!/bin/bash
-[ "$*" = --list-models ] && printf 'MODEL\nQwen3.8-Flash\nDeepSeek-Flash\n' && exit 0
+if [ "$*" = --list-models ]; then
+  [ "\${QODER_EMPTY:-}" = 1 ] && { echo 'No models available. Use /login to add an API key.'; exit 0; }
+  printf 'MODEL\nQwen3.8-Flash\nDeepSeek-Flash\n' && exit 0
+fi
 echo "unexpected qodercli call: $*" >&2; exit 9
 `;
 
@@ -158,7 +177,11 @@ echo "unexpected herdr-app call: $*" >&2; exit 9
 `;
 
 /** hc: logs every call; HC_LS_CODE=0 with HC_JSON makes `hc ls --json` list a
- * live core, otherwise it fails and the old herdr path stays in charge. */
+ * live core, otherwise it fails and the old herdr path stays in charge.
+ * HC_DIALOG_LATE=1 shows a trust dialog after HC_DIALOG_AFTER reads; HC_SEND_BLOCKED=1
+ * shows a static screen until the first `send`, then the known trust dialog, and refuses
+ * the send with exit 9 until keys answer it; HC_SEND_BLOCKED_UNKNOWN=1 does the same
+ * with a dialog no agent knows. */
 const HC = `#!/bin/bash
 echo "$*" >>"$HC_LOG"
 if [ "$1" = ls ]; then
@@ -174,7 +197,15 @@ if [ "$1" = wait ]; then
 fi
 if [ "$1" = read ]; then
   if [ "\${HC_READ_GONE:-}" = 1 ]; then echo "no such terminal $2" >&2; exit 1; fi
-  if grep -q "keys $2 enter" "$HC_LOG" 2>/dev/null; then printf '%s' "\${HC_IDLE_TEXT:-ready > type your message}"; exit 0; fi
+  if grep -q "keys $2 " "$HC_LOG" 2>/dev/null; then printf '%s' "\${HC_IDLE_TEXT:-ready > type your message}"; exit 0; fi
+  if [ "\${HC_SEND_BLOCKED_UNKNOWN:-}" = 1 ]; then
+    if grep -q "^send $2" "$HC_LOG" 2>/dev/null; then echo 'Pick a color theme: > Dark'; exit 0; fi
+    echo "booting ready"; exit 0
+  fi
+  if [ "\${HC_SEND_BLOCKED:-}" = 1 ]; then
+    if grep -q "^send $2" "$HC_LOG" 2>/dev/null; then echo 'Do you trust the contents of this project? Yes, I trust this folder'; exit 0; fi
+    echo "booting ready"; exit 0
+  fi
   if [ "\${HC_DIALOG_LATE:-}" = 1 ]; then
     n=$(grep -c "^read $2" "$HC_LOG")
     if [ "$n" -ge "\${HC_DIALOG_AFTER:-4}" ]; then echo 'Do you trust the files in this folder?'; exit 0; fi
@@ -185,7 +216,12 @@ if [ "$1" = read ]; then
   printf '%s' "\${HC_READ_TEXT:-}"
   exit 0
 fi
-if [ "$1" = send ]; then exit 0; fi
+if [ "$1" = send ]; then
+  if [ "\${HC_SEND_BLOCKED:-}" = 1 ] || [ "\${HC_SEND_BLOCKED_UNKNOWN:-}" = 1 ]; then
+    if ! grep -q "keys $2 " "$HC_LOG" 2>/dev/null; then echo "hc: typing would answer its dialog (blocked)" >&2; exit 9; fi
+  fi
+  exit 0
+fi
 if [ "$1" = keys ]; then exit 0; fi
 echo "unexpected hc call: $*" >&2; exit 9
 `;

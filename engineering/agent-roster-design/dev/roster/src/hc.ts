@@ -96,6 +96,12 @@ export function hcTerminals(): HcTerminal[] | null {
   return out;
 }
 
+/** Whether a failed first-prompt send was refused because a dialog is up: hc exit 9
+ * (blocked, typing would answer the dialog). Only these failures are retried. */
+function isBlockedSend(error: unknown): boolean {
+  return error instanceof LaunchError && /(exit 9|blocked)/i.test(error.message);
+}
+
 /** Runs hc commands, or only prints them with --dry-run. */
 export class Hc {
   constructor(readonly dryRun: boolean) {}
@@ -199,7 +205,9 @@ export class Hc {
    * reports no turn status for. The poll stops when the terminal is gone, a
    * known dialog or the agent's idle input line appears, the screen settles, or
    * the overall cap is reached; a vanished terminal throws, anything else
-   * carries on to the first prompt. Dry runs print the short wait and return. */
+   * carries on to the first prompt. Tabs that may show a trust dialog get one extra
+   * settle window (twice ROSTER_SETTLE_MS, no new knob) so a late dialog is seen
+   * before the first prompt. Dry runs print the short wait and return. */
   settle(name: string, want?: { dialogs?: Dialog[]; ready?: string | null }) {
     const cfg = waitConfig();
     const timeout = String(Math.max(1, Math.ceil(cfg.shortMs / 1000)));
@@ -216,7 +224,9 @@ export class Hc {
       }
       // No turn status (idle agents, runtimes hc misclassifies): poll the screen instead.
     }
-    if (pollScreen(() => this.peekScreen(name), want?.dialogs ?? [], want?.ready, cfg, deadline) === "gone") {
+    const effective =
+      want?.dialogs?.length ? { ...cfg, settleMs: cfg.settleMs * 2 } : cfg;
+    if (pollScreen(() => this.peekScreen(name), want?.dialogs ?? [], want?.ready, effective, deadline) === "gone") {
       throw new LaunchError(`terminal ${name} is gone while waiting for it`);
     }
   }
@@ -292,7 +302,11 @@ export class Hc {
     return parsed;
   }
 
-  /** Send the first prompt, answering the agent's known dialogs from its screen. */
+  /** Send the first prompt, answering the agent's known dialogs from its screen. The
+   * prompt is sent only once no dialog is on screen; when the send itself is refused
+   * because a dialog came up after the read (hc exit 9 / blocked), the screen is
+   * re-read, a known dialog is answered, and the send is retried within the same
+   * attempt bound. A blocked screen with no known dialog still fails with hc's message. */
   firstPrompt(name: string, dialogs: Dialog[], ready?: string | null) {
     if (this.dryRun) {
       for (const [marker, keys] of dialogs) {
@@ -304,8 +318,17 @@ export class Hc {
       const screen = this.readScreen(name).toLowerCase();
       const answer = dialogs.find(([marker]) => screen.includes(marker))?.[1];
       if (!answer) {
-        this.sendPrompt(name, FIRST_PROMPT);
-        return;
+        try {
+          this.sendPrompt(name, FIRST_PROMPT);
+          return;
+        } catch (error) {
+          if (!isBlockedSend(error)) throw error;
+          const retry = this.readScreen(name).toLowerCase();
+          const retryAnswer = dialogs.find(([marker]) => retry.includes(marker))?.[1];
+          if (!retryAnswer) throw error;
+          this.sendKeys(name, retryAnswer);
+          continue;
+        }
       }
       this.sendKeys(name, answer);
     }

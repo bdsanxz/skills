@@ -58,6 +58,20 @@ describe("qoder members", () => {
     expect(missing.code).toBe(0);
   });
 
+  test("an empty qoder list with exit 0 is unconfirmable, not absent", async () => {
+    team({ model: "Qwen3.8-Flash", effort: "high" });
+    await roster(["build", s.w]);
+    const checked = await roster(["check", s.w], { QODER_EMPTY: "1" });
+    expect(checked.code).toBe(0);
+    expect(checked.out).toContain("NOTE member 'review': cannot confirm model 'Qwen3.8-Flash'");
+    expect(checked.out).toContain("listed no models");
+    expect(checked.out).not.toContain("is not available to qoder");
+    const dry = await roster(["launch", s.w, "--dry-run"], { QODER_EMPTY: "1" });
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain("NOTE member 'review': cannot confirm model 'Qwen3.8-Flash'");
+    expect(dry.out).toContain("WOULD LAUNCH review (qoder, model Qwen3.8-Flash, effort high)");
+  });
+
   test("build installs skills for qoder with -a qoder into .qoder/skills", async () => {
     team({ model: "Qwen3.8-Flash", effort: "high" });
     clear(s.npxLog);

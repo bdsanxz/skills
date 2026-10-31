@@ -199,3 +199,84 @@ describe("wait timings", () => {
     expect(stop(["", "", ""], undefined, { waitMs: 50, shortMs: 0, settleMs: 0, pollMs: 0 })).toBe("capped");
   });
 });
+
+describe("folder-trust dialogs on herdr-core", () => {
+  test("claude's trust dialog is answered with down+enter before the first prompt", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    const done = await roster(
+      ["launch", s.w, "--member", "lead"],
+      hcEnv({ HC_READ_TEXT: "Quick safety check ... Yes, I trust this folder" }),
+    );
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("LAUNCHED lead (claude");
+    expect(read(s.hcLog)).toContain("keys t-test2 down enter");
+    expect(read(s.hcxLog)).toContain("send t-test2 Read your instructions");
+  });
+
+  test("agy's trust dialog is answered with enter before the first prompt", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    const done = await roster(
+      ["launch", s.w, "--member", "docs"],
+      hcEnv({ HC_READ_TEXT: "Do you trust the contents of this project? Yes, I trust this folder" }),
+    );
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("LAUNCHED docs (agy");
+    expect(read(s.hcLog)).toContain("keys t-test2 enter");
+    expect(read(s.hcLog)).not.toContain("down enter");
+    expect(read(s.hcxLog)).toContain("send t-test2 Read your instructions");
+  });
+
+  test("qoder's trust dialog is answered with enter before the first prompt", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    const done = await roster(
+      ["launch", s.w, "--member", "review"],
+      hcEnv({ HC_READ_TEXT: "Do you trust the files in this folder? > Trust folder", ROSTER_QODER_WAIT_MS: "300" }),
+    );
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("LAUNCHED review (qoder");
+    expect(read(s.hcLog)).toContain("keys t-test2 enter");
+    expect(read(s.hcxLog)).toContain("send t-test2 Read your instructions");
+  });
+
+  test("no dialog means no keys, just the first prompt", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    const done = await roster(
+      ["launch", s.w, "--member", "lead"],
+      hcEnv({ HC_READ_TEXT: "Welcome back" }),
+    );
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("LAUNCHED lead (claude");
+    expect(read(s.hcLog)).not.toContain("keys t-test2");
+    expect(read(s.hcxLog)).toContain("send t-test2 Read your instructions");
+  });
+
+  test("a send refused by a late dialog retries after answering it", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    const done = await roster(
+      ["launch", s.w, "--member", "docs"],
+      hcEnv({ HC_SEND_BLOCKED: "1", HCX_FAIL: "1", HC_WAIT: "timeout", ...fastPoll() }),
+    );
+    expect(done.code).toBe(0);
+    expect(done.out).toContain("LAUNCHED docs (agy");
+    expect(read(s.hcLog)).toContain("keys t-test2 enter");
+    expect(read(s.hcLog)).toContain("send t-test2 Read your instructions");
+  });
+
+  test("a send blocked by an unknown dialog still fails with hc's message", async () => {
+    clear(s.hcLog);
+    clear(s.hcxLog);
+    const done = await roster(
+      ["launch", s.w, "--member", "docs"],
+      hcEnv({ HC_SEND_BLOCKED_UNKNOWN: "1", HCX_FAIL: "1", HC_WAIT: "timeout", ...fastPoll() }),
+    );
+    expect(done.code).toBe(1);
+    expect(done.out).toContain("FAILED docs (agy)");
+    expect(done.out).toMatch(/exit 9|blocked/i);
+    expect(read(s.hcLog)).not.toContain("keys t-test2");
+  });
+});

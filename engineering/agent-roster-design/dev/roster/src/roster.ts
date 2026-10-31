@@ -309,7 +309,10 @@ export function modelProblems(members: Member[], strict: boolean): [string[], st
         );
         continue;
       }
-      if (why) (strict ? problems : notes).push(`${where}: cannot confirm model ${repr(e.model)}: ${why}`);
+      // A list the CLI cannot produce (missing binary, failed run) is a NOTE in both
+      // check and launch: only a model the list names-but-lacks is a PROBLEM. Launch
+      // stays launchable when the list cannot be confirmed.
+      if (why) notes.push(`${where}: cannot confirm model ${repr(e.model)}: ${why}`);
     }
     if (!e.effort) continue;
     const [supported, why] = effortLevels(e);

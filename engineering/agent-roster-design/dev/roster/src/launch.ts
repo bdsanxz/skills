@@ -30,7 +30,7 @@ import {
 } from "./core";
 import { type Member, agent, agyArgv, claudeBaseArgv, museArgv, piArgv, qoderArgv } from "./agents";
 import { Hc, appSpaces, haveApp, hcSpaceName, hcTerminals } from "./hc";
-import { FIRST_PROMPT, Herdr, field, herdrSession, list, text } from "./herdr";
+import { Herdr, field, herdrSession, list, text } from "./herdr";
 import { type Pane, type Tab, layoutLines, moveToEnd, openTab, planLayout, squadState, tabSteps, workspaceLabel } from "./layout";
 import { peersInstalled } from "./peers";
 import { agentShellInstalled } from "./agentshell";
@@ -156,19 +156,14 @@ function readOpencodeModelHc(h: Hc, dir: string, member: string, session: string
   }
 }
 
-/** Settle one member's tab, answer its known dialogs, and send the first prompt. */
+/** Settle one member's tab, answer its known dialogs, and send the first prompt. The
+ * prompt is only sent once no trust dialog is on screen: typing it into the dialog
+ * would answer the dialog instead (claude's "No, exit" is preselected, and herdr-core
+ * refuses to type into agy's). */
 function launchHcAgent(h: Hc, m: Member, dir: string, terminal: string, session: string | null) {
   const spec = agent(m.agent);
   const dialogs = spec.dialogs;
   const ready = spec.ready;
-  if (m.agent === "claude") {
-    if (h.dryRun || h.readScreen(terminal).includes("Yes, I trust this folder")) {
-      h.sendKeys(terminal, ["down", "enter"], "only when Claude asks to trust the folder");
-    }
-    h.settle(terminal, { dialogs, ready });
-    h.sendPrompt(terminal, FIRST_PROMPT);
-    return;
-  }
   h.settle(terminal, { dialogs, ready });
   if (m.agent === "opencode" && session) {
     const [provider, , modelId] = partition(m.model ?? "", "/");
