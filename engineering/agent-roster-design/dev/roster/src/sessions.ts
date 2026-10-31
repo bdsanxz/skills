@@ -111,8 +111,10 @@ function agyHome(): string {
   return envNonempty("AGY_HOME") ?? path.join(home(), ".gemini", "antigravity-cli");
 }
 
-/** Antigravity conversations: their id and first workspace directory each. */
-function agyConversations(): { id: string; dir: string }[] {
+/** Antigravity conversations: their id, first workspace directory and last-input
+ * time each. lastInput is last_user_input_time in ms: values below 1e12 read as
+ * seconds and are scaled up, so both scales compare against Date.now(). */
+function agyConversations(): { id: string; dir: string; lastInput: number }[] {
   const db = path.join(agyHome(), "conversation_summaries.db");
   if (!fs.existsSync(db)) return [];
   let conn: Database;
@@ -122,10 +124,19 @@ function agyConversations(): { id: string; dir: string }[] {
     return [];
   }
   try {
-    const rows = conn
-      .query("select conversation_id, workspace_uris from conversation_summaries")
-      .all() as { conversation_id: string; workspace_uris: string }[];
-    const out: { id: string; dir: string }[] = [];
+    // Older databases lack last_user_input_time; fall back to the timeless
+    // query so plain lookups keep working (the row then never counts as new).
+    let rows: { conversation_id: string; workspace_uris: string; last_user_input_time?: unknown }[];
+    try {
+      rows = conn
+        .query("select conversation_id, workspace_uris, last_user_input_time from conversation_summaries")
+        .all() as { conversation_id: string; workspace_uris: string; last_user_input_time: unknown }[];
+    } catch {
+      rows = conn
+        .query("select conversation_id, workspace_uris from conversation_summaries")
+        .all() as { conversation_id: string; workspace_uris: string }[];
+    }
+    const out: { id: string; dir: string; lastInput: number }[] = [];
     for (const r of rows) {
       let dirs: unknown = [];
       try {
@@ -137,7 +148,11 @@ function agyConversations(): { id: string; dir: string }[] {
         Array.isArray(dirs) && typeof dirs[0] === "string" && dirs[0].startsWith("file://")
           ? (dirs[0] as string).slice("file://".length)
           : "";
-      if (r.conversation_id && first) out.push({ id: r.conversation_id, dir: first });
+      let lastInput = Number(r.last_user_input_time);
+      if (!Number.isFinite(lastInput)) lastInput = Date.parse(String(r.last_user_input_time ?? ""));
+      if (!Number.isFinite(lastInput)) lastInput = 0;
+      else if (lastInput > 0 && lastInput < 1e12) lastInput *= 1000;
+      if (r.conversation_id && first) out.push({ id: r.conversation_id, dir: first, lastInput });
     }
     return out;
   } catch {
@@ -323,9 +338,10 @@ function parseWaitEnv(raw: string | undefined, fallback: number): number {
   return Math.floor(n);
 }
 
-/** How long launch waits for a new qoder session file after the first prompt,
+/** How long launch waits for a new qoder or agy session after the first prompt,
  * and how often it looks. Both are injectable for tests through the environment;
- * a zero timeout means a single lookup with no sleep. */
+ * a zero timeout means a single lookup with no sleep. Agy shares this config:
+ * there are no agy-named env aliases. */
 export function qoderWaitConfig(): { timeoutMs: number; intervalMs: number } {
   return {
     timeoutMs: parseWaitEnv(process.env.ROSTER_QODER_WAIT_MS, 30000),
@@ -341,6 +357,41 @@ export function findQoderSessionSince(cwd: string, sinceMs: number): string | nu
   return mine.length ? mine[mine.length - 1]!.id : null;
 }
 
+/** The newest agy conversation id in `cwd` with last input at or after
+ * `sinceMs`, or null. A conversation older than the launch start belongs to an
+ * earlier run and must not count as the new member's session. */
+export function findAgySessionSince(cwd: string, sinceMs: number): string | null {
+  try {
+    const want = canonical(cwd);
+    const mine = agyConversations().filter((s) => s.dir !== "" && canonical(s.dir) === want && s.lastInput >= sinceMs);
+    mine.sort((a, b) => a.lastInput - b.lastInput);
+    return mine.length ? mine[mine.length - 1]!.id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Poll `find` until it returns an id or the timeout passes. Both session waits
+ * share this: the row (agy) or file (qoder) only appears after the member
+ * processes its first prompt, so the lookup runs after that prompt was
+ * delivered. Returns the newest matching id, or null when none appears in time. */
+function waitForSession(
+  find: () => string | null,
+  timeoutMs: number,
+  intervalMs: number,
+): string | null {
+  const start = Date.now();
+  for (;;) {
+    const found = find();
+    if (found) return found;
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs) return null;
+    const remaining = timeoutMs - elapsed;
+    if (remaining <= 0) return null;
+    if (intervalMs > 0) sleep(Math.min(intervalMs, remaining));
+  }
+}
+
 /** Poll for the qoder session file newer than `sinceMs` until it appears or the
  * timeout passes. The file only appears after the member processes its first
  * prompt, so the lookup runs after that prompt was delivered. Returns the newest
@@ -351,18 +402,28 @@ export function waitForQoderSession(
   opts?: { timeoutMs?: number; intervalMs?: number },
 ): string | null {
   const cfg = qoderWaitConfig();
-  const timeoutMs = opts?.timeoutMs ?? cfg.timeoutMs;
-  const intervalMs = opts?.intervalMs ?? cfg.intervalMs;
-  const start = Date.now();
-  for (;;) {
-    const found = findQoderSessionSince(cwd, sinceMs);
-    if (found) return found;
-    const elapsed = Date.now() - start;
-    if (elapsed >= timeoutMs) return null;
-    const remaining = timeoutMs - elapsed;
-    if (remaining <= 0) return null;
-    if (intervalMs > 0) sleep(Math.min(intervalMs, remaining));
-  }
+  return waitForSession(
+    () => findQoderSessionSince(cwd, sinceMs),
+    opts?.timeoutMs ?? cfg.timeoutMs,
+    opts?.intervalMs ?? cfg.intervalMs,
+  );
+}
+
+/** Poll for the agy conversation newer than `sinceMs` until it appears or the
+ * timeout passes. The row only appears after the member takes the first prompt,
+ * so the lookup runs after that prompt was delivered. Returns the newest
+ * matching id, or null when none appears in time. */
+export function waitForAgySession(
+  cwd: string,
+  sinceMs: number,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): string | null {
+  const cfg = qoderWaitConfig();
+  return waitForSession(
+    () => findAgySessionSince(cwd, sinceMs),
+    opts?.timeoutMs ?? cfg.timeoutMs,
+    opts?.intervalMs ?? cfg.intervalMs,
+  );
 }
 
 /** The id of the runtime's newest session working in `cwd`, or null when none is known. */

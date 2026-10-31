@@ -1834,7 +1834,12 @@ function agyConversations() {
     return [];
   }
   try {
-    const rows = conn.query("select conversation_id, workspace_uris from conversation_summaries").all();
+    let rows;
+    try {
+      rows = conn.query("select conversation_id, workspace_uris, last_user_input_time from conversation_summaries").all();
+    } catch {
+      rows = conn.query("select conversation_id, workspace_uris from conversation_summaries").all();
+    }
     const out = [];
     for (const r of rows) {
       let dirs = [];
@@ -1844,8 +1849,15 @@ function agyConversations() {
         dirs = [];
       }
       const first = Array.isArray(dirs) && typeof dirs[0] === "string" && dirs[0].startsWith("file://") ? dirs[0].slice("file://".length) : "";
+      let lastInput = Number(r.last_user_input_time);
+      if (!Number.isFinite(lastInput))
+        lastInput = Date.parse(String(r.last_user_input_time ?? ""));
+      if (!Number.isFinite(lastInput))
+        lastInput = 0;
+      else if (lastInput > 0 && lastInput < 1000000000000)
+        lastInput *= 1000;
       if (r.conversation_id && first)
-        out.push({ id: r.conversation_id, dir: first });
+        out.push({ id: r.conversation_id, dir: first, lastInput });
     }
     return out;
   } catch {
@@ -2017,13 +2029,20 @@ function findQoderSessionSince(cwd, sinceMs) {
   const mine = qoderSessionFiles(cwd).filter((s) => s.modified >= sinceMs || s.born >= sinceMs);
   return mine.length ? mine[mine.length - 1].id : null;
 }
-function waitForQoderSession(cwd, sinceMs, opts) {
-  const cfg = qoderWaitConfig();
-  const timeoutMs = opts?.timeoutMs ?? cfg.timeoutMs;
-  const intervalMs = opts?.intervalMs ?? cfg.intervalMs;
+function findAgySessionSince(cwd, sinceMs) {
+  try {
+    const want = canonical(cwd);
+    const mine = agyConversations().filter((s) => s.dir !== "" && canonical(s.dir) === want && s.lastInput >= sinceMs);
+    mine.sort((a, b) => a.lastInput - b.lastInput);
+    return mine.length ? mine[mine.length - 1].id : null;
+  } catch {
+    return null;
+  }
+}
+function waitForSession(find, timeoutMs, intervalMs) {
   const start = Date.now();
   for (;; ) {
-    const found = findQoderSessionSince(cwd, sinceMs);
+    const found = find();
     if (found)
       return found;
     const elapsed = Date.now() - start;
@@ -2035,6 +2054,14 @@ function waitForQoderSession(cwd, sinceMs, opts) {
     if (intervalMs > 0)
       sleep(Math.min(intervalMs, remaining));
   }
+}
+function waitForQoderSession(cwd, sinceMs, opts) {
+  const cfg = qoderWaitConfig();
+  return waitForSession(() => findQoderSessionSince(cwd, sinceMs), opts?.timeoutMs ?? cfg.timeoutMs, opts?.intervalMs ?? cfg.intervalMs);
+}
+function waitForAgySession(cwd, sinceMs, opts) {
+  const cfg = qoderWaitConfig();
+  return waitForSession(() => findAgySessionSince(cwd, sinceMs), opts?.timeoutMs ?? cfg.timeoutMs, opts?.intervalMs ?? cfg.intervalMs);
 }
 function findSession(runtime, cwd) {
   try {
@@ -2715,6 +2742,14 @@ function recordSession(args, roster, m, dir, established, sinceMs) {
       const cfg = qoderWaitConfig();
       const within = cfg.timeoutMs >= 1000 ? `${Math.round(cfg.timeoutMs / 1000)} s` : `${cfg.timeoutMs} ms`;
       print(`NOTE member ${repr(m.name)}: qoder session id could not be recorded: ` + `no new session file appeared within ${within} of the first prompt; ` + `relaunch with --member ${m.name} to record it`);
+      return;
+    }
+  } else if (m.agent === "agy" || m.agent === "antigravity") {
+    id = waitForAgySession(dir, sinceMs);
+    if (!id) {
+      const cfg = qoderWaitConfig();
+      const within = cfg.timeoutMs >= 1000 ? `${Math.round(cfg.timeoutMs / 1000)} s` : `${cfg.timeoutMs} ms`;
+      print(`NOTE member ${repr(m.name)}: agy session id could not be recorded: ` + `no new conversation appeared within ${within} of the first prompt; ` + `relaunch with --member ${m.name} to record it`);
       return;
     }
   } else {
