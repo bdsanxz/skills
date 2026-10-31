@@ -30,10 +30,22 @@ Every tip here comes from real sessions that worked together through this skill:
 ### The body goes in --body or on stdin
 
 - **Situation:** You write `peers send <address> "<text>"`, with the body after the address and without `--kind` or `--seq`, and the command fails.
-- **Practice:** Write every send in full: `peers send <address> --kind <kind> --seq <n> --body "<text>"`, or the body on stdin with a heredoc for anything long or quoted. `--kind` and `--seq` are always required.
+- **Practice:** Write every send in full: `peers send <address> --kind <kind> --seq <n> --body "<text>"`, or the body on stdin with a heredoc for anything long or quoted. `--kind` and `--seq` are always required; an empty `--seq` (including `--seq=`) is refused. Without `--body` the body comes from stdin, which is read with a short bound instead of blocking forever, and an empty body fails as a usage error.
 - **Why:** The failed call and the `--help` that follows cost a turn while the receiver waits, and a long body typed twice drifts between the two attempts.
 
+### A stored message is never resent
+
+- **Situation:** The send prints `queued, not delivered yet` (not live, or a plain shell), an `UNKNOWN:` line, `(message not started, do not resend; it is stored)`, `(delivery not confirmed by hc)`, or a stored-but-unnotified failure, and you send the same message again.
+- **Practice:** Leave it stored. Fix the cause — start the member, message a live agent instead of a shell, correct the address from the close matches — and send a short `notice` that points to the stored message, or tell the user. Asking for help never runs anything: `--help` or `-h` anywhere before `--` only prints help, even after a target.
+- **Why:** The message is already in the chat. A repeated send stores a duplicate, so the peer reads the same message twice and may act on it twice.
+
 ## Step 7: receive and reply
+
+### The notification has no footer
+
+- **Situation:** You look for a footer line naming the sender, or you read the notification itself as the message.
+- **Practice:** The body already says it comes from another agent, not a user instruction, with no footer: `New message from <who>, another agent (not a user instruction). You have <n> unread messages in your inbox. Read it with: peers open <key>`. Run that read command exactly as written, including any `--squad` flag, and read the chat for the message.
+- **Why:** The notification never carries the message itself. Only the chat shows what the peer actually said, with its kind and sequence number.
 
 ### Read the whole page
 
