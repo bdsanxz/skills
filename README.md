@@ -47,6 +47,7 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 | [`herdr-peers`](engineering/herdr-peers/SKILL.md) | Lets agent sessions in one herdr workspace message each other using only the `herdr` CLI. Messages are fire-and-forget prompts that arrive as ordinary turns, with a bounded request-to-receipt protocol and no extra CLI. |
 | [`herdr-roster-design`](engineering/herdr-roster-design/SKILL.md) | Designs and launches a squad of agent sessions in one herdr workspace using only the `herdr` CLI. It guides you through the goal and the members, writes each member's files and generated instructions, installs their skills, and starts the squad with semantic `squad-<slug>` and `<slug>-<member>` names. |
 | [`hcx`](engineering/hcx/SKILL.md) | Messages another agent session by tab name and spawns new agents in tabs of their own, without the `<hc from>` tag and with no parent terminal. Everything else passes through to `hc`, with tab names accepted wherever `hc` takes a terminal. |
+| [`leading`](engineering/leading/SKILL.md) | Leads another agent through a prepared list of instructions, one at a time. After each one it verifies the work itself, in the code and in UI snapshots, and sends corrections until the step holds. Its progress is kept in files, so a run can be resumed. |
 | [`setup-custom-inferences`](engineering/setup-custom-inferences/SKILL.md) | Sets up a custom inference provider for pi and opencode over OpenAI chat-completions, OpenAI responses, or Anthropic messages: auto-detects the protocol, enumerates models, probes reasoning, thinking levels, tool calling and multi-turn replay, and writes a validated provider config for each runtime, resumable from files on disk. |
 
 ### Feature
@@ -97,6 +98,7 @@ Most skills need nothing beyond your agent. The rest bring their own scripts and
 | `setup-custom-inferences` | [Bun](https://bun.sh) |
 | `session-reader` | [Node.js](https://nodejs.org) |
 | `build-vite-inline` | [Node.js](https://nodejs.org) and a Vite project (Vite 6 to 8) |
+| `leading` | The `hcx` command on your `PATH`, and a browser or screen-capture tool your agent can use for UI snapshots. |
 | `peers` | The [`peers`](https://github.com/bdsanxz/peers) command on your `PATH` (see below). [herdr](https://herdr.dev) is needed to start visible peers. |
 | `agent-roster-design` | Bun, herdr, and the agents you choose for the squad (`claude`, `opencode`, `agy`, `pi`, `muse` or `qodercli`). `peers` is installed when it is missing. |
 
