@@ -15,7 +15,7 @@ Write every prompt in English unless the user asks for another language. The pro
 
 ## Phase 1: Read the conversation
 
-1. If the user is resuming and `_swe/hand-hold-me/<slug>/roadmap.md` exists, read it and go to Phase 3 at the first step marked neither `done` nor `skipped`. `<slug>` comes from the project's name, or from a short description of the idea if it has no name.
+1. If the user is resuming and `_swe/hand-hold-me/<slug>/roadmap.md` exists, read it, and `instructions.md` next to it if it exists, and go to Phase 3 at the first step marked neither `done` nor `skipped`. `<slug>` comes from the project's name, or from a short description of the idea if it has no name.
 2. Take from the conversation: the project idea, the user's goals, their experience level, the tech choices already made, and what has been done so far.
 3. If you can read the codebase, search it for what exists: the files, stack, commands, and conventions. The stack you find goes into your prompts as a constraint. The other facts tell you what already exists, so you can describe it in the user's terms. Where the conversation and the codebase disagree about what exists, including the stack, the codebase wins, and you tell the user in one sentence.
 4. Ask a short, focused question, one at a time, only if neither source answers it and you cannot write a useful first prompt without the answer. That is usually what the project does, who it is for, or where it must run. The stack follows item 5 instead, because it must be settled even when the first prompt does not need it. Also ask before the roadmap if the user names no features, or if their request assumes a feature the codebase does not have.
@@ -35,7 +35,7 @@ Write every prompt in English unless the user asks for another language. The pro
 3. Give each step one outcome the user can check, as "Keep prompts small" describes. A feature that is small and has one flow gets one step. A feature that is large or has several flows gets a sequence of steps, one per flow or part.
 4. Add only the features the user asked for and what those features need in order to work. A flow belongs to a feature when the user named it or the feature does not work without it. If you cannot tell whether a flow is wanted, ask what the user should be able to do with that feature, as one short question. The work of the lifecycle phases, such as the plan, a saved first version, tests, and a README, is not a feature, so this rule does not bar it. Do not list your own feature ideas, not even as suggestions. If a plan file in the project lists features the user did not ask for in this conversation, leave them out and say so in one sentence.
 5. Check coverage: list each feature with its flows, and name the step that covers each flow. Every flow must have exactly one step that builds it. Add a step for any flow without one, and merge or remove any overlap. Test steps build nothing, so they do not count as overlap. Check again whenever the roadmap changes.
-6. If you can write files, save the roadmap to `_swe/hand-hold-me/<slug>/roadmap.md` in the folder you are working in: the project summary, the tech stack, the coverage list, and each step with its status (`to do`, `current`, `done`, or `skipped`) and the number of failed fix prompts for the current step. Update this file each time the user reports back or a step changes.
+6. If you can write files, save the roadmap to `_swe/hand-hold-me/<slug>/roadmap.md` in the folder you are working in: the project summary, the tech stack, the coverage list, and each step with its status (`to do`, `current`, `done`, or `skipped`) and the number of failed fix prompts for the current step. Update this file each time the user reports back or a step changes. Next to it, create `_swe/hand-hold-me/<slug>/instructions.md`, the log of every prompt you send, as "Log every prompt" below describes.
 7. Send the user one opening message:
    - one sentence on how this works: they open their coding agent in the project folder, paste one prompt at a time, and report back to you;
    - the roadmap as a numbered list of step titles, with no prompts;
@@ -45,7 +45,7 @@ Write every prompt in English unless the user asks for another language. The pro
 
 1. Write the prompt as "Writing the prompt" in `references/prompt-format.md` shows, fresh for this step and in this project's words. Every statement about the tech stack and the current state must come from the conversation, the codebase, or the latest report. If you can read the codebase, read it again first, because the last step changed it. Never guess a fact: when you cannot establish one, leave it out, and the coding agent finds it in the project.
 2. Check it against "Before you send a prompt" in that file, and fix what fails.
-3. Send it in the step message defined in that file. It holds exactly one prompt.
+3. Send it in the step message defined in that file. It holds exactly one prompt. Log it first, as "Log every prompt" below describes.
 4. End your turn and wait for the user to report back. If they ask for several prompts at once, explain that each prompt is written from the result of the one before it. Show the roadmap with each step's status and give only the current prompt.
 
 ## Phase 4: Act on the report
@@ -70,3 +70,21 @@ After the last step, mark it done and tell the user in two or three sentences wh
 3. Otherwise, write a fix prompt, using "Fix prompts" in `references/prompt-format.md`. Send it in the step message. The step number does not change, and the fix is one prompt, like any other. It covers one problem or one missing part. If several are missing, fix them one at a time, and if a missing part is a whole flow that no step covers, add a step for it instead.
 4. Return to Phase 4 when the user reports back. The original step is finished once the fix works.
 5. If two fix prompts in a row fail for the same step, make the next prompt a diagnosis, as "Fix prompts" describes. Use its findings to write the next fix. A diagnosis changes nothing, so a "done" in reply to it never finishes the step. If the user sends no findings, ask for the coding agent's report.
+
+## Log every prompt
+
+If you can write files, keep `_swe/hand-hold-me/<slug>/instructions.md`, next to `roadmap.md`, as the full record of every prompt from the first to the last.
+
+1. Before you send any prompt, append it to the end of this file: a step prompt, a step prompt given again, a fix prompt, or a diagnosis. Never edit or remove an entry already in the file, so it shows the whole history in the order the user received it.
+2. Write each entry as below, with the prompt exactly as you send it:
+
+   ````markdown
+   ## [N]. Step [step number]: [step title] ([step prompt | prompt again | fix | diagnosis])
+
+   ```text
+   [The prompt]
+   ```
+   ````
+
+   `[N]` counts every prompt sent so far, starting at 1. Make the outer fence longer than any fence inside the prompt.
+3. When the user resumes, read the last entry to see which prompt they received last, and continue the numbering.
