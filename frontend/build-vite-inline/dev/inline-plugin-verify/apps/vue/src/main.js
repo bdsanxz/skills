@@ -1,0 +1,1 @@
+import { createApp } from 'vue';import App from './App.vue';__p.order.push('vue-main');createApp(App).mount('#root');

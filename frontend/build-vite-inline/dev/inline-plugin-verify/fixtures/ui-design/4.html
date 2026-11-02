@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>FrameForge AI - Export &amp; Render</title>
+    <!-- Material Symbols Outlined -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Google Fonts: Inter, Inter Tight, JetBrains Mono -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Inter+Tight:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS CDN with plugins -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Config verbatim from system requirements -->
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#ffb783",
+                        "surface-tint": "#c0c1ff",
+                        "surface-container-low": "#1b1b23",
+                        "on-tertiary": "#4f2500",
+                        "surface-container": "#1f1f27",
+                        "pewter": "#a1a7b3",
+                        "surface": "#13131b",
+                        "inverse-on-surface": "#303038",
+                        "inverse-surface": "#e4e1ed",
+                        "on-primary-container": "#0d0096",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-container": "#00515d",
+                        "amber-trim": "#f59e0b",
+                        "tertiary-container": "#d97721",
+                        "secondary": "#5de6ff",
+                        "outline-variant": "#464554",
+                        "surface-container-lowest": "#0d0d15",
+                        "surface-container-high": "#292932",
+                        "on-surface-variant": "#c7c4d7",
+                        "gunmetal-raised": "#2f3440",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed": "#001f25",
+                        "ruby-alert": "#ef4444",
+                        "primary-fixed": "#e1e0ff",
+                        "graphite-panel": "#1a1d24",
+                        "electric-indigo": "#6366f1",
+                        "primary": "#c0c1ff",
+                        "inverse-primary": "#494bd6",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "secondary-container": "#00cbe6",
+                        "on-surface": "#e4e1ed",
+                        "on-primary": "#1000a9",
+                        "surface-container-highest": "#34343d",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "on-tertiary-fixed": "#301400",
+                        "on-secondary-fixed-variant": "#004e5a",
+                        "error-container": "#93000a",
+                        "emerald-sync": "#10b981",
+                        "surface-dim": "#13131b",
+                        "on-error": "#690005",
+                        "secondary-fixed-dim": "#2fd9f4",
+                        "tertiary-fixed": "#ffdcc5",
+                        "on-tertiary-fixed-variant": "#703700",
+                        "on-secondary": "#00363e",
+                        "obsidian-workbench": "#0f1115",
+                        "on-background": "#e4e1ed",
+                        "surface-variant": "#34343d",
+                        "on-tertiary-container": "#452000",
+                        "cyan-signal": "#22d3ee",
+                        "primary-container": "#8083ff",
+                        "surface-bright": "#393841",
+                        "secondary-fixed": "#a2eeff",
+                        "tertiary-fixed-dim": "#ffb783",
+                        "on-primary-fixed": "#07006c",
+                        "platinum": "#e6e8ee",
+                        "background": "#13131b",
+                        "slate-rail": "#252933",
+                        "outline": "#908fa0"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "space-sm": "8px",
+                        "space-lg": "16px",
+                        "space-xl": "24px",
+                        "space-md": "12px",
+                        "space-2xl": "32px",
+                        "space-xs": "4px",
+                        "margin": "16px",
+                        "gutter": "12px"
+                    },
+                    "fontFamily": {
+                        "subheading": ["Inter"],
+                        "heading": ["Inter"],
+                        "footnote": ["Inter"],
+                        "display": ["Inter"],
+                        "telemetry": ["JetBrains Mono"],
+                        "body": ["Inter"],
+                        "axis-label": ["Inter Tight"]
+                    },
+                    "fontSize": {
+                        "subheading": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "heading": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "footnote": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "display": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "telemetry": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "body": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "axis-label": ["11px", { "lineHeight": "14px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body
+    class="bg-obsidian-workbench text-on-surface antialiased overflow-hidden select-none font-body text-body relative w-screen h-screen">
+    <!-- ========================================================================= -->
+    <!-- UNDERLYING DESKTOP VIDEO EDITOR WORKSPACE (1280x800 Layout Baseline)      -->
+    <!-- ========================================================================= -->
+    <div
+        class="absolute inset-0 flex flex-col w-full h-full pointer-events-none select-none filter blur-[6px] opacity-40">
+        <!-- TopNavBar (Shared Component JSON anchor) -->
+        <header
+            class="flex justify-between items-center w-full px-4 h-14 bg-obsidian-workbench border-b border-outline-variant flex-shrink-0 z-10">
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2">
+                    <span class="material-symbols-outlined text-cyan-signal text-[20px]"
+                        data-icon="movie_filter">movie_filter</span>
+                    <span class="text-subheading font-heading font-bold text-platinum tracking-tight">FrameForge
+                        AI</span>
+                </div>
+                <!-- Search bar -->
+                <div
+                    class="flex items-center bg-graphite-panel border border-outline-variant rounded px-2.5 py-1 text-pewter text-footnote font-footnote w-64">
+                    <span class="material-symbols-outlined text-[16px] mr-1.5" data-icon="search">search</span>
+                    <span>Search timeline, bins, smart tags...</span>
+                </div>
+                <!-- Navigation Links -->
+                <nav class="flex items-center space-x-6 h-full">
+                    <a class="text-pewter hover:text-platinum font-telemetry py-4 transition-colors duration-150"
+                        href="#">Media</a>
+                    <a class="text-cyan-signal border-b-2 border-cyan-signal font-telemetry py-4" href="#">Edit</a>
+                    <a class="text-pewter hover:text-platinum font-telemetry py-4 transition-colors duration-150"
+                        href="#">Color</a>
+                    <a class="text-pewter hover:text-platinum font-telemetry py-4 transition-colors duration-150"
+                        href="#">Audio</a>
+                    <a class="text-pewter hover:text-platinum font-telemetry py-4 transition-colors duration-150"
+                        href="#">Export</a>
+                </nav>
+            </div>
+            <!-- Timecode display in TopBar -->
+            <div class="flex items-center space-x-3 bg-graphite-panel px-3 py-1 rounded border border-outline-variant">
+                <span class="text-pewter font-footnote text-[11px] uppercase tracking-wider">Playhead</span>
+                <span
+                    class="font-telemetry text-telemetry text-cyan-signal tracking-widest font-semibold">00:04:12:08</span>
+            </div>
+            <!-- Trailing actions -->
+            <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-1 text-pewter">
+                    <button class="p-1.5 hover:bg-gunmetal-raised rounded"><span
+                            class="material-symbols-outlined text-[18px]"
+                            data-icon="auto_awesome">auto_awesome</span></button>
+                    <button class="p-1.5 hover:bg-gunmetal-raised rounded"><span
+                            class="material-symbols-outlined text-[18px]" data-icon="tune">tune</span></button>
+                    <button class="p-1.5 hover:bg-gunmetal-raised rounded"><span
+                            class="material-symbols-outlined text-[18px]" data-icon="history">history</span></button>
+                    <button class="p-1.5 hover:bg-gunmetal-raised rounded"><span
+                            class="material-symbols-outlined text-[18px]" data-icon="settings">settings</span></button>
+                </div>
+                <button
+                    class="bg-graphite-panel text-platinum hover:bg-gunmetal-raised px-3 py-1 rounded border border-outline-variant text-footnote font-footnote">Smart
+                    Cut</button>
+                <button
+                    class="bg-electric-indigo text-platinum px-3.5 py-1 rounded font-footnote font-medium shadow">Render</button>
+                <div
+                    class="w-7 h-7 rounded-full bg-slate-rail border border-outline-variant flex items-center justify-center text-[11px] font-bold text-cyan-signal">
+                    FF
+                </div>
+            </div>
+        </header>
+        <!-- Main Workspace Container -->
+        <div class="flex flex-1 w-full overflow-hidden">
+            <!-- SideNavBar (Shared Component Rail) -->
+            <aside
+                class="w-16 flex flex-col justify-between items-center py-3 bg-slate-rail border-r border-outline-variant flex-shrink-0 z-10">
+                <div class="w-full flex flex-col items-center space-y-1">
+                    <div class="text-footnote font-telemetry font-bold text-platinum mb-2 text-center">
+                        <span class="material-symbols-outlined text-electric-indigo text-[22px]"
+                            data-icon="folder_open">folder_open</span>
+                    </div>
+                    <button
+                        class="text-electric-indigo bg-graphite-panel border-l-2 border-electric-indigo flex flex-col items-center justify-center py-2.5 w-full">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="folder_open">folder_open</span>
+                        <span class="text-axis-label font-axis-label text-[10px] mt-0.5">Bins</span>
+                    </button>
+                    <button
+                        class="text-pewter hover:text-platinum flex flex-col items-center justify-center py-2.5 w-full transition-colors duration-150">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="movie_edit">movie_edit</span>
+                        <span class="text-axis-label font-axis-label text-[10px] mt-0.5">Smart Cuts</span>
+                    </button>
+                    <button
+                        class="text-pewter hover:text-platinum flex flex-col items-center justify-center py-2.5 w-full transition-colors duration-150">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="psychology">psychology</span>
+                        <span class="text-axis-label font-axis-label text-[10px] mt-0.5">AI Prompts</span>
+                    </button>
+                    <button
+                        class="text-pewter hover:text-platinum flex flex-col items-center justify-center py-2.5 w-full transition-colors duration-150">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="show_chart">show_chart</span>
+                        <span class="text-axis-label font-axis-label text-[10px] mt-0.5">Scopes</span>
+                    </button>
+                    <button
+                        class="text-pewter hover:text-platinum flex flex-col items-center justify-center py-2.5 w-full transition-colors duration-150">
+                        <span class="material-symbols-outlined text-[20px]"
+                            data-icon="auto_fix_high">auto_fix_high</span>
+                        <span class="text-axis-label font-axis-label text-[10px] mt-0.5">Effects</span>
+                    </button>
+                    <button
+                        class="text-pewter hover:text-platinum flex flex-col items-center justify-center py-2.5 w-full transition-colors duration-150">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="graphic_eq">graphic_eq</span>
+                        <span class="text-axis-label font-axis-label text-[10px] mt-0.5">Audio Tools</span>
+                    </button>
+                </div>
+                <div class="w-full flex flex-col items-center space-y-2 border-t border-outline-variant pt-2">
+                    <button class="text-pewter flex flex-col items-center py-1">
+                        <span class="material-symbols-outlined text-[18px]" data-icon="help">help</span>
+                    </button>
+                    <button class="text-pewter flex flex-col items-center py-1">
+                        <span class="material-symbols-outlined text-[18px]" data-icon="keyboard">keyboard</span>
+                    </button>
+                </div>
+            </aside>
+            <!-- 3-Column Studio Workspace Area -->
+            <main class="flex-1 flex flex-col overflow-hidden bg-obsidian-workbench p-2 gap-2">
+                <!-- Top Half: Column 1 (Media Pool), Column 2 (Preview Monitor), Column 3 (Inspector) -->
+                <div class="flex-1 flex gap-2 min-h-0">
+                    <!-- Column 1: Media Browser & Bins -->
+                    <div class="w-64 bg-graphite-panel rounded border border-outline-variant flex flex-col p-2.5">
+                        <div
+                            class="flex items-center justify-between pb-2 border-b border-outline-variant text-pewter font-footnote">
+                            <span class="text-platinum font-semibold">Media Pool</span>
+                            <span class="material-symbols-outlined text-[16px]"
+                                data-icon="filter_list">filter_list</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <div
+                                class="bg-gunmetal-raised h-20 rounded border border-outline-variant p-1 flex flex-col justify-between">
+                                <div class="w-full h-11 bg-slate-rail rounded overflow-hidden relative">
+                                    <img class="w-full h-full object-cover"
+                                        data-alt="A vivid cinematic drone view of rugged coastal sea cliffs illuminated by golden hour warm sunlight, contrasting against deep cyan-indigo ocean waves crashing over black volcanic rock formations in high contrast style."
+                                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1RTSoGmKiUDrLq2aWtzSt5Xlfdmxov0Stl6GisJ5lV2ZCIBtYGFs0iuhmIW9Wt9XSse8gyxta-50G-ob3tQB8hycJGyNxXpZH800Qpb_baNESKir54BYJFTo8qEGB-lo2K4Y3huwlAANl-d1eLR8ko7mg8_LUbW4xotRqo2rscawmVpA4-mry2TMYGBV72YSUAyOsFT2wCKNDULMLAfXb2X2HcrAxY-95Avqb7_mGIEMv6nwIHl3AP6FeBV51Pw0Zdz12N7UAOTYU" />
+                                </div>
+                                <span class="text-[10px] text-pewter truncate">Drone_Cliffs_01.mov</span>
+                            </div>
+                            <div
+                                class="bg-gunmetal-raised h-20 rounded border border-outline-variant p-1 flex flex-col justify-between">
+                                <div class="w-full h-11 bg-slate-rail rounded overflow-hidden relative">
+                                    <img class="w-full h-full object-cover"
+                                        data-alt="Close up cinematic shot of a traveler walking down neon lit Tokyo urban alleyways at twilight with cyan and magenta neon sign reflections pooling on wet asphalt surfaces in a moody dark-grade style."
+                                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBx-XMVH50t93gPIHdotlohimJzjfNt4sV10hG0DxOAWTbNmNZ1HRDoq-IGRQzIowYUCvbNFNk86p1VrVbK6BO5SWExzzhdoEfOkfNWdVnZp1U4ctHiFZ0WE_UQzTk6McadGD3jrN2odK6Ja8FotawS3M7Ifh__d_E1cNCj894Fu2gnKlQp64xeReVd6KY69krmQwD-zUQI0xhIi0_LVXpoAC7HiQDXCTdf2r5dTWT60dCG0lGNfTHD8vKUAGU_-MB3ndqR71fH-7Cl" />
+                                </div>
+                                <span class="text-[10px] text-pewter truncate">Urban_Neon_Night.mp4</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Column 2: Central Preview Monitor -->
+                    <div
+                        class="flex-1 bg-graphite-panel rounded border border-outline-variant flex flex-col overflow-hidden relative">
+                        <div
+                            class="h-8 bg-slate-rail px-3 flex items-center justify-between border-b border-outline-variant text-pewter text-footnote">
+                            <div class="flex items-center space-x-2">
+                                <span class="w-2 h-2 rounded-full bg-cyan-signal"></span>
+                                <span class="text-platinum font-medium">Program: Sequence 01 (4K ProRes 60fps)</span>
+                            </div>
+                            <span class="font-telemetry text-axis-label text-cyan-signal">FIT 54% • REC709</span>
+                        </div>
+                        <!-- Video Canvas Viewport -->
+                        <div class="flex-1 bg-black flex items-center justify-center relative p-3">
+                            <div
+                                class="w-full h-full max-w-2xl bg-gunmetal-raised rounded border border-outline-variant relative overflow-hidden flex items-center justify-center">
+                                <img class="w-full h-full object-cover opacity-85"
+                                    data-alt="Ultra high resolution cinematic film frame of a scenic mountain highway curve during dramatic stormy sunset with streaks of orange sun lighting majestic alpine peaks, framed in deep obsidian and indigo studio grades."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsjE-Q43eMsL-RkGlVSM_H3fcPCHS0uaOC8x91sxxHCTH7lnaXcWswtvXGVWnTDRLgsdAa2A5QMBqAh6HKnRB07fbnnPKV71s_6rsHIJzNCUI7MGGL2rwPuzLlTJWAghMnqg42EmUmf4VGo8q8T-HcdN1YuzPE5oebLLxlIvu04Qs48cAyHlYqehzmsySmZOD2wu20Lnl13Fl_s6qO59FggF5EQCZKMF-joDyhBT_vXNb1POpwC7TJggwBwczJtNSgcyPcwSkfGq81" />
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div
+                                        class="w-12 h-12 rounded-full bg-obsidian-workbench/70 border border-cyan-signal flex items-center justify-center text-cyan-signal">
+                                        <span class="material-symbols-outlined text-[24px]"
+                                            data-icon="play_arrow">play_arrow</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Transport Bar -->
+                        <div
+                            class="h-10 bg-slate-rail border-t border-outline-variant flex items-center justify-center space-x-4 text-pewter">
+                            <span class="material-symbols-outlined text-[18px]"
+                                data-icon="skip_previous">skip_previous</span>
+                            <span class="material-symbols-outlined text-[18px]"
+                                data-icon="fast_rewind">fast_rewind</span>
+                            <span class="material-symbols-outlined text-[20px] text-cyan-signal"
+                                data-icon="pause">pause</span>
+                            <span class="material-symbols-outlined text-[18px]"
+                                data-icon="fast_forward">fast_forward</span>
+                            <span class="material-symbols-outlined text-[18px]" data-icon="skip_next">skip_next</span>
+                        </div>
+                    </div>
+                    <!-- Column 3: Inspector Panel -->
+                    <div class="w-72 bg-graphite-panel rounded border border-outline-variant flex flex-col p-2.5">
+                        <div
+                            class="flex items-center justify-between pb-2 border-b border-outline-variant text-pewter font-footnote">
+                            <span class="text-platinum font-semibold">Clip Inspector</span>
+                            <span class="text-electric-indigo font-telemetry text-[11px]">AI ACTIVE</span>
+                        </div>
+                        <div class="mt-3 space-y-3 text-pewter font-footnote">
+                            <div>
+                                <label class="text-[11px] uppercase tracking-wider text-pewter">Transform Scale</label>
+                                <div class="h-1.5 w-full bg-slate-rail rounded mt-1 overflow-hidden">
+                                    <div class="h-full bg-electric-indigo w-3/4"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[11px] uppercase tracking-wider text-pewter">Opacity</label>
+                                <div class="h-1.5 w-full bg-slate-rail rounded mt-1 overflow-hidden">
+                                    <div class="h-full bg-cyan-signal w-full"></div>
+                                </div>
+                            </div>
+                            <div class="p-2 rounded bg-slate-rail border border-outline-variant">
+                                <span class="text-platinum text-[11px] font-medium block">Neural Color Match</span>
+                                <span class="text-[10px] text-pewter">Grade synced with Master Camera A</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Bottom Half: Multi-Track Timeline & Audio Meter -->
+                <div class="h-52 bg-graphite-panel rounded border border-outline-variant flex flex-col overflow-hidden">
+                    <!-- Timeline Ruler -->
+                    <div
+                        class="h-7 bg-slate-rail border-b border-outline-variant flex items-center px-4 justify-between text-axis-label font-telemetry text-pewter">
+                        <span>00:00:00:00</span>
+                        <span>00:01:00:00</span>
+                        <span>00:02:00:00</span>
+                        <span class="text-cyan-signal font-bold">00:04:12:08</span>
+                        <span>00:05:00:00</span>
+                        <span>00:06:00:00</span>
+                    </div>
+                    <!-- Tracks V1, V2, A1, A2 -->
+                    <div class="flex-1 flex flex-col relative overflow-hidden bg-obsidian-workbench/80">
+                        <!-- Playhead vertical indicator -->
+                        <div class="absolute top-0 bottom-0 left-1/2 w-0.5 bg-cyan-signal z-20 pointer-events-none">
+                            <div class="w-3 h-3 bg-cyan-signal -translate-x-1.5 rotate-45 transform"></div>
+                        </div>
+                        <!-- V2 Track -->
+                        <div class="h-10 border-b border-outline-variant/60 flex items-center">
+                            <div
+                                class="w-24 bg-slate-rail h-full px-2 flex items-center justify-between text-axis-label font-telemetry text-pewter border-r border-outline-variant">
+                                <span>V2 [Overlay]</span>
+                                <span class="material-symbols-outlined text-[14px]"
+                                    data-icon="lock_open">lock_open</span>
+                            </div>
+                            <div class="flex-1 h-full p-1 relative">
+                                <div
+                                    class="absolute left-1/3 w-64 h-8 bg-electric-indigo/80 rounded-sm border border-electric-indigo flex items-center px-2 text-platinum text-[11px]">
+                                    <span>AI_Title_Glitch.mov</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- V1 Track -->
+                        <div class="h-10 border-b border-outline-variant/60 flex items-center">
+                            <div
+                                class="w-24 bg-slate-rail h-full px-2 flex items-center justify-between text-axis-label font-telemetry text-pewter border-r border-outline-variant">
+                                <span>V1 [Video]</span>
+                                <span class="material-symbols-outlined text-[14px]" data-icon="videocam">videocam</span>
+                            </div>
+                            <div class="flex-1 h-full p-1 relative flex gap-1">
+                                <div
+                                    class="w-72 h-8 bg-slate-rail rounded-sm border border-outline-variant flex items-center px-2 text-platinum text-[11px]">
+                                    <span>Drone_Cliffs_01.mov</span>
+                                </div>
+                                <div
+                                    class="w-96 h-8 bg-gunmetal-raised rounded-sm border border-cyan-signal/60 flex items-center px-2 text-cyan-signal text-[11px]">
+                                    <span>Urban_Neon_Night.mp4</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- A1 Track -->
+                        <div class="h-10 border-b border-outline-variant/60 flex items-center">
+                            <div
+                                class="w-24 bg-slate-rail h-full px-2 flex items-center justify-between text-axis-label font-telemetry text-pewter border-r border-outline-variant">
+                                <span>A1 [Dialogue]</span>
+                                <span class="material-symbols-outlined text-[14px]" data-icon="mic">mic</span>
+                            </div>
+                            <div class="flex-1 h-full p-1 relative">
+                                <div
+                                    class="w-[480px] h-8 bg-emerald-sync/30 border border-emerald-sync/60 rounded-sm flex items-center px-2 text-emerald-sync text-[11px]">
+                                    <span>Voiceover_Master_Loudnorm.wav</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- A2 Track -->
+                        <div class="h-10 flex items-center">
+                            <div
+                                class="w-24 bg-slate-rail h-full px-2 flex items-center justify-between text-axis-label font-telemetry text-pewter border-r border-outline-variant">
+                                <span>A2 [Music]</span>
+                                <span class="material-symbols-outlined text-[14px]"
+                                    data-icon="music_note">music_note</span>
+                            </div>
+                            <div class="flex-1 h-full p-1 relative">
+                                <div
+                                    class="w-full h-8 bg-tertiary-container/30 border border-tertiary-container/60 rounded-sm flex items-center px-2 text-tertiary text-[11px]">
+                                    <span>Synthwave_Atmosphere_Stereo.flac</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    <!-- ========================================================================= -->
+    <!-- MODAL BACKDROP (60% Obsidian Scrim + Backdrop Blur)                       -->
+    <!-- ========================================================================= -->
+    <div
+        class="fixed inset-0 bg-obsidian-workbench/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+        <!-- ======================================================================= -->
+        <!-- FLOATING EXPORT & RENDER MODAL CONTAINER (768px Width, Gunmetal Raised)  -->
+        <!-- ======================================================================= -->
+        <div
+            class="w-full max-w-[775px] bg-gunmetal-raised border border-outline-variant rounded-xl shadow-2xl flex flex-col overflow-hidden text-platinum transition-all duration-300">
+            <!-- MODAL HEADER -->
+            <div class="flex items-center justify-between px-6 py-4 bg-graphite-panel border-b border-outline-variant">
+                <div class="flex items-center space-x-3">
+                    <div
+                        class="w-8 h-8 rounded bg-electric-indigo/20 border border-electric-indigo/40 flex items-center justify-center text-electric-indigo">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="file_upload">file_upload</span>
+                    </div>
+                    <h2 class="text-heading font-heading font-bold text-platinum tracking-tight">Export Video</h2>
+                    <!-- AI upscaled 4K Chip Badge -->
+                    <div
+                        class="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-electric-indigo/20 border border-electric-indigo text-primary text-axis-label font-axis-label font-medium tracking-wide">
+                        <span class="material-symbols-outlined text-[13px] text-electric-indigo"
+                            data-icon="auto_awesome">auto_awesome</span>
+                        <span>AI upscaled 4K</span>
+                    </div>
+                </div>
+                <button
+                    class="w-8 h-8 rounded-lg flex items-center justify-center text-pewter hover:text-platinum hover:bg-slate-rail transition-colors duration-150"
+                    title="Close Export Dialog">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="close">close</span>
+                </button>
+            </div>
+            <!-- MODAL BODY: TWO COLUMN CONFIGURATION -->
+            <div class="grid grid-cols-12 gap-0 border-b border-outline-variant bg-graphite-panel/60">
+                <!-- LEFT COLUMN: PRESETS & DESTINATION (5 Cols) -->
+                <div
+                    class="col-span-5 p-5 border-r border-outline-variant flex flex-col justify-between bg-graphite-panel/40">
+                    <div>
+                        <!-- Presets vs Custom Tabs -->
+                        <div class="flex items-center space-x-4 border-b border-outline-variant/60 pb-2 mb-3">
+                            <button
+                                class="text-electric-indigo border-b-2 border-electric-indigo pb-1.5 font-footnote font-semibold text-footnote flex items-center space-x-1">
+                                <span class="material-symbols-outlined text-[16px]"
+                                    data-icon="bookmarks">bookmarks</span>
+                                <span>Presets</span>
+                            </button>
+                            <button
+                                class="text-pewter hover:text-platinum pb-1.5 font-footnote font-medium text-footnote transition-colors duration-150">
+                                Custom
+                            </button>
+                        </div>
+                        <!-- Presets Vertical List -->
+                        <div class="space-y-2">
+                            <!-- YouTube 4K (Selected) -->
+                            <div
+                                class="p-3 rounded-lg bg-electric-indigo/15 border-2 border-electric-indigo cursor-pointer transition-all duration-150 shadow-sm relative">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="material-symbols-outlined text-[18px] text-electric-indigo"
+                                            data-icon="smart_display">smart_display</span>
+                                        <span class="text-footnote font-footnote font-bold text-platinum">YouTube
+                                            4K</span>
+                                    </div>
+                                    <span class="material-symbols-outlined text-[16px] text-electric-indigo"
+                                        data-icon="check_circle">check_circle</span>
+                                </div>
+                                <div
+                                    class="mt-1.5 flex items-center flex-wrap gap-1.5 font-telemetry text-[11px] text-pewter">
+                                    <span class="px-1.5 py-0.5 rounded bg-slate-rail text-cyan-signal">3840×2160</span>
+                                    <span class="px-1.5 py-0.5 rounded bg-slate-rail">60fps</span>
+                                    <span class="px-1.5 py-0.5 rounded bg-slate-rail">H.265</span>
+                                    <span class="px-1.5 py-0.5 rounded bg-slate-rail">MP4</span>
+                                </div>
+                            </div>
+                            <!-- Instagram Reel -->
+                            <div
+                                class="p-2.5 rounded-lg bg-slate-rail/50 hover:bg-slate-rail border border-outline-variant cursor-pointer transition-colors duration-150">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="material-symbols-outlined text-[18px] text-pewter"
+                                            data-icon="smartphone">smartphone</span>
+                                        <span class="text-footnote font-footnote font-medium text-platinum">Instagram
+                                            Reel</span>
+                                    </div>
+                                    <span class="text-axis-label font-telemetry text-pewter">9:16</span>
+                                </div>
+                                <div class="mt-1 text-[11px] font-telemetry text-pewter">1080×1920 • 30fps • MP4</div>
+                            </div>
+                            <!-- Twitter / X -->
+                            <div
+                                class="p-2.5 rounded-lg bg-slate-rail/50 hover:bg-slate-rail border border-outline-variant cursor-pointer transition-colors duration-150">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="material-symbols-outlined text-[18px] text-pewter"
+                                            data-icon="tag">tag</span>
+                                        <span class="text-footnote font-footnote font-medium text-platinum">Twitter /
+                                            X</span>
+                                    </div>
+                                    <span class="text-axis-label font-telemetry text-pewter">1080p</span>
+                                </div>
+                                <div class="mt-1 text-[11px] font-telemetry text-pewter">1920×1080 • 60fps • H.264</div>
+                            </div>
+                            <!-- ProRes Master -->
+                            <div
+                                class="p-2.5 rounded-lg bg-slate-rail/50 hover:bg-slate-rail border border-outline-variant cursor-pointer transition-colors duration-150">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="material-symbols-outlined text-[18px] text-pewter"
+                                            data-icon="video_file">video_file</span>
+                                        <span class="text-footnote font-footnote font-medium text-platinum">ProRes
+                                            Master</span>
+                                    </div>
+                                    <span class="text-axis-label font-telemetry text-pewter">HQ</span>
+                                </div>
+                                <div class="mt-1 text-[11px] font-telemetry text-pewter">4K ProRes 422 HQ • QuickTime
+                                </div>
+                            </div>
+                            <!-- Custom Preset Entry -->
+                            <div
+                                class="p-2.5 rounded-lg bg-slate-rail/30 hover:bg-slate-rail border border-outline-variant/60 cursor-pointer transition-colors duration-150 flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <span class="material-symbols-outlined text-[18px] text-pewter"
+                                        data-icon="tune">tune</span>
+                                    <span class="text-footnote font-footnote font-medium text-pewter">Custom
+                                        Preset...</span>
+                                </div>
+                                <span class="material-symbols-outlined text-[16px] text-pewter"
+                                    data-icon="chevron_right">chevron_right</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Destination File Path Picker Card -->
+                    <div class="mt-4 pt-3 border-t border-outline-variant/80">
+                        <span
+                            class="text-[11px] font-footnote uppercase tracking-wider text-pewter block mb-1.5">Destination
+                            Directory</span>
+                        <div
+                            class="bg-slate-rail rounded-lg p-2.5 border border-outline-variant flex items-center justify-between">
+                            <div class="flex items-center space-x-2 overflow-hidden mr-2">
+                                <span class="material-symbols-outlined text-[18px] text-cyan-signal flex-shrink-0"
+                                    data-icon="folder">folder</span>
+                                <span
+                                    class="text-telemetry font-telemetry text-[11px] text-platinum truncate">~/Movies/Exports/FrameForge/</span>
+                            </div>
+                            <button
+                                class="bg-gunmetal-raised hover:bg-slate-rail text-platinum border border-outline-variant text-[11px] font-footnote font-medium px-2.5 py-1 rounded transition-colors duration-150 flex-shrink-0">
+                                Browse
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- RIGHT COLUMN: DETAILED RENDER SETTINGS & AI ENHANCE (7 Cols) -->
+                <div class="col-span-7 p-5 space-y-4">
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Format Dropdown -->
+                        <div>
+                            <label
+                                class="block text-[11px] font-footnote uppercase tracking-wider text-pewter mb-1">Format</label>
+                            <div class="relative">
+                                <select
+                                    class="w-full bg-graphite-panel border border-outline-variant rounded-md px-3 py-2 text-footnote font-footnote text-platinum focus:border-electric-indigo focus:ring-0 appearance-none cursor-pointer">
+                                    <option selected="">MP4 (MPEG-4 Part 14)</option>
+                                    <option>QuickTime MOV</option>
+                                    <option>WebM</option>
+                                    <option>Apple ProRes</option>
+                                </select>
+                                <span
+                                    class="material-symbols-outlined text-pewter text-[18px] absolute right-2.5 top-2.5 pointer-events-none"
+                                    data-icon="expand_more">expand_more</span>
+                            </div>
+                        </div>
+                        <!-- Codec Dropdown -->
+                        <div>
+                            <label
+                                class="block text-[11px] font-footnote uppercase tracking-wider text-pewter mb-1">Video
+                                Codec</label>
+                            <div class="relative">
+                                <select
+                                    class="w-full bg-graphite-panel border border-outline-variant rounded-md px-3 py-2 text-footnote font-footnote text-platinum focus:border-electric-indigo focus:ring-0 appearance-none cursor-pointer">
+                                    <option selected="">H.265 (HEVC Main 10)</option>
+                                    <option>H.264 (AVC High)</option>
+                                    <option>AV1 Hardware Accelerated</option>
+                                    <option>ProRes 422 HQ</option>
+                                </select>
+                                <span
+                                    class="material-symbols-outlined text-pewter text-[18px] absolute right-2.5 top-2.5 pointer-events-none"
+                                    data-icon="expand_more">expand_more</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Resolution Dropdown -->
+                        <div>
+                            <label
+                                class="block text-[11px] font-footnote uppercase tracking-wider text-pewter mb-1">Resolution</label>
+                            <div class="relative">
+                                <select
+                                    class="w-full bg-graphite-panel border border-outline-variant rounded-md px-3 py-2 text-footnote font-footnote text-platinum focus:border-electric-indigo focus:ring-0 appearance-none cursor-pointer">
+                                    <option selected="">3840 × 2160 (4K UHD)</option>
+                                    <option>2560 × 1440 (2K QHD)</option>
+                                    <option>1920 × 1080 (Full HD)</option>
+                                    <option>1080 × 1920 (Vertical 9:16)</option>
+                                </select>
+                                <span
+                                    class="material-symbols-outlined text-pewter text-[18px] absolute right-2.5 top-2.5 pointer-events-none"
+                                    data-icon="expand_more">expand_more</span>
+                            </div>
+                        </div>
+                        <!-- Frame Rate Dropdown -->
+                        <div>
+                            <label
+                                class="block text-[11px] font-footnote uppercase tracking-wider text-pewter mb-1">Frame
+                                Rate</label>
+                            <div class="relative">
+                                <select
+                                    class="w-full bg-graphite-panel border border-outline-variant rounded-md px-3 py-2 text-footnote font-footnote text-platinum focus:border-electric-indigo focus:ring-0 appearance-none cursor-pointer">
+                                    <option selected="">60.00 fps</option>
+                                    <option>59.94 fps</option>
+                                    <option>30.00 fps</option>
+                                    <option>24.00 fps (Cinematic)</option>
+                                    <option>23.976 fps</option>
+                                </select>
+                                <span
+                                    class="material-symbols-outlined text-pewter text-[18px] absolute right-2.5 top-2.5 pointer-events-none"
+                                    data-icon="expand_more">expand_more</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Bitrate Slider -->
+                    <div class="bg-graphite-panel p-3 rounded-lg border border-outline-variant">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[11px] font-footnote uppercase tracking-wider text-pewter">Target Bitrate
+                                (VBR 2-Pass)</span>
+                            <span class="text-telemetry font-telemetry font-bold text-cyan-signal text-[13px]">45
+                                Mbps</span>
+                        </div>
+                        <div class="relative flex items-center">
+                            <input
+                                class="w-full h-1.5 bg-slate-rail rounded-lg appearance-none cursor-pointer accent-cyan-signal"
+                                max="100" min="10" type="range" value="45" />
+                        </div>
+                        <div class="flex justify-between text-[10px] font-telemetry text-pewter mt-1">
+                            <span>10 Mbps (Draft)</span>
+                            <span>45 Mbps (Optimal)</span>
+                            <span>100 Mbps (Lossless)</span>
+                        </div>
+                    </div>
+                    <!-- Audio Settings Toggle Card -->
+                    <div
+                        class="bg-graphite-panel px-3 py-2.5 rounded-lg border border-outline-variant flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="material-symbols-outlined text-[20px] text-cyan-signal"
+                                data-icon="graphic_eq">graphic_eq</span>
+                            <div>
+                                <span class="text-footnote font-footnote font-semibold text-platinum block">Audio: AAC
+                                    320kbps / 48kHz Stereo</span>
+                                <span class="text-[11px] text-pewter">Master Bus • 24-bit depth • TruePeak -1.0
+                                    dBTP</span>
+                            </div>
+                        </div>
+                        <div
+                            class="w-9 h-5 bg-electric-indigo rounded-full relative cursor-pointer flex items-center p-0.5">
+                            <div class="w-4 h-4 bg-platinum rounded-full ml-auto shadow"></div>
+                        </div>
+                    </div>
+                    <!-- 'AI Enhance' Feature Box -->
+                    <div
+                        class="bg-electric-indigo/10 border border-electric-indigo/70 rounded-lg p-3 relative overflow-hidden">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <div
+                                    class="w-6 h-6 rounded bg-electric-indigo flex items-center justify-center text-platinum shadow-sm">
+                                    <span class="material-symbols-outlined text-[15px]"
+                                        data-icon="psychology">psychology</span>
+                                </div>
+                                <span class="text-footnote font-footnote font-bold text-platinum">Neural Studio AI
+                                    Enhancer</span>
+                            </div>
+                            <!-- Feature Toggle (Enabled) -->
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-[11px] font-telemetry text-cyan-signal font-semibold">ENABLED</span>
+                                <div
+                                    class="w-9 h-5 bg-electric-indigo rounded-full relative cursor-pointer flex items-center p-0.5">
+                                    <div class="w-4 h-4 bg-platinum rounded-full ml-auto shadow"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sub-options checkboxes -->
+                        <div class="grid grid-cols-1 gap-1.5 mt-2.5 pl-1">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input checked=""
+                                    class="w-3.5 h-3.5 text-electric-indigo bg-graphite-panel border-outline-variant rounded focus:ring-0"
+                                    type="checkbox" />
+                                <span class="text-footnote font-footnote text-platinum text-[12px]">AI Motion De-blur
+                                    &amp; Frame Sharpening</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input checked=""
+                                    class="w-3.5 h-3.5 text-electric-indigo bg-graphite-panel border-outline-variant rounded focus:ring-0"
+                                    type="checkbox" />
+                                <span class="text-footnote font-footnote text-platinum text-[12px]">Neural Noise &amp;
+                                    Compression Artifact Reduction</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input checked=""
+                                    class="w-3.5 h-3.5 text-electric-indigo bg-graphite-panel border-outline-variant rounded focus:ring-0"
+                                    type="checkbox" />
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="text-footnote font-footnote text-platinum text-[12px]">4K Super
+                                        Resolution Upscale Engine</span>
+                                    <span class="material-symbols-outlined text-amber-trim text-[14px]"
+                                        data-icon="auto_awesome">auto_awesome</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- ===================================================================== -->
+            <!-- RENDER QUEUE SECTION (Full width beneath the two columns)             -->
+            <!-- ===================================================================== -->
+            <div class="p-4 bg-graphite-panel/90 border-b border-outline-variant">
+                <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center space-x-2.5">
+                        <span
+                            class="text-footnote font-footnote font-bold text-platinum tracking-wide uppercase text-[12px]">Render
+                            Queue</span>
+                        <div
+                            class="px-2 py-0.5 rounded-full bg-slate-rail border border-outline-variant text-[11px] font-telemetry text-pewter">
+                            <span class="text-cyan-signal font-semibold">1 active</span>, 1 queued
+                        </div>
+                    </div>
+                    <button
+                        class="text-pewter hover:text-ruby-alert text-footnote font-footnote text-[12px] flex items-center space-x-1 transition-colors duration-150">
+                        <span class="material-symbols-outlined text-[15px]" data-icon="cancel">cancel</span>
+                        <span>Cancel All</span>
+                    </button>
+                </div>
+                <!-- Job Cards Container -->
+                <div class="space-y-2">
+                    <!-- Job 1: Active Rendering Job -->
+                    <div class="bg-slate-rail/80 rounded-lg p-3 border border-outline-variant flex flex-col space-y-2">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2.5 overflow-hidden">
+                                <span class="material-symbols-outlined text-cyan-signal text-[20px] animate-pulse"
+                                    data-icon="sync">sync</span>
+                                <div>
+                                    <span
+                                        class="text-footnote font-footnote font-semibold text-platinum block">Summer_Travel_Reel_4K.mp4</span>
+                                    <span class="text-[11px] font-telemetry text-pewter">Preset: YouTube 4K (H.265) •
+                                        3840×2160</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <div class="text-right">
+                                    <span class="text-[11px] text-pewter block">ETA: <strong
+                                            class="font-telemetry text-platinum">2m 14s</strong></span>
+                                    <span class="text-axis-label font-telemetry text-cyan-signal font-bold">64%
+                                        Completed</span>
+                                </div>
+                                <!-- Status Chip -->
+                                <div
+                                    class="px-2.5 py-1 rounded-full bg-cyan-signal/20 border border-cyan-signal/60 text-cyan-signal text-axis-label font-axis-label font-bold uppercase tracking-wider flex items-center space-x-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-signal animate-ping"></span>
+                                    <span>Rendering</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Progress Bar with Cyan Signal Fill & Animated Pulse -->
+                        <div
+                            class="w-full bg-graphite-panel h-2 rounded-full overflow-hidden relative border border-outline-variant/60">
+                            <div class="bg-cyan-signal h-full rounded-full transition-all duration-300 relative overflow-hidden"
+                                style="width: 64%;">
+                                <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Job 2: Queued Job -->
+                    <div
+                        class="bg-slate-rail/40 rounded-lg p-2.5 border border-outline-variant/60 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="material-symbols-outlined text-amber-trim text-[20px]"
+                                data-icon="schedule">schedule</span>
+                            <div>
+                                <span
+                                    class="text-footnote font-footnote font-medium text-platinum">BTS_trip_rough_cut.mp4</span>
+                                <span class="text-[11px] font-telemetry text-pewter block">Preset: Instagram Reel
+                                    (1080×1920)</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-[11px] font-telemetry text-pewter">Progress: 0% / Pending</span>
+                            <span class="text-[11px] font-telemetry text-pewter">ETA: Queued</span>
+                            <!-- Status Chip Amber -->
+                            <div
+                                class="px-2.5 py-0.5 rounded-full bg-amber-trim/20 border border-amber-trim/60 text-amber-trim text-axis-label font-axis-label font-bold uppercase tracking-wider">
+                                Queued
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- ===================================================================== -->
+            <!-- MODAL FOOTER ACTION ROW                                               -->
+            <!-- ===================================================================== -->
+            <div class="px-6 py-4 bg-gunmetal-raised flex items-center justify-between">
+                <!-- Left: Telemetry & Checkbox -->
+                <div class="flex flex-col space-y-1.5">
+                    <div class="flex items-center space-x-3 font-telemetry text-telemetry text-pewter">
+                        <div>Est. Size: <strong class="text-platinum font-semibold">1.24 GB</strong></div>
+                        <span class="text-outline-variant">•</span>
+                        <div>Duration: <strong class="text-platinum font-semibold">00:04:12:08</strong></div>
+                    </div>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input checked=""
+                            class="w-3.5 h-3.5 text-electric-indigo bg-graphite-panel border-outline-variant rounded focus:ring-0"
+                            type="checkbox" />
+                        <span
+                            class="text-footnote font-footnote text-pewter text-[12px] hover:text-platinum transition-colors">
+                            Open destination folder when export completes
+                        </span>
+                    </label>
+                </div>
+                <!-- Right Action Buttons -->
+                <div class="flex items-center space-x-3">
+                    <button
+                        class="bg-graphite-panel hover:bg-slate-rail text-platinum border border-outline-variant px-4 py-2 rounded-md font-footnote font-medium transition-colors duration-150">
+                        Cancel
+                    </button>
+                    <button
+                        class="bg-electric-indigo hover:bg-electric-indigo/90 text-platinum px-5 py-2 rounded-md font-footnote font-semibold flex items-center space-x-2 shadow-lg shadow-electric-indigo/25 hover:shadow-electric-indigo/40 transition-all duration-150 active:scale-[0.98]">
+                        <span class="material-symbols-outlined text-[18px]" data-icon="bolt">bolt</span>
+                        <span>Start Render</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

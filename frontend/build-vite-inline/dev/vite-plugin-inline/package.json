@@ -1,0 +1,14 @@
+{
+  "name": "vite-plugin-inline-test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 vite-plugin-inline.test.mjs"
+  },
+  "devDependencies": {
+    "vite": "8.3.5",
+    "vite6": "npm:vite@6.4.5",
+    "vite7": "npm:vite@7.3.7",
+    "javascript-obfuscator": "5.9.0"
+  }
+}

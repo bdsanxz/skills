@@ -1,0 +1,8 @@
+{
+  "name": "font-design-critic",
+  "summary": "Reviews the proof sheets of a font in progress against its brief and a review checklist, as an independent type designer, and writes its findings to a report file.",
+  "effort": "high",
+  "reports_to": "lead",
+  "talks_to": [],
+  "skills": []
+}

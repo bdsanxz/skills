@@ -55,6 +55,8 @@ Settle these, in order:
 
 ## Step 3: Design each member, one at a time
 
+When the `agent-roster-template` skill is installed, run its `list` command before you propose members and offer the templates that fit the goal. For a member the user picks from a template, run `template.js role <template>` and use its text as the drafted default for `ROLE.md` and its `COMMUNICATIONS.md` as the default for that file (the `template.js apply` command does not fit this layout: write the files into the member's directory yourself, replacing `{{reports_to}}` and `{{talks_to}}`).
+
 Take the members in order, the lead first. For each one, settle these six topics in order, each as one question with a drafted default. Four topics map to one file each in the member's directory: role to `ROLE.md`, communications to `COMMUNICATIONS.md`, project to `PROJECT.md`, memory to `MEMORY.md`. The instruction file (`CLAUDE.md`/`AGENTS.md`, written in Step 5) loads them. The first prompt and the skills agreement are not files: the prompt gives the opening task, and Step 5 installs the skills.
 
 1. **Role:** the tasks the member owns, its scope (what it may change, and what it leaves to whom), what "done" means for its tasks, and which decisions it makes alone or asks about.

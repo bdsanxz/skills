@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>FrameForge AI Video Editor</title>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Material Symbols Outlined -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS -->
+    
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#13131b",
+                        "tertiary-container": "#d97721",
+                        "primary-fixed": "#e1e0ff",
+                        "on-tertiary-fixed-variant": "#703700",
+                        "pewter": "#a1a7b3",
+                        "tertiary": "#ffb783",
+                        "gunmetal-raised": "#2f3440",
+                        "secondary-fixed": "#a2eeff",
+                        "electric-indigo": "#6366f1",
+                        "graphite-panel": "#1a1d24",
+                        "inverse-surface": "#e4e1ed",
+                        "tertiary-fixed": "#ffdcc5",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "on-primary-container": "#0d0096",
+                        "slate-rail": "#252933",
+                        "emerald-sync": "#10b981",
+                        "tertiary-fixed-dim": "#ffb783",
+                        "surface-container-low": "#1b1b23",
+                        "on-tertiary-container": "#452000",
+                        "secondary-fixed-dim": "#2fd9f4",
+                        "on-tertiary-fixed": "#301400",
+                        "platinum": "#e6e8ee",
+                        "background": "#13131b",
+                        "inverse-on-surface": "#303038",
+                        "error": "#ffb4ab",
+                        "on-secondary": "#00363e",
+                        "surface-dim": "#13131b",
+                        "surface-container": "#1f1f27",
+                        "on-secondary-container": "#00515d",
+                        "on-surface-variant": "#c7c4d7",
+                        "inverse-primary": "#494bd6",
+                        "surface-variant": "#34343d",
+                        "on-error": "#690005",
+                        "on-primary-fixed": "#07006c",
+                        "surface-bright": "#393841",
+                        "primary": "#c0c1ff",
+                        "on-surface": "#e4e1ed",
+                        "on-background": "#e4e1ed",
+                        "surface-container-lowest": "#0d0d15",
+                        "surface-container-highest": "#34343d",
+                        "obsidian-workbench": "#0f1115",
+                        "cyan-signal": "#22d3ee",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "ruby-alert": "#ef4444",
+                        "on-secondary-fixed-variant": "#004e5a",
+                        "outline-variant": "#464554",
+                        "on-secondary-fixed": "#001f25",
+                        "amber-trim": "#f59e0b",
+                        "secondary": "#5de6ff",
+                        "outline": "#908fa0",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#8083ff",
+                        "surface-tint": "#c0c1ff",
+                        "surface-container-high": "#292932",
+                        "secondary-container": "#00cbe6",
+                        "on-primary": "#1000a9",
+                        "error-container": "#93000a",
+                        "on-tertiary": "#4f2500"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin": "16px",
+                        "space-md": "12px",
+                        "space-xs": "4px",
+                        "space-2xl": "32px",
+                        "space-xl": "24px",
+                        "space-lg": "16px",
+                        "space-sm": "8px",
+                        "gutter": "12px"
+                    },
+                    "fontFamily": {
+                        "display": ["Inter", "sans-serif"],
+                        "telemetry": ["JetBrains Mono", "monospace"],
+                        "heading": ["Inter", "sans-serif"],
+                        "footnote": ["Inter", "sans-serif"],
+                        "axis-label": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "subheading": ["Inter", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "display": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "telemetry": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "heading": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "footnote": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "axis-label": ["11px", { "lineHeight": "14px", "fontWeight": "400" }],
+                        "body": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "subheading": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom subtle scrollbars for high-density NLE workspace */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f1115;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2f3440;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #464554;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+            font-size: 18px;
+            line-height: 1;
+            display: inline-block;
+        }
+
+        .material-symbols-fill {
+            font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+        }
+
+        /* Waveform canvas styling */
+        .waveform-bg {
+            background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0px, rgba(255, 255, 255, 0.2) 2px, transparent 2px, transparent 4px);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-obsidian-workbench text-platinum font-body text-body h-screen w-screen overflow-hidden select-none flex flex-col">
+    <!-- 1. TOP APPLICATION BAR (56px) -->
+    <header
+        class="h-14 w-full flex items-center justify-between px-space-lg bg-obsidian-workbench border-b border-gunmetal-raised select-none z-50 shrink-0">
+        <!-- Left: Brand Wordmark, Breadcrumbs, Codec Pill -->
+        <div class="flex items-center gap-space-md">
+            <div class="font-display text-subheading font-bold tracking-tight text-platinum flex items-center gap-2">
+                <div
+                    class="w-7 h-7 rounded-lg bg-electric-indigo flex items-center justify-center shadow-lg shadow-electric-indigo/20">
+                    <span
+                        class="material-symbols-outlined text-white material-symbols-fill text-[18px]">movie_filter</span>
+                </div>
+                <span>FrameForge</span>
+            </div>
+            <div class="h-4 w-[1px] bg-gunmetal-raised mx-1"></div>
+            <!-- Navigation Links from Shared Components JSON -->
+            <nav class="hidden lg:flex items-center gap-space-md font-body text-body">
+                <span
+                    class="text-cyan-signal font-semibold border-b-2 border-cyan-signal pb-1 cursor-pointer">Edit</span>
+                <span
+                    class="text-pewter font-medium hover:text-platinum transition-colors pb-1 cursor-pointer">Color</span>
+                <span
+                    class="text-pewter font-medium hover:text-platinum transition-colors pb-1 cursor-pointer">Audio</span>
+                <span
+                    class="text-pewter font-medium hover:text-platinum transition-colors pb-1 cursor-pointer">Effects</span>
+                <span
+                    class="text-pewter font-medium hover:text-platinum transition-colors pb-1 cursor-pointer">Deliver</span>
+            </nav>
+            <div class="h-4 w-[1px] bg-gunmetal-raised mx-1"></div>
+            <div class="flex items-center gap-2">
+                <span class="font-subheading text-footnote text-platinum font-semibold truncate max-w-[140px]">Summer
+                    Travel Reel</span>
+                <div class="w-2 h-2 rounded-full bg-amber-trim shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+                    title="Unsaved changes"></div>
+                <span
+                    class="font-telemetry text-axis-label px-2 py-0.5 rounded bg-slate-rail text-pewter border border-gunmetal-raised">4K
+                    DCI • 23.98 fps</span>
+            </div>
+        </div>
+        <!-- Center: Floating Transport Pill & JetBrains Mono Timecode -->
+        <div
+            class="flex items-center bg-graphite-panel border border-gunmetal-raised rounded-xl px-2.5 py-1 gap-space-sm shadow-sm">
+            <div class="flex items-center gap-0.5 text-pewter">
+                <button
+                    class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded transition-colors active:scale-95"
+                    title="Skip to Start">
+                    <span class="material-symbols-outlined text-[16px]">skip_previous</span>
+                </button>
+                <button
+                    class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded transition-colors active:scale-95"
+                    title="Rewind 1s">
+                    <span class="material-symbols-outlined text-[16px]">fast_rewind</span>
+                </button>
+                <button
+                    class="w-7 h-7 bg-cyan-signal hover:bg-cyan-signal/90 text-surface-container-lowest rounded-lg flex items-center justify-center font-bold transition-all active:scale-95 shadow-[0_0_12px_rgba(34,211,238,0.35)]"
+                    title="Play / Pause">
+                    <span class="material-symbols-outlined text-[18px] material-symbols-fill">play_arrow</span>
+                </button>
+                <button
+                    class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded transition-colors active:scale-95"
+                    title="Fast Forward 1s">
+                    <span class="material-symbols-outlined text-[16px]">fast_forward</span>
+                </button>
+                <button
+                    class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded transition-colors active:scale-95"
+                    title="Skip to End">
+                    <span class="material-symbols-outlined text-[16px]">skip_next</span>
+                </button>
+            </div>
+            <div class="h-4 w-[1px] bg-gunmetal-raised"></div>
+            <div class="flex items-center gap-1.5 px-1 font-telemetry text-telemetry">
+                <span class="text-cyan-signal font-semibold">00:04:12:08</span>
+                <span class="text-pewter/60">/</span>
+                <span class="text-pewter">00:06:45:00</span>
+            </div>
+            <div class="h-4 w-[1px] bg-gunmetal-raised"></div>
+            <div class="flex items-center gap-1">
+                <span
+                    class="font-telemetry text-axis-label text-pewter bg-slate-rail px-1.5 py-0.5 rounded cursor-pointer hover:text-platinum border border-gunmetal-raised">1.0x</span>
+            </div>
+        </div>
+        <!-- Right: Tool Quick-Actions, Ask Agent Pill & Export -->
+        <div class="flex items-center gap-space-sm">
+            <div class="flex items-center text-pewter bg-graphite-panel border border-gunmetal-raised rounded-lg p-0.5">
+                <button class="p-1.5 hover:text-platinum rounded transition-colors" title="Undo (Cmd+Z)">
+                    <span class="material-symbols-outlined text-[17px]">undo</span>
+                </button>
+                <button class="p-1.5 hover:text-platinum rounded transition-colors" title="Redo (Cmd+Shift+Z)">
+                    <span class="material-symbols-outlined text-[17px]">redo</span>
+                </button>
+                <div class="h-3 w-[1px] bg-gunmetal-raised my-auto mx-0.5"></div>
+                <button class="p-1.5 text-cyan-signal bg-gunmetal-raised rounded transition-colors"
+                    title="Snapping active (N)">
+                    <span class="material-symbols-outlined text-[17px]">qr_code_2</span>
+                </button>
+                <button class="p-1.5 hover:text-platinum rounded transition-colors" title="Razor tool (C)">
+                    <span class="material-symbols-outlined text-[17px]">content_cut</span>
+                </button>
+            </div>
+            <!-- Ask Agent Toggle Button -->
+            <button
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-electric-indigo/15 text-electric-indigo hover:bg-electric-indigo/25 border border-electric-indigo/40 rounded-lg font-footnote transition-all active:scale-95 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
+                id="agentToggleBtn">
+                <span
+                    class="material-symbols-outlined text-[16px] text-electric-indigo material-symbols-fill animate-pulse">auto_awesome</span>
+                <span class="font-semibold">Ask Agent</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-electric-indigo"></span>
+            </button>
+            <!-- Primary Export Button -->
+            <div class="flex items-center">
+                <button
+                    class="flex items-center gap-1.5 px-3.5 py-1.5 bg-electric-indigo hover:bg-electric-indigo/90 text-white rounded-l-lg font-footnote font-semibold transition-all active:scale-[0.98] shadow-md shadow-electric-indigo/25">
+                    <span class="material-symbols-outlined text-[16px]">file_upload</span>
+                    <span>Export</span>
+                </button>
+                <button
+                    class="px-1.5 py-1.5 bg-electric-indigo/90 hover:bg-electric-indigo text-white rounded-r-lg border-l border-indigo-400/30 transition-colors">
+                    <span class="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+                </button>
+            </div>
+            <!-- User Avatar / Settings -->
+            <div
+                class="w-7 h-7 rounded-full bg-slate-rail border border-gunmetal-raised flex items-center justify-center text-pewter cursor-pointer hover:text-platinum">
+                <span class="material-symbols-outlined text-[18px]">account_circle</span>
+            </div>
+        </div>
+    </header>
+    <!-- 2. WORKSPACE MAIN ROW (FLEX CONTAINER) -->
+    <div class="flex-1 flex overflow-hidden w-full relative">
+        <!-- A. LEFT MEDIA BROWSER PANEL (300px width) -->
+        <aside
+            class="w-[300px] shrink-0 bg-graphite-panel border-r border-gunmetal-raised flex flex-col justify-between select-none">
+            <!-- Media Tabs -->
+            <div>
+                <div class="flex border-b border-gunmetal-raised px-3 pt-2 text-footnote">
+                    <button
+                        class="px-3 py-2 text-cyan-signal font-semibold border-b-2 border-cyan-signal">Media</button>
+                    <button class="px-3 py-2 text-pewter hover:text-platinum transition-colors">Effects</button>
+                    <button class="px-3 py-2 text-pewter hover:text-platinum transition-colors">Transitions</button>
+                    <button class="px-3 py-2 text-pewter hover:text-platinum transition-colors">Audio</button>
+                </div>
+                <!-- Search Bar and Sorting Filter -->
+                <div class="p-3 flex items-center gap-2 border-b border-gunmetal-raised/70">
+                    <div class="relative flex-1">
+                        <span
+                            class="material-symbols-outlined text-pewter absolute left-2.5 top-1/2 -translate-y-1/2 text-[15px]">search</span>
+                        <input
+                            class="w-full bg-obsidian-workbench border border-gunmetal-raised rounded-md pl-8 pr-2 py-1 text-footnote text-platinum placeholder-pewter/60 focus:outline-none focus:border-electric-indigo"
+                            placeholder="Search bin clips..." type="text" />
+                    </div>
+                    <button
+                        class="px-2 py-1 bg-obsidian-workbench border border-gunmetal-raised rounded-md text-pewter hover:text-platinum flex items-center gap-1 text-footnote"
+                        title="Filter &amp; Sort">
+                        <span class="material-symbols-outlined text-[14px]">sort</span>
+                        <span class="font-telemetry text-axis-label">Date</span>
+                    </button>
+                </div>
+                <!-- Bin Clips Grid (2 columns) -->
+                <div class="p-3 grid grid-cols-2 gap-2.5 overflow-y-auto max-h-[calc(100vh-220px)]">
+                    <!-- Clip 1 (Selected with 2px Electric Indigo outline) -->
+                    <div
+                        class="group relative rounded-md bg-obsidian-workbench border-2 border-electric-indigo p-1 cursor-pointer transition-all shadow-[0_0_12px_rgba(99,102,241,0.25)]">
+                        <div class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail">
+                            <img class="w-full h-full object-cover"
+                                data-alt="A vivid cinematic drone shot capturing golden hour sunlight shimmering over coastal ocean waves and dramatic rocky cliffs in ultra-high 4k detail with deep obsidian shadows and saturated cyan water."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAi7ykqjRRXdOnya0b9xJt_HbauMaCz5vLLtyPi7q6-alhR9s_jc7_s7Y9kbCzq8xLy3yASle-4fignYSvsuNMD-zakUlPqSQY6I8AvBpFYdum3teGJ0s2KiKzhgTNmx4KHOsfsQrmE6tAFOvK9hlp_Z5JdR90-Oy8HgZC8suRpxy55W7CAk4eDQN39FFor1GSWUQvAhCc6vEOHHzENrUyKQx1F199DVFIQpgViC0wagsbHupxj9NEfMmaatYcd975ZBFLNeTVHmiu_" />
+                            <span
+                                class="absolute bottom-1 right-1 font-telemetry text-[10px] px-1 py-0.2 bg-black/80 rounded text-cyan-signal">00:42</span>
+                            <span
+                                class="absolute top-1 left-1 font-telemetry text-[9px] px-1 bg-electric-indigo text-white rounded font-bold">4K</span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between">
+                            <span class="font-footnote text-footnote text-platinum truncate max-w-[95px] font-medium"
+                                title="drone_coastal_sunset.mp4">drone_coastal...</span>
+                            <span class="material-symbols-outlined text-electric-indigo text-[14px]">videocam</span>
+                        </div>
+                    </div>
+                    <!-- Clip 2 -->
+                    <div
+                        class="group relative rounded-md bg-obsidian-workbench border border-gunmetal-raised hover:border-pewter/50 p-1 cursor-pointer transition-all">
+                        <div class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail">
+                            <img class="w-full h-full object-cover"
+                                data-alt="Dynamic slow motion cinematography of an ocean surfer gliding through a turquoise barreling wave with bright foam droplets and warm dusk lighting."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBiAvosgCxPVUgHaKCvhfCJhvRRaChHAKRdlN10NEtLFk9hM-scrO7YKHX3tlR_w2csIbNg3rPfUadY2dFfwl7ypPtXfikFgA0e6oIyT5gQj3V0FR4HcgaaBzae-s88DSHIsPMQHV6-kgDygTnEfQfUXNZXuQUjuFPKSvwLmNBQ8AkHSo-UlZ1MvIS19Wpcslhm2nYypSjOntNoogScc0qHrW18wLKtPLmbhHClT4CU57GjGkcb2kYHpM4PMRGx6QtYWP_RU11cEFU" />
+                            <span
+                                class="absolute bottom-1 right-1 font-telemetry text-[10px] px-1 py-0.2 bg-black/80 rounded text-pewter">01:15</span>
+                            <span
+                                class="absolute top-1 left-1 font-telemetry text-[9px] px-1 bg-slate-rail text-pewter rounded">4K</span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between">
+                            <span
+                                class="font-footnote text-footnote text-pewter truncate max-w-[95px] group-hover:text-platinum"
+                                title="beach_slowmo_surf.mp4">beach_slowmo...</span>
+                            <span class="material-symbols-outlined text-pewter text-[14px]">videocam</span>
+                        </div>
+                    </div>
+                    <!-- Clip 3 -->
+                    <div
+                        class="group relative rounded-md bg-obsidian-workbench border border-gunmetal-raised hover:border-pewter/50 p-1 cursor-pointer transition-all">
+                        <div class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail">
+                            <img class="w-full h-full object-cover"
+                                data-alt="First person point of view drone camera diving alongside a winding coastal highway cut into sheer coastal cliffs during evening golden hour."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDa-iKgZMYiqvoNVh2QpFgYPPVwZOG5ZiV6ExFaxRnm5nFOLId7SQawE3Ww_FYT44KPQMIQM78GzVxlJ4i80TobRVXfrCDaT2-_DR7_6_ULF2rpEjr-2sp9zEcOQ_VEiBwWBIml1TaWTJ_dyz59WoxwKK7iXEQP1AKCCN-FoOW3kjhuA6fHX2lF6LZJQtJ-ZTIrxEKR2vkYTPKBHz0oKoDLWItD5RZaxTwMhLPfnLpKiWu2o4b5mSe7XC6ms_d8IpjLryrBgZSL7fd1" />
+                            <span
+                                class="absolute bottom-1 right-1 font-telemetry text-[10px] px-1 py-0.2 bg-black/80 rounded text-pewter">00:28</span>
+                            <span
+                                class="absolute top-1 left-1 font-telemetry text-[9px] px-1 bg-slate-rail text-pewter rounded">4K</span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between">
+                            <span
+                                class="font-footnote text-footnote text-pewter truncate max-w-[95px] group-hover:text-platinum"
+                                title="cliff_drive_fpv.mp4">cliff_drive_fpv...</span>
+                            <span class="material-symbols-outlined text-pewter text-[14px]">videocam</span>
+                        </div>
+                    </div>
+                    <!-- Clip 4 (Audio Stem) -->
+                    <div
+                        class="group relative rounded-md bg-obsidian-workbench border border-gunmetal-raised hover:border-pewter/50 p-1 cursor-pointer transition-all">
+                        <div
+                            class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail/80 flex flex-col items-center justify-center border border-gunmetal-raised/40">
+                            <span class="material-symbols-outlined text-cyan-signal text-[24px]">graphic_eq</span>
+                            <div class="w-3/4 h-2 mt-1 waveform-bg opacity-70"></div>
+                            <span
+                                class="absolute bottom-1 right-1 font-telemetry text-[10px] px-1 py-0.2 bg-black/80 rounded text-pewter">03:10</span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between">
+                            <span
+                                class="font-footnote text-footnote text-pewter truncate max-w-[95px] group-hover:text-platinum"
+                                title="acoustic_ambient_stem.wav">acoustic_amb...</span>
+                            <span class="material-symbols-outlined text-cyan-signal text-[14px]">music_note</span>
+                        </div>
+                    </div>
+                    <!-- Clip 5 (Motion Graphic) -->
+                    <div
+                        class="group relative rounded-md bg-obsidian-workbench border border-gunmetal-raised hover:border-pewter/50 p-1 cursor-pointer transition-all">
+                        <div
+                            class="relative w-full aspect-video rounded overflow-hidden bg-gradient-to-br from-indigo-950/60 to-obsidian-workbench flex flex-col items-center justify-center border border-gunmetal-raised/40">
+                            <span class="font-display text-[11px] font-bold tracking-widest text-tertiary">SUMMER
+                                '25</span>
+                            <span class="font-telemetry text-[8px] text-pewter mt-0.5">MOTION TITLE</span>
+                            <span
+                                class="absolute bottom-1 right-1 font-telemetry text-[10px] px-1 py-0.2 bg-black/80 rounded text-pewter">00:08</span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between">
+                            <span
+                                class="font-footnote text-footnote text-pewter truncate max-w-[95px] group-hover:text-platinum"
+                                title="title_card_typography.mogrt">title_card_ty...</span>
+                            <span class="material-symbols-outlined text-tertiary text-[14px]">auto_stories</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Docked Bottom Footer Bar -->
+            <div class="p-3 border-t border-gunmetal-raised flex items-center gap-2 bg-obsidian-workbench">
+                <button
+                    class="flex-1 py-1.5 px-3 bg-graphite-panel hover:bg-gunmetal-raised border border-gunmetal-raised text-platinum rounded-md font-footnote font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95">
+                    <span class="material-symbols-outlined text-[16px]">add_box</span>
+                    <span>Import Media</span>
+                </button>
+                <button
+                    class="py-1.5 px-3 bg-ruby-alert/10 hover:bg-ruby-alert/20 border border-ruby-alert/30 text-ruby-alert rounded-md font-footnote font-medium flex items-center justify-center gap-1 transition-colors active:scale-95"
+                    title="Direct Record">
+                    <span class="w-2 h-2 rounded-full bg-ruby-alert animate-ping"></span>
+                    <span>Record</span>
+                </button>
+            </div>
+        </aside>
+        <!-- B. CENTER WORKSPACE COLUMN (PREVIEW + TIMELINE) -->
+        <main class="flex-1 flex flex-col min-w-0 bg-obsidian-workbench overflow-hidden">
+            <!-- Top Section: Preview Monitor (~56% height) -->
+            <section class="h-[56%] min-h-[300px] flex flex-col bg-[#0b0c10] border-b border-gunmetal-raised relative">
+                <!-- Canvas Bar Overlay / Settings -->
+                <div class="absolute top-2 left-3 right-3 z-20 flex items-center justify-between pointer-events-none">
+                    <div class="flex items-center gap-2 pointer-events-auto">
+                        <span
+                            class="font-telemetry text-axis-label px-2 py-0.5 rounded bg-black/70 backdrop-blur border border-gunmetal-raised text-cyan-signal font-semibold">100%
+                            Full Res</span>
+                        <span
+                            class="font-telemetry text-axis-label px-2 py-0.5 rounded bg-black/70 backdrop-blur border border-gunmetal-raised text-pewter">Rec.709
+                            D65</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 pointer-events-auto">
+                        <button
+                            class="p-1.5 bg-black/70 backdrop-blur border border-gunmetal-raised rounded hover:text-cyan-signal text-pewter"
+                            title="Toggle Title Safe Guides">
+                            <span class="material-symbols-outlined text-[16px]">grid_4x4</span>
+                        </button>
+                        <button
+                            class="p-1.5 bg-black/70 backdrop-blur border border-gunmetal-raised rounded hover:text-cyan-signal text-pewter"
+                            title="Aspect Ratio">
+                            <span class="font-telemetry text-axis-label font-bold">16:9</span>
+                        </button>
+                        <button
+                            class="p-1.5 bg-black/70 backdrop-blur border border-gunmetal-raised rounded hover:text-cyan-signal text-pewter"
+                            title="Full Screen Canvas">
+                            <span class="material-symbols-outlined text-[16px]">fullscreen</span>
+                        </button>
+                    </div>
+                </div>
+                <!-- 16:9 Cinematic Video Display with Overlays -->
+                <div class="flex-1 relative flex items-center justify-center p-3 overflow-hidden">
+                    <div
+                        class="relative aspect-video max-h-full max-w-full rounded shadow-2xl bg-black border border-gunmetal-raised overflow-hidden flex items-center justify-center">
+                        <!-- Simulated Frame Image -->
+                        <img class="w-full h-full object-cover"
+                            data-alt="A breathtaking cinematic 4k wide shot of an orange and magenta sunset over steep coastal cliffs with turquoise breaking waves, crisp water foam, and a lens flare glow."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVfs_Thl5b_bKhbdy1Jfe2mKQ0qPTAq6Pb1NpvzWp6SqlG47q23ga0N-tocuZ0UHB9KGd4cIX_98E7pxF9FzKCSRIa5t7a3qL4J4VV1PSCid-9RQzeymBKeWdIFeVtnX91fjUpfyO5Uio5k_I-jXeBdUlkKxgyOYkFu0bdpzYM3RudCC9uNdKE4-hjn-vfCjXBr0RdXOGRTrt1YRfEf3kfmCy4APgy7DW-1LH3f8Bv__34kiYKlKnL-mhdwTodZdhORfTAnisSoNyo" />
+                        <!-- Title Safe Overlay Lines (subtle dashed) -->
+                        <div class="absolute inset-[8%] border border-cyan-signal/20 pointer-events-none border-dashed">
+                        </div>
+                        <div class="absolute inset-[14%] border border-electric-indigo/20 pointer-events-none"></div>
+                        <!-- Central Hover Play Trigger -->
+                        <div
+                            class="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/40 transition-colors group cursor-pointer">
+                            <div
+                                class="w-12 h-12 rounded-full bg-cyan-signal/90 text-obsidian-workbench flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.5)] transform group-hover:scale-110 transition-transform">
+                                <span
+                                    class="material-symbols-outlined text-[28px] material-symbols-fill pl-0.5">play_arrow</span>
+                            </div>
+                        </div>
+                        <!-- Stamp Pill in Video -->
+                        <div
+                            class="absolute bottom-3 left-3 px-2 py-0.5 bg-black/80 rounded font-telemetry text-axis-label text-cyan-signal border border-gunmetal-raised pointer-events-none">
+                            00:04:12:08
+                        </div>
+                        <!-- Right Edge Audio Stereo VU Meters -->
+                        <div
+                            class="absolute right-2 top-4 bottom-4 w-4 bg-black/80 border border-gunmetal-raised rounded p-0.5 flex gap-1 pointer-events-none">
+                            <!-- Left Channel -->
+                            <div
+                                class="flex-1 bg-gunmetal-raised/60 rounded-xs flex flex-col justify-end overflow-hidden">
+                                <div
+                                    class="w-full h-[76%] bg-gradient-to-t from-emerald-sync via-emerald-sync to-amber-trim">
+                                </div>
+                            </div>
+                            <!-- Right Channel -->
+                            <div
+                                class="flex-1 bg-gunmetal-raised/60 rounded-xs flex flex-col justify-end overflow-hidden">
+                                <div
+                                    class="w-full h-[72%] bg-gradient-to-t from-emerald-sync via-emerald-sync to-amber-trim">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Mini Thumbnail Filmstrip under Preview -->
+                <div
+                    class="h-6 w-full bg-graphite-panel border-t border-gunmetal-raised px-3 flex items-center gap-1 overflow-hidden relative">
+                    <div class="absolute left-[38%] top-0 bottom-0 w-[2px] bg-cyan-signal z-10"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-indigo-950/70 border border-electric-indigo/40 rounded-xs shrink-0"></div>
+                    <div class="w-10 h-4 bg-indigo-950/70 border border-electric-indigo/40 rounded-xs shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                    <div class="w-10 h-4 bg-slate-rail rounded-xs border border-gunmetal-raised/60 shrink-0"></div>
+                </div>
+            </section>
+            <!-- Timeline Toolbar Strip (36px / h-9) -->
+            <div
+                class="h-9 w-full bg-slate-rail border-b border-gunmetal-raised px-3 flex items-center justify-between shrink-0 select-none">
+                <div class="flex items-center gap-1 text-pewter">
+                    <button class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded text-cyan-signal"
+                        title="Selection Arrow (V)">
+                        <span class="material-symbols-outlined text-[17px]">near_me</span>
+                    </button>
+                    <button class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded" title="Razor Cut (C)">
+                        <span class="material-symbols-outlined text-[17px]">content_cut</span>
+                    </button>
+                    <button class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded" title="Slip Tool (Y)">
+                        <span class="material-symbols-outlined text-[17px]">sync_alt</span>
+                    </button>
+                    <button class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded" title="Add Marker (M)">
+                        <span class="material-symbols-outlined text-[17px]">bookmark</span>
+                    </button>
+                    <div class="h-4 w-[1px] bg-gunmetal-raised mx-1"></div>
+                    <button class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded text-cyan-signal"
+                        title="Snap to Grid (N)">
+                        <span class="material-symbols-outlined text-[17px]">qr_code_2</span>
+                    </button>
+                    <button class="p-1 hover:text-platinum hover:bg-gunmetal-raised rounded" title="Linked Selection">
+                        <span class="material-symbols-outlined text-[17px]">link</span>
+                    </button>
+                    <button
+                        class="px-2 py-0.5 hover:text-platinum hover:bg-gunmetal-raised rounded font-footnote flex items-center gap-1 text-pewter">
+                        <span class="material-symbols-outlined text-[15px]">add</span>
+                        <span>Add Track</span>
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <!-- Zoom Controls -->
+                    <button class="p-1 hover:text-platinum text-pewter" title="Zoom Out">
+                        <span class="material-symbols-outlined text-[16px]">remove</span>
+                    </button>
+                    <input
+                        class="w-24 h-1 bg-obsidian-workbench accent-cyan-signal rounded appearance-none cursor-pointer"
+                        type="range" value="45" />
+                    <button class="p-1 hover:text-platinum text-pewter" title="Zoom In">
+                        <span class="material-symbols-outlined text-[16px]">add</span>
+                    </button>
+                    <div class="h-4 w-[1px] bg-gunmetal-raised mx-1"></div>
+                    <button
+                        class="p-1 px-2 hover:text-platinum hover:bg-gunmetal-raised rounded font-telemetry text-axis-label text-pewter"
+                        title="Fit to window (Shift+Z)">
+                        Zoom to Fit
+                    </button>
+                </div>
+            </div>
+            <!-- Multi-track Timeline Area (min-h-[300px]) -->
+            <div class="flex-1 relative flex flex-col bg-[#0d0f14] overflow-hidden">
+                <!-- Top Timeline Ruler -->
+                <div class="h-7 w-full bg-graphite-panel border-b border-gunmetal-raised flex relative select-none">
+                    <!-- Left placeholder for track headers width -->
+                    <div class="w-44 shrink-0 bg-slate-rail border-r border-gunmetal-raised flex items-center px-2">
+                        <span class="font-telemetry text-[11px] text-pewter">TIMELINE TICKS</span>
+                    </div>
+                    <!-- Time ticks strip -->
+                    <div
+                        class="flex-1 relative font-telemetry text-axis-label text-pewter flex items-center px-4 overflow-hidden">
+                        <span class="absolute left-6">00:00</span>
+                        <span class="absolute left-32">00:01</span>
+                        <span class="absolute left-60">00:02</span>
+                        <span class="absolute left-88">00:03</span>
+                        <span class="absolute left-[380px] text-cyan-signal font-semibold">00:04</span>
+                        <span class="absolute left-[480px]">00:05</span>
+                        <span class="absolute left-[580px]">00:06</span>
+                        <span class="absolute left-[680px]">00:07</span>
+                    </div>
+                </div>
+                <!-- Tracks Scroll Area -->
+                <div class="flex-1 overflow-y-auto relative flex">
+                    <!-- Track Headers Column (Width: 176px / 11rem) -->
+                    <div class="w-44 shrink-0 bg-slate-rail border-r border-gunmetal-raised flex flex-col z-20">
+                        <!-- V2 Track Header -->
+                        <div
+                            class="h-14 border-b border-gunmetal-raised px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center gap-1.5">
+                                <span
+                                    class="font-telemetry text-[11px] font-bold text-electric-indigo bg-indigo-950/60 px-1 rounded border border-electric-indigo/30">V2</span>
+                                <span
+                                    class="font-footnote text-[11px] text-platinum truncate max-w-[55px]">B-Roll</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-pewter">
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">visibility</span></button>
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">lock_open</span></button>
+                            </div>
+                        </div>
+                        <!-- V1 Track Header -->
+                        <div
+                            class="h-14 border-b border-gunmetal-raised px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center gap-1.5">
+                                <span
+                                    class="font-telemetry text-[11px] font-bold text-electric-indigo bg-indigo-950/60 px-1 rounded border border-electric-indigo/30">V1</span>
+                                <span class="font-footnote text-[11px] text-platinum truncate max-w-[55px]">Main
+                                    Cut</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-pewter">
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">visibility</span></button>
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">lock_open</span></button>
+                            </div>
+                        </div>
+                        <!-- Title Track Header -->
+                        <div
+                            class="h-11 border-b border-gunmetal-raised px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center gap-1.5">
+                                <span
+                                    class="font-telemetry text-[11px] font-bold text-amber-trim bg-amber-950/60 px-1 rounded border border-amber-trim/30">TT</span>
+                                <span
+                                    class="font-footnote text-[11px] text-platinum truncate max-w-[55px]">Titles</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-pewter">
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">title</span></button>
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">visibility</span></button>
+                            </div>
+                        </div>
+                        <!-- A1 Track Header -->
+                        <div
+                            class="h-14 border-b border-gunmetal-raised px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center gap-1.5">
+                                <span
+                                    class="font-telemetry text-[11px] font-bold text-emerald-sync bg-emerald-950/60 px-1 rounded border border-emerald-sync/30">A1</span>
+                                <span
+                                    class="font-footnote text-[11px] text-platinum truncate max-w-[55px]">Dialogue</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-pewter">
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">volume_up</span></button>
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">lock_open</span></button>
+                            </div>
+                        </div>
+                        <!-- A2 Track Header -->
+                        <div
+                            class="h-14 border-b border-gunmetal-raised px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center gap-1.5">
+                                <span
+                                    class="font-telemetry text-[11px] font-bold text-cyan-signal bg-cyan-950/60 px-1 rounded border border-cyan-signal/30">A2</span>
+                                <span
+                                    class="font-footnote text-[11px] text-platinum truncate max-w-[55px]">Music/FX</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-pewter">
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">volume_up</span></button>
+                                <button class="p-0.5 hover:text-platinum"><span
+                                        class="material-symbols-outlined text-[15px]">lock_open</span></button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Clips Canvas Container -->
+                    <div class="flex-1 relative bg-[#0e1017] min-w-[750px]">
+                        <!-- Playhead Cyan Signal (Intersects through all tracks) -->
+                        <div
+                            class="absolute top-0 bottom-0 left-[380px] w-[2px] bg-cyan-signal z-30 pointer-events-none shadow-[0_0_8px_rgba(34,211,238,0.8)]">
+                            <!-- Top Playhead Needle Head -->
+                            <div
+                                class="absolute -top-6 -left-[14px] w-7 h-5 bg-cyan-signal rounded-b-md flex items-center justify-center font-telemetry text-[9px] font-bold text-black shadow-md cursor-ew-resize pointer-events-auto">
+                                <span
+                                    class="material-symbols-outlined text-[12px] material-symbols-fill">arrow_drop_down</span>
+                            </div>
+                        </div>
+                        <!-- Track Lane V2 -->
+                        <div class="h-14 border-b border-gunmetal-raised/70 relative flex items-center px-2">
+                            <!-- Clip V2: Selected Clip with Cyan Playhead Intersecting -->
+                            <div
+                                class="absolute left-64 w-80 h-11 rounded-sm bg-gradient-to-r from-indigo-900 to-indigo-800 border-2 border-electric-indigo shadow-[0_0_12px_rgba(99,102,241,0.3)] flex flex-col justify-between p-1.5 cursor-pointer">
+                                <div class="flex items-center justify-between">
+                                    <span
+                                        class="font-footnote text-[11px] font-semibold text-white truncate">drone_cut_overhead.mp4
+                                        [4K]</span>
+                                    <span class="material-symbols-outlined text-white text-[13px]">videocam</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <span
+                                        class="font-telemetry text-[9px] px-1 bg-black/50 text-cyan-signal rounded">FX:
+                                        Stabilizer</span>
+                                    <span class="font-telemetry text-[9px] px-1 bg-black/50 text-pewter rounded">Speed:
+                                        100%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Track Lane V1 -->
+                        <div class="h-14 border-b border-gunmetal-raised/70 relative flex items-center px-2">
+                            <!-- Clip V1 Intro -->
+                            <div
+                                class="absolute left-4 w-60 h-11 rounded-sm bg-indigo-950 border border-electric-indigo/60 flex flex-col justify-between p-1.5 cursor-pointer">
+                                <div class="flex items-center justify-between">
+                                    <span
+                                        class="font-footnote text-[11px] font-medium text-platinum truncate">sunset_intro_master.mp4</span>
+                                    <span class="font-telemetry text-[9px] text-pewter">00:02:18</span>
+                                </div>
+                                <div class="w-full h-1 bg-electric-indigo/40 rounded"></div>
+                            </div>
+                            <!-- Clip V1 Cut 2 -->
+                            <div
+                                class="absolute left-[260px] w-96 h-11 rounded-sm bg-indigo-950 border border-electric-indigo/60 flex flex-col justify-between p-1.5 cursor-pointer">
+                                <div class="flex items-center justify-between">
+                                    <span
+                                        class="font-footnote text-[11px] font-medium text-platinum truncate">cliff_pan_02_4k.mp4</span>
+                                    <span class="font-telemetry text-[9px] text-pewter">00:04:12</span>
+                                </div>
+                                <div class="w-full h-1 bg-electric-indigo/40 rounded"></div>
+                            </div>
+                        </div>
+                        <!-- Track Lane Title -->
+                        <div class="h-11 border-b border-gunmetal-raised/70 relative flex items-center px-2">
+                            <div
+                                class="absolute left-20 w-72 h-8 rounded-sm bg-amber-950/80 border border-amber-trim/70 flex items-center justify-between px-2 cursor-pointer shadow-sm">
+                                <span class="font-footnote text-[11px] font-bold text-amber-trim truncate">Summer
+                                    Adventures 2025 (Title In)</span>
+                                <span class="material-symbols-outlined text-amber-trim text-[14px]">title</span>
+                            </div>
+                        </div>
+                        <!-- Track Lane A1 (Dialogue with Visible Speech Waveform) -->
+                        <div class="h-14 border-b border-gunmetal-raised/70 relative flex items-center px-2">
+                            <div
+                                class="absolute left-4 w-[540px] h-11 rounded-sm bg-emerald-950/90 border border-emerald-sync/60 flex flex-col justify-between p-1 cursor-pointer">
+                                <div class="flex items-center justify-between px-1">
+                                    <span
+                                        class="font-footnote text-[11px] font-medium text-emerald-sync truncate">dialogue_clean_voice_stem.wav</span>
+                                    <span class="font-telemetry text-[9px] text-emerald-sync/80">-14.2 LUFS</span>
+                                </div>
+                                <!-- Simulated Waveform Audio Graphic -->
+                                <div class="w-full h-5 flex items-center gap-[2px] px-1 overflow-hidden opacity-85">
+                                    <div class="w-1 h-2 bg-emerald-sync"></div>
+                                    <div class="w-1 h-3 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-1 bg-emerald-sync"></div>
+                                    <div class="w-1 h-4 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-2 bg-emerald-sync"></div>
+                                    <div class="w-1 h-4 bg-emerald-sync"></div>
+                                    <div class="w-1 h-3 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-2 bg-emerald-sync"></div>
+                                    <div class="w-1 h-1 bg-emerald-sync"></div>
+                                    <div class="w-1 h-4 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-3 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-2 bg-emerald-sync"></div>
+                                    <div class="w-1 h-4 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-1 bg-emerald-sync"></div>
+                                    <div class="w-1 h-4 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                    <div class="w-1 h-3 bg-emerald-sync"></div>
+                                    <div class="w-1 h-4 bg-emerald-sync"></div>
+                                    <div class="w-1 h-2 bg-emerald-sync"></div>
+                                    <div class="w-1 h-5 bg-emerald-sync"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Track Lane A2 (Music / Ambience) -->
+                        <div class="h-14 border-b border-gunmetal-raised/70 relative flex items-center px-2">
+                            <div
+                                class="absolute left-4 w-[680px] h-11 rounded-sm bg-cyan-950/80 border border-cyan-signal/60 flex flex-col justify-between p-1 cursor-pointer">
+                                <div class="flex items-center justify-between px-1">
+                                    <span
+                                        class="font-footnote text-[11px] font-medium text-cyan-signal truncate">ambient_ocean_music_stereo.wav</span>
+                                    <span class="font-telemetry text-[9px] text-cyan-signal/80">Stereo 48kHz</span>
+                                </div>
+                                <!-- Stereo Waveform -->
+                                <div class="w-full h-5 waveform-bg opacity-75 rounded-xs"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <!-- C. RIGHT INSPECTOR PANEL (300px width) -->
+        <aside
+            class="w-[300px] shrink-0 bg-graphite-panel border-l border-gunmetal-raised flex flex-col justify-between overflow-y-auto select-none">
+            <div>
+                <!-- Tabs Header -->
+                <div class="flex border-b border-gunmetal-raised px-3 pt-2 text-footnote">
+                    <button
+                        class="px-3 py-2 text-cyan-signal font-semibold border-b-2 border-cyan-signal">Properties</button>
+                    <button class="px-3 py-2 text-pewter hover:text-platinum transition-colors">Effects</button>
+                    <button class="px-3 py-2 text-pewter hover:text-platinum transition-colors">Color</button>
+                </div>
+                <div class="p-3.5 space-y-4">
+                    <!-- Clip Selection Header -->
+                    <div class="p-2.5 rounded-lg bg-obsidian-workbench border border-gunmetal-raised">
+                        <div class="flex items-center justify-between">
+                            <span
+                                class="font-footnote font-bold text-platinum truncate max-w-[190px]">drone_coastal_sunset.mp4</span>
+                            <span class="w-2 h-2 rounded-full bg-cyan-signal shadow-[0_0_6px_#22d3ee]"></span>
+                        </div>
+                        <div class="mt-1 flex items-center gap-2">
+                            <span class="font-telemetry text-axis-label text-electric-indigo font-semibold">V2
+                                Track</span>
+                            <span class="text-pewter/40">•</span>
+                            <span class="font-telemetry text-axis-label text-emerald-sync">Selected Clip</span>
+                        </div>
+                    </div>
+                    <!-- Transform Block -->
+                    <div class="space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span
+                                class="font-footnote text-axis-label uppercase tracking-wider text-pewter font-semibold">Transform</span>
+                            <button
+                                class="text-pewter hover:text-platinum text-axis-label font-telemetry">Reset</button>
+                        </div>
+                        <!-- Position Inputs -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div
+                                class="bg-obsidian-workbench p-1.5 rounded border-b-2 border-gunmetal-raised focus-within:border-electric-indigo">
+                                <label class="block font-footnote text-[10px] text-pewter uppercase font-bold">Pos
+                                    X</label>
+                                <input
+                                    class="w-full bg-transparent font-telemetry text-telemetry text-platinum focus:outline-none"
+                                    type="text" value="1920" />
+                            </div>
+                            <div
+                                class="bg-obsidian-workbench p-1.5 rounded border-b-2 border-gunmetal-raised focus-within:border-electric-indigo">
+                                <label class="block font-footnote text-[10px] text-pewter uppercase font-bold">Pos
+                                    Y</label>
+                                <input
+                                    class="w-full bg-transparent font-telemetry text-telemetry text-platinum focus:outline-none"
+                                    type="text" value="1080" />
+                            </div>
+                        </div>
+                        <!-- Scale Slider -->
+                        <div class="bg-obsidian-workbench p-2 rounded border-b-2 border-gunmetal-raised">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-footnote text-[11px] text-pewter font-semibold uppercase">Scale</span>
+                                <span class="font-telemetry text-axis-label text-platinum">100.0%</span>
+                            </div>
+                            <input
+                                class="w-full h-1 bg-gunmetal-raised accent-electric-indigo rounded appearance-none cursor-pointer"
+                                type="range" value="100" />
+                        </div>
+                        <!-- Rotation & Anchor -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-obsidian-workbench p-1.5 rounded border-b-2 border-gunmetal-raised">
+                                <label
+                                    class="block font-footnote text-[10px] text-pewter uppercase font-bold">Rotation</label>
+                                <div class="flex items-center justify-between">
+                                    <span class="font-telemetry text-telemetry text-platinum">0.0°</span>
+                                    <span class="material-symbols-outlined text-[15px] text-pewter">rotate_right</span>
+                                </div>
+                            </div>
+                            <div class="bg-obsidian-workbench p-1.5 rounded border-b-2 border-gunmetal-raised">
+                                <label class="block font-footnote text-[10px] text-pewter uppercase font-bold">Anchor
+                                    Pt</label>
+                                <span class="font-telemetry text-telemetry text-platinum">Center</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Compositing Block -->
+                    <div class="space-y-2.5">
+                        <span
+                            class="font-footnote text-axis-label uppercase tracking-wider text-pewter font-semibold">Compositing</span>
+                        <div class="bg-obsidian-workbench p-2 rounded border-b-2 border-gunmetal-raised">
+                            <div class="flex justify-between items-center mb-1">
+                                <span
+                                    class="font-footnote text-[11px] text-pewter font-semibold uppercase">Opacity</span>
+                                <span class="font-telemetry text-axis-label text-platinum">100%</span>
+                            </div>
+                            <input
+                                class="w-full h-1 bg-gunmetal-raised accent-electric-indigo rounded appearance-none cursor-pointer"
+                                type="range" value="100" />
+                        </div>
+                        <div class="bg-obsidian-workbench p-1.5 rounded border-b-2 border-gunmetal-raised">
+                            <label class="block font-footnote text-[10px] text-pewter uppercase font-bold">Blend
+                                Mode</label>
+                            <select
+                                class="w-full bg-transparent font-telemetry text-axis-label text-platinum focus:outline-none cursor-pointer">
+                                <option class="bg-graphite-panel">Normal</option>
+                                <option class="bg-graphite-panel">Screen</option>
+                                <option class="bg-graphite-panel">Multiply</option>
+                                <option class="bg-graphite-panel">Overlay</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Real-time Mini RGB Parade / Scope Graph -->
+                    <div class="bg-obsidian-workbench p-2.5 rounded-lg border border-gunmetal-raised">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-footnote text-axis-label uppercase text-pewter font-semibold">Scopes /
+                                Histogram</span>
+                            <span class="font-telemetry text-[10px] text-cyan-signal">PARADE</span>
+                        </div>
+                        <div
+                            class="h-16 w-full bg-[#0a0c10] rounded flex items-end justify-between p-1.5 gap-1 border border-gunmetal-raised/40">
+                            <!-- Red Channel -->
+                            <div class="flex-1 h-full flex items-end gap-[1px]">
+                                <div class="w-1/3 h-[50%] bg-ruby-alert/60 rounded-xs"></div>
+                                <div class="w-1/3 h-[75%] bg-ruby-alert/80 rounded-xs"></div>
+                                <div class="w-1/3 h-[40%] bg-ruby-alert/50 rounded-xs"></div>
+                            </div>
+                            <!-- Green Channel -->
+                            <div class="flex-1 h-full flex items-end gap-[1px]">
+                                <div class="w-1/3 h-[60%] bg-emerald-sync/60 rounded-xs"></div>
+                                <div class="w-1/3 h-[85%] bg-emerald-sync/80 rounded-xs"></div>
+                                <div class="w-1/3 h-[50%] bg-emerald-sync/50 rounded-xs"></div>
+                            </div>
+                            <!-- Blue Channel -->
+                            <div class="flex-1 h-full flex items-end gap-[1px]">
+                                <div class="w-1/3 h-[80%] bg-cyan-signal/60 rounded-xs"></div>
+                                <div class="w-1/3 h-[90%] bg-cyan-signal/80 rounded-xs"></div>
+                                <div class="w-1/3 h-[65%] bg-cyan-signal/50 rounded-xs"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- AI Suggestions Card -->
+                    <div
+                        class="p-3 rounded-lg bg-indigo-950/20 border border-electric-indigo/50 shadow-[0_0_12px_rgba(99,102,241,0.15)] relative overflow-hidden">
+                        <div class="flex items-center gap-1.5 text-electric-indigo mb-1.5">
+                            <span
+                                class="material-symbols-outlined text-[16px] material-symbols-fill animate-pulse">auto_awesome</span>
+                            <span class="font-footnote font-bold">Smart Scene Extension</span>
+                        </div>
+                        <p class="font-footnote text-[12px] text-pewter leading-snug">
+                            Detected 2 matching B-roll candidates to cover timeline gap at 00:04:15.
+                        </p>
+                        <button
+                            class="mt-2.5 w-full py-1.5 bg-electric-indigo hover:bg-electric-indigo/90 text-white rounded font-footnote font-semibold flex items-center justify-center gap-1 transition-all active:scale-95 shadow-sm">
+                            <span class="material-symbols-outlined text-[15px]">auto_fix_high</span>
+                            <span>Apply Magic Cut</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Inspector Footer Help Telemetry -->
+            <div
+                class="p-2.5 border-t border-gunmetal-raised bg-obsidian-workbench flex items-center justify-between text-pewter font-telemetry text-axis-label">
+                <span>GPU ACCELERATED</span>
+                <span class="text-emerald-sync">ONLINE</span>
+            </div>
+        </aside>
+        <!-- D. SLID-IN AI AGENT DRAWER (400px width overlaying or docked on right) -->
+        <div class="w-[400px] shrink-0 bg-slate-rail border-l border-gunmetal-raised flex flex-col justify-between z-40 shadow-2xl transition-all duration-300"
+            id="agentDrawer">
+            <!-- Drawer Header -->
+            <div class="h-14 px-4 border-b border-gunmetal-raised flex items-center justify-between bg-graphite-panel">
+                <div class="flex items-center gap-2">
+                    <div
+                        class="w-7 h-7 rounded-lg bg-electric-indigo/20 border border-electric-indigo/40 flex items-center justify-center text-electric-indigo">
+                        <span class="material-symbols-outlined text-[18px] material-symbols-fill">psychology</span>
+                    </div>
+                    <div>
+                        <span class="font-subheading text-footnote font-bold text-platinum block">AI Editing
+                            Agent</span>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-sync animate-pulse"></span>
+                            <span class="font-telemetry text-[10px] text-pewter uppercase tracking-wider">Ready • v2.4
+                                Optical Flow</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 text-pewter">
+                    <button class="p-1 hover:text-platinum rounded" title="Pin / Dock Drawer">
+                        <span class="material-symbols-outlined text-[16px]">push_pin</span>
+                    </button>
+                    <button class="p-1 hover:text-platinum rounded" id="closeDrawerBtn" title="Close Drawer">
+                        <span class="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Chat Transcript (Scrollable) -->
+            <div class="flex-1 p-4 overflow-y-auto space-y-4 bg-obsidian-workbench/40">
+                <!-- Timestamp Indicator -->
+                <div class="text-center">
+                    <span class="font-telemetry text-[10px] text-pewter/60 uppercase">Today 10:42 AM</span>
+                </div>
+                <!-- User Message Bubble (Right Aligned, Electric Indigo) -->
+                <div class="flex justify-end">
+                    <div class="max-w-[85%] bg-electric-indigo text-white rounded-xl rounded-tr-xs p-3 shadow-md">
+                        <p class="font-body text-footnote">
+                            Trim the shaky intro and add captions with auto-highlighted keywords
+                        </p>
+                        <span class="font-telemetry text-[10px] text-indigo-200 mt-1 block text-right">10:42 AM</span>
+                    </div>
+                </div>
+                <!-- Agent Message Bubble (Left Aligned, Graphite Panel with Monospaced Accents) -->
+                <div class="flex justify-start gap-2">
+                    <div
+                        class="w-6 h-6 rounded bg-electric-indigo/30 flex items-center justify-center text-electric-indigo shrink-0 mt-1">
+                        <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                    </div>
+                    <div
+                        class="max-w-[88%] bg-graphite-panel border border-electric-indigo/40 rounded-xl rounded-tl-xs p-3 space-y-2.5 shadow-lg">
+                        <p class="font-body text-footnote text-platinum">
+                            Analyzing timeline footage and optical flow motion vectors...
+                        </p>
+                        <!-- Agent Tool-call Chips -->
+                        <div class="space-y-1 font-telemetry text-axis-label">
+                            <div
+                                class="flex items-center gap-1.5 text-emerald-sync bg-emerald-950/40 px-2 py-1 rounded border border-emerald-sync/30">
+                                <span class="material-symbols-outlined text-[14px]">check_circle</span>
+                                <span>Analyzed 4 clips (Optical Flow Pass)</span>
+                            </div>
+                            <div
+                                class="flex items-center gap-1.5 text-amber-trim bg-amber-950/40 px-2 py-1 rounded border border-amber-trim/30">
+                                <span class="material-symbols-outlined text-[14px]">warning</span>
+                                <span>Detected 3 shaky segments (00:00:14 - 00:01:02)</span>
+                            </div>
+                        </div>
+                        <!-- Action Item Recommendation Card -->
+                        <div class="p-2.5 bg-obsidian-workbench rounded-lg border border-gunmetal-raised">
+                            <div class="flex items-center gap-1.5 text-cyan-signal text-[11px] font-semibold mb-1">
+                                <span class="material-symbols-outlined text-[14px]">subtitles</span>
+                                <span>Subtitles Synthesized</span>
+                            </div>
+                            <p class="font-footnote text-[11px] text-pewter">
+                                Generated synchronized motion subtitles with glowing keyword accents. Ready to splice
+                                into Timeline.
+                            </p>
+                        </div>
+                        <!-- Interactive Action Buttons -->
+                        <div class="flex items-center gap-2 pt-1">
+                            <button
+                                class="flex-1 py-1.5 bg-electric-indigo hover:bg-electric-indigo/90 text-white rounded font-footnote font-semibold flex items-center justify-center gap-1 text-[12px] shadow-sm active:scale-95 transition-all">
+                                <span class="material-symbols-outlined text-[14px]">check</span>
+                                <span>Apply Changes</span>
+                            </button>
+                            <button
+                                class="px-3 py-1.5 bg-gunmetal-raised hover:bg-gunmetal-raised/80 text-platinum rounded font-footnote font-medium text-[12px] active:scale-95 transition-all">
+                                Preview Cut
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Drawer Footer & Prompt Composer -->
+            <div class="p-3 bg-graphite-panel border-t border-gunmetal-raised space-y-2.5">
+                <!-- Quick Suggestion Chips Row -->
+                <div class="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    <button
+                        class="shrink-0 font-footnote text-[11px] px-2.5 py-1 bg-obsidian-workbench hover:bg-gunmetal-raised text-pewter hover:text-platinum rounded-full border border-gunmetal-raised transition-colors flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[12px] text-cyan-signal">palette</span>
+                        <span>Auto color balance</span>
+                    </button>
+                    <button
+                        class="shrink-0 font-footnote text-[11px] px-2.5 py-1 bg-obsidian-workbench hover:bg-gunmetal-raised text-pewter hover:text-platinum rounded-full border border-gunmetal-raised transition-colors flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[12px] text-emerald-sync">content_cut</span>
+                        <span>Remove pauses</span>
+                    </button>
+                    <button
+                        class="shrink-0 font-footnote text-[11px] px-2.5 py-1 bg-obsidian-workbench hover:bg-gunmetal-raised text-pewter hover:text-platinum rounded-full border border-gunmetal-raised transition-colors flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[12px] text-electric-indigo">auto_awesome</span>
+                        <span>Beat sync B-roll</span>
+                    </button>
+                </div>
+                <!-- Input Composer -->
+                <div
+                    class="relative flex items-center bg-obsidian-workbench border border-gunmetal-raised focus-within:border-electric-indigo rounded-lg px-2.5 py-1.5 shadow-inner">
+                    <textarea
+                        class="flex-1 bg-transparent text-footnote text-platinum placeholder-pewter/50 resize-none focus:outline-none"
+                        placeholder="Tell FrameForge agent what to edit or refine..." rows="1"></textarea>
+                    <div class="flex items-center gap-1 text-pewter ml-1">
+                        <button class="p-1 hover:text-platinum rounded" title="Voice Input">
+                            <span class="material-symbols-outlined text-[18px]">mic</span>
+                        </button>
+                        <button
+                            class="w-7 h-7 rounded bg-electric-indigo hover:bg-electric-indigo/90 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm">
+                            <span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Interactive script to toggle Agent Drawer for enhanced desktop fidelity -->
+    <script>
+        const agentBtn = document.getElementById('agentToggleBtn');
+        const closeBtn = document.getElementById('closeDrawerBtn');
+        const drawer = document.getElementById('agentDrawer');
+
+        let isOpen = true;
+
+        function toggleDrawer() {
+            isOpen = !isOpen;
+            if (isOpen) {
+                drawer.classList.remove('hidden');
+            } else {
+                drawer.classList.add('hidden');
+            }
+        }
+
+        if (agentBtn && closeBtn && drawer) {
+            agentBtn.addEventListener('click', toggleDrawer);
+            closeBtn.addEventListener('click', toggleDrawer);
+        }
+    </script>
+</body>
+
+</html>

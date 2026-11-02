@@ -1,0 +1,1 @@
+import W from './w.js?worker';new W();

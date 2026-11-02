@@ -1,0 +1,8 @@
+{
+  "name": "tasks-scout",
+  "summary": "Investigates one bounded topic of the current codebase or of delegated read-only references for a specification, and writes an incremental evidence report.",
+  "effort": "high",
+  "reports_to": "lead",
+  "talks_to": [],
+  "skills": []
+}

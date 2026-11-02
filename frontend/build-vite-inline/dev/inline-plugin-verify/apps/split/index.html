@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8"><script>window.__p={order:['head-inline'],events:[],errors:[],host:typeof window.__firebase_config==='undefined'?null:window.__firebase_config,writes:0};addEventListener('error',function(e){__p.errors.push(String(e.message||e.target&&e.target.src))},true);addEventListener('unhandledrejection',function(e){__p.errors.push('rej:'+e.reason)});document.addEventListener('DOMContentLoaded',function(){__p.events.push('DCL:'+document.readyState)});addEventListener('load',function(){__p.events.push('load:'+document.readyState)});addEventListener('message',function(e){if(e.data!=='report')return;var ls;try{localStorage.setItem('x','1');localStorage.removeItem('x');ls=true}catch(_){ls=false}var c=document.querySelector('canvas');parent.postMessage({kind:'report',p:__p,title:document.title,mode:document.compatMode,cs:document.characterSet,ready:document.readyState,ls:ls,canvas:!!c,gl:c&&!!c.getContext('webgl2'),metas:document.querySelectorAll('meta').length,scripts:document.scripts.length,styles:document.querySelectorAll('style').length,loaders:[].slice.call(document.scripts).filter(function(s){return /document\.write/.test(s.textContent)&&s.textContent.length<8000000&&/atob|parseInt/.test(s.textContent.slice(0,400))}).length,text:document.body.innerText.slice(0,300)},'*')})</script><title>Voxel Garden</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Pixelify+Sans:wght@500;700&display=swap">
+
+
+<canvas class="garden__canvas" id="garden-canvas" aria-label="A rotating 3D voxel garden on a floating island"></canvas>
+<div class="garden__ui">
+  <div class="garden__top">
+    <section class="sign">
+      <h1 class="sign__title">Voxel Garden</h1>
+      <p class="sign__hint">Drag to orbit, scroll or pinch to zoom. Pick a plant, then click open grass or soil.</p>
+      <p class="sign__stats" id="garden-stats"></p>
+    </section>
+    <section class="sign clock" aria-label="Time and weather">
+      <div class="clock__row">
+        <label class="clock__label" for="time-slider">Time of day</label>
+        <span class="clock__time" id="time-readout">16:30</span>
+      </div>
+      <input class="clock__slider" id="time-slider" type="range" min="0" max="24" step="0.05" value="16.5">
+      <div class="clock__actions">
+        <button class="chip" id="cycle-toggle" type="button" aria-pressed="false">Run clock</button>
+        <button class="chip" id="rain-toggle" type="button" aria-pressed="false">Rain</button>
+        <button class="chip" id="reset-button" type="button">Reset</button>
+      </div>
+    </section>
+  </div>
+  <div class="tools sign" id="tools" role="toolbar" aria-label="Garden tools"></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+
+<script>__p.order.push('body-inline');window.__nasty=["<\/script>","<!-- x -->","$&","$'","$`","\u00e9","日本語 🌱 — é","\\x41"].join('|');document.addEventListener('DOMContentLoaded',function(){__p.order.push('dcl-handler')})</script><script defer>__p.order.push('inline-defer-ignored')</script><span id="nasty">日本語 🌱 — é &amp; &lt;b&gt;</span><script type="module" src="/src/main.js"></script>

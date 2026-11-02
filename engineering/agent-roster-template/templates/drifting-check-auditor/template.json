@@ -1,0 +1,8 @@
+{
+  "name": "drifting-check-auditor",
+  "summary": "Audits one unit of a set of tasks against the specs and the target outcome, and writes its findings of drift to a report file.",
+  "effort": "high",
+  "reports_to": "lead",
+  "talks_to": [],
+  "skills": []
+}

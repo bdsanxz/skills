@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>FrameForge AI - Professional Desktop Video Editor</title>
+    <!-- Google Fonts & Material Symbols -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Inter+Tight:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#13131b",
+                        "surface-container-high": "#292932",
+                        "surface-variant": "#34343d",
+                        "on-primary-container": "#0d0096",
+                        "surface-container": "#1f1f27",
+                        "tertiary": "#ffb783",
+                        "primary-fixed": "#e1e0ff",
+                        "primary-container": "#8083ff",
+                        "primary": "#c0c1ff",
+                        "inverse-primary": "#494bd6",
+                        "tertiary-fixed": "#ffdcc5",
+                        "outline-variant": "#464554",
+                        "on-tertiary-container": "#452000",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "on-secondary-fixed-variant": "#004e5a",
+                        "surface-container-highest": "#34343d",
+                        "on-secondary-fixed": "#001f25",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "electric-indigo": "#6366f1",
+                        "secondary": "#5de6ff",
+                        "surface-tint": "#c0c1ff",
+                        "ruby-alert": "#ef4444",
+                        "gunmetal-raised": "#2f3440",
+                        "platinum": "#e6e8ee",
+                        "emerald-sync": "#10b981",
+                        "amber-trim": "#f59e0b",
+                        "tertiary-fixed-dim": "#ffb783",
+                        "surface-bright": "#393841",
+                        "surface-container-lowest": "#0d0d15",
+                        "inverse-surface": "#e4e1ed",
+                        "secondary-fixed-dim": "#2fd9f4",
+                        "tertiary-container": "#d97721",
+                        "on-background": "#e4e1ed",
+                        "error": "#ffb4ab",
+                        "on-secondary-container": "#00515d",
+                        "cyan-signal": "#22d3ee",
+                        "pewter": "#a1a7b3",
+                        "on-tertiary-fixed": "#301400",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "on-error": "#690005",
+                        "on-surface-variant": "#c7c4d7",
+                        "surface-container-low": "#1b1b23",
+                        "on-tertiary": "#4f2500",
+                        "graphite-panel": "#1a1d24",
+                        "secondary-fixed": "#a2eeff",
+                        "secondary-container": "#00cbe6",
+                        "slate-rail": "#252933",
+                        "on-primary-fixed": "#07006c",
+                        "on-surface": "#e4e1ed",
+                        "surface-dim": "#13131b",
+                        "on-tertiary-fixed-variant": "#703700",
+                        "on-secondary": "#00363e",
+                        "obsidian-workbench": "#0f1115",
+                        "on-primary": "#1000a9",
+                        "background": "#13131b",
+                        "inverse-on-surface": "#303038",
+                        "outline": "#908fa0"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "space-sm": "8px",
+                        "space-xl": "24px",
+                        "space-lg": "16px",
+                        "gutter": "12px",
+                        "space-md": "12px",
+                        "space-2xl": "32px",
+                        "space-xs": "4px",
+                        "margin": "16px"
+                    },
+                    "fontFamily": {
+                        "telemetry": ["JetBrains Mono", "monospace"],
+                        "footnote": ["Inter", "sans-serif"],
+                        "display": ["Inter", "sans-serif"],
+                        "axis-label": ["Inter Tight", "sans-serif"],
+                        "subheading": ["Inter", "sans-serif"],
+                        "heading": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "telemetry": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "footnote": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "display": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "axis-label": ["11px", { "lineHeight": "14px", "fontWeight": "400" }],
+                        "subheading": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "heading": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "body": ["14px", { "lineHeight": "20px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        /* Custom Scrollbars for professional NLE feel */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f1115;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2f3440;
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #464554;
+        }
+
+        /* Subtle pulse animation for playhead and AI indicator */
+        @keyframes subtle-pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.8;
+                transform: scale(1.05);
+            }
+        }
+
+        .status-pulse {
+            animation: subtle-pulse 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-obsidian-workbench text-platinum font-body antialiased select-none overflow-hidden h-screen w-screen flex flex-col min-w-[1024px]">
+    <!-- ========================================================================= -->
+    <!-- 1. TOP APPLICATION / TRANSPORT BAR (56px Height)                          -->
+    <!-- ========================================================================= -->
+    <header
+        class="h-14 w-full bg-obsidian-workbench border-b border-outline-variant flex items-center justify-between px-3 z-50 shrink-0">
+        <!-- Left Section: Brand Logo & Project Status -->
+        <div class="flex items-center space-x-3 min-w-[280px]">
+            <div class="flex items-center space-x-2">
+                <div
+                    class="w-8 h-8 rounded-lg bg-electric-indigo/20 border border-electric-indigo flex items-center justify-center text-electric-indigo shadow-[0_0_12px_rgba(99,102,241,0.3)]">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="auto_awesome"
+                        data-weight="fill">auto_awesome</span>
+                </div>
+                <span class="text-subheading font-heading font-bold text-platinum tracking-tight">FrameForge AI</span>
+            </div>
+            <div class="h-4 w-px bg-outline-variant"></div>
+            <!-- Project Breadcrumb & Dirty State -->
+            <div
+                class="flex items-center space-x-2 bg-graphite-panel/60 border border-outline-variant/60 rounded px-2.5 py-1">
+                <span class="w-2 h-2 rounded-full bg-amber-trim" title="Unsaved changes"></span>
+                <span class="text-footnote font-footnote text-platinum font-medium">Summer Travel Reel</span>
+                <span
+                    class="text-axis-label font-axis-label px-1 py-0.5 rounded bg-surface-container-high text-pewter">v2.4</span>
+            </div>
+        </div>
+        <!-- Center Section: Master Playback Transport & Telemetry -->
+        <div class="flex items-center space-x-3">
+            <!-- Format Info Badges -->
+            <div
+                class="hidden lg:flex items-center space-x-1.5 text-axis-label font-telemetry text-pewter bg-graphite-panel border border-outline-variant/70 px-2 py-1 rounded">
+                <span class="text-cyan-signal font-semibold">4K UHD</span>
+                <span class="text-outline-variant">|</span>
+                <span>60.00 FPS</span>
+                <span class="text-outline-variant">|</span>
+                <span class="text-platinum">ProRes 422</span>
+            </div>
+            <!-- Playback Controls Cluster -->
+            <div class="flex items-center space-x-1 bg-graphite-panel border border-outline-variant p-0.5 rounded-lg">
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors duration-150"
+                    title="Step Back 1 Frame">
+                    <span class="material-symbols-outlined text-[18px]" data-icon="first_page">first_page</span>
+                </button>
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors duration-150"
+                    title="Previous Cut (A)">
+                    <span class="material-symbols-outlined text-[18px]" data-icon="skip_previous">skip_previous</span>
+                </button>
+                <!-- Master Play Button (Cyan Signal Action) -->
+                <button
+                    class="w-8 h-8 flex items-center justify-center rounded bg-cyan-signal text-obsidian-workbench hover:bg-secondary-fixed shadow-[0_0_10px_rgba(34,211,238,0.4)] transition-all duration-150 font-bold active:scale-95"
+                    title="Play / Pause (Space)">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="play_arrow"
+                        data-weight="fill">play_arrow</span>
+                </button>
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors duration-150"
+                    title="Next Cut (S)">
+                    <span class="material-symbols-outlined text-[18px]" data-icon="skip_next">skip_next</span>
+                </button>
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors duration-150"
+                    title="Step Forward 1 Frame">
+                    <span class="material-symbols-outlined text-[18px]" data-icon="last_page">last_page</span>
+                </button>
+            </div>
+            <!-- High-Precision Dual Timecode Display -->
+            <div class="flex items-center space-x-2 bg-graphite-panel px-3 py-1 rounded border border-outline-variant">
+                <span
+                    class="text-telemetry font-telemetry text-cyan-signal tracking-wider font-semibold">00:04:12:08</span>
+                <span class="text-axis-label font-telemetry text-outline">/</span>
+                <span class="text-telemetry font-telemetry text-pewter">00:06:45:00</span>
+            </div>
+            <!-- Playback Speed Indicator -->
+            <div
+                class="px-2 py-1 rounded bg-slate-rail text-axis-label font-telemetry text-pewter border border-outline-variant/60">
+                1.0x
+            </div>
+        </div>
+        <!-- Right Section: Tools, Agent Drawer Toggle & Export Button -->
+        <div class="flex items-center space-x-2">
+            <!-- Edit Tools Cluster -->
+            <div class="flex items-center space-x-0.5 bg-graphite-panel p-0.5 rounded border border-outline-variant">
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors"
+                    title="Undo (Cmd+Z)">
+                    <span class="material-symbols-outlined text-[17px]" data-icon="undo">undo</span>
+                </button>
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors"
+                    title="Redo (Cmd+Shift+Z)">
+                    <span class="material-symbols-outlined text-[17px]" data-icon="redo">redo</span>
+                </button>
+                <div class="h-4 w-px bg-outline-variant mx-1"></div>
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded bg-gunmetal-raised text-cyan-signal transition-colors"
+                    title="Snapping Enabled (N)">
+                    <span class="material-symbols-outlined text-[17px]" data-icon="magnet"
+                        data-weight="fill">qr_code_2</span>
+                </button>
+                <button
+                    class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors"
+                    title="Add Marker (M)">
+                    <span class="material-symbols-outlined text-[17px]" data-icon="bookmark">bookmark</span>
+                </button>
+            </div>
+            <!-- AI Agent Interactive Toggle -->
+            <button
+                class="flex items-center space-x-2 px-3 py-1.5 rounded-md bg-electric-indigo/15 border border-electric-indigo text-platinum hover:bg-electric-indigo/25 transition-all duration-150 active:scale-[0.98]"
+                id="agentToggleBtn">
+                <span class="w-2 h-2 rounded-full bg-electric-indigo status-pulse"></span>
+                <span class="text-footnote font-footnote font-semibold tracking-wide">Ask Agent</span>
+                <span class="material-symbols-outlined text-[16px] text-electric-indigo"
+                    data-icon="auto_awesome">auto_awesome</span>
+            </button>
+            <!-- Primary Action: Export -->
+            <button
+                class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-md bg-electric-indigo hover:bg-indigo-500 text-platinum text-footnote font-footnote font-bold shadow-[0_0_14px_rgba(99,102,241,0.4)] transition-all duration-150 active:scale-95">
+                <span class="material-symbols-outlined text-[18px]" data-icon="file_upload">file_upload</span>
+                <span>Export</span>
+            </button>
+            <!-- User Avatar / Profile -->
+            <div
+                class="w-8 h-8 rounded-full border border-outline-variant bg-gunmetal-raised flex items-center justify-center text-pewter text-footnote font-telemetry">
+                JD
+            </div>
+        </div>
+    </header>
+    <!-- ========================================================================= -->
+    <!-- 2. MAIN WORKSPACE VIEWPORT (Height: calc(100vh - 56px))                    -->
+    <!-- ========================================================================= -->
+    <main class="flex-1 flex overflow-hidden w-full relative">
+        <!-- ----------------------------------------------------------------------- -->
+        <!-- A. LEFT MEDIA BROWSER PANEL (300px Fixed)                                -->
+        <!-- ----------------------------------------------------------------------- -->
+        <aside
+            class="w-[300px] shrink-0 bg-graphite-panel border-r border-outline-variant flex flex-col justify-between h-full">
+            <!-- Panel Header & Navigation Tabs -->
+            <div class="flex flex-col border-b border-outline-variant">
+                <div class="flex items-center justify-between px-3 pt-2">
+                    <div class="flex space-x-1">
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote font-semibold text-platinum border-b-2 border-electric-indigo">Media</button>
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote text-pewter hover:text-platinum transition-colors">Effects</button>
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote text-pewter hover:text-platinum transition-colors">Transitions</button>
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote text-pewter hover:text-platinum transition-colors">Audio</button>
+                    </div>
+                    <button class="text-pewter hover:text-platinum p-1 rounded hover:bg-gunmetal-raised"
+                        title="Bin View Options">
+                        <span class="material-symbols-outlined text-[18px]" data-icon="grid_view">grid_view</span>
+                    </button>
+                </div>
+                <!-- Search Bar with Filter -->
+                <div class="p-2.5">
+                    <div
+                        class="flex items-center bg-obsidian-workbench border border-outline-variant rounded px-2.5 py-1.5 focus-within:border-electric-indigo transition-colors">
+                        <span class="material-symbols-outlined text-[16px] text-pewter mr-2"
+                            data-icon="search">search</span>
+                        <input
+                            class="bg-transparent border-none text-footnote font-footnote text-platinum placeholder-pewter/60 focus:ring-0 p-0 w-full outline-none"
+                            placeholder="Filter assets (name, tag, 4K)..." type="text" />
+                        <button class="text-pewter hover:text-cyan-signal">
+                            <span class="material-symbols-outlined text-[16px]"
+                                data-icon="filter_list">filter_list</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Asset Bin / Scrollable Cards -->
+            <div class="flex-1 overflow-y-auto p-2.5 space-y-2.5">
+                <!-- Asset 1: Selected 4K Drone Footage -->
+                <div
+                    class="group relative rounded bg-obsidian-workbench border-2 border-electric-indigo p-1.5 cursor-pointer shadow-[0_0_10px_rgba(99,102,241,0.2)] transition-all">
+                    <div class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail">
+                        <img class="w-full h-full object-cover"
+                            data-alt="A pristine cinematic drone aerial shot of dramatic ocean waves rolling against a golden beach at sunset. The lighting is rich with deep amber tones, cyan water highlights, and pro-grade color grading reminiscent of high-end cinematic film."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBS7E7o-VmciVvYJE0EixU-Pzogi3v0JJNXe6PH0O9xOVakJCzduJCmT--bLnan26TiGMS2ofQThbK1NZNA0rw6DwG0QUdmEzhuOpuXr2Uu7r6uxUVCvili2p-z-S3W01QgnHVjZMwFCuBeB4Q2rHj0dQ3OBi0UbRIwqO80N6FqFKCaQJNIDLqx43gKp-nqLNAZ2ChH8kvR86bFQcaoZJ7VzDAGJ_5GDqHc2p_TF8UQaUMaRnpfJ-qnVFfw3uiI7bMbJa2vE58SZh9m" />
+                        <div
+                            class="absolute top-1 left-1 bg-obsidian-workbench/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-telemetry text-cyan-signal font-semibold border border-cyan-signal/30">
+                            4K RAW
+                        </div>
+                        <div
+                            class="absolute bottom-1 right-1 bg-obsidian-workbench/90 px-1 py-0.5 rounded text-axis-label font-telemetry text-platinum">
+                            00:42:15
+                        </div>
+                        <div
+                            class="absolute top-1 right-1 w-5 h-5 rounded-full bg-electric-indigo flex items-center justify-center text-platinum shadow">
+                            <span class="material-symbols-outlined text-[14px]" data-icon="check"
+                                data-weight="fill">check</span>
+                        </div>
+                    </div>
+                    <div class="mt-1.5 flex items-center justify-between">
+                        <span
+                            class="text-footnote font-footnote font-semibold text-platinum truncate">drone_beach_sunset.mp4</span>
+                        <span class="text-axis-label font-telemetry text-pewter">60fps</span>
+                    </div>
+                </div>
+                <!-- Asset 2: Cliff Jump Action 4K -->
+                <div
+                    class="group relative rounded bg-obsidian-workbench border border-outline-variant hover:border-pewter p-1.5 cursor-pointer transition-all">
+                    <div class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail">
+                        <img class="w-full h-full object-cover"
+                            data-alt="Dynamic high-speed action photography of an athlete diving off a Mediterranean coastal cliff into turquoise seawater with water splashes catching bright golden hour rim light in a professional cinematic video frame."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuBEfnlkuu3VF9d-AWUTw9ZdqjGVipyychAKS3rAdUcr6_fgQGiqvvyzbeJJQuiTIfHP6TzOC_UO0-_fMiEE4zwaYo-4mlTNwvicLTQyzW8R_2L1ESv-Grcge2CHEqEKUNBkkwItfI-VRwsoexV6e3sIbKJa3an_VSLODduhGFvtyG7fO7fq0XaFA6qfIJwTr7vuM4EyhXAT-WziA4-3H-3BePjvNAvaKOUDbkbiNrWOCZJiUHkqddOoF49SMHzsmP9EQ9A8P9NXxC" />
+                        <div
+                            class="absolute top-1 left-1 bg-obsidian-workbench/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-telemetry text-platinum font-semibold border border-outline-variant">
+                            4K UHD
+                        </div>
+                        <div
+                            class="absolute bottom-1 right-1 bg-obsidian-workbench/90 px-1 py-0.5 rounded text-axis-label font-telemetry text-platinum">
+                            01:14:02
+                        </div>
+                    </div>
+                    <div class="mt-1.5 flex items-center justify-between">
+                        <span
+                            class="text-footnote font-footnote font-medium text-platinum truncate">cliff_jump_4k.mov</span>
+                        <span class="text-axis-label font-telemetry text-pewter">120fps</span>
+                    </div>
+                </div>
+                <!-- Asset 3: Vlog A-Roll with Warning Badge -->
+                <div
+                    class="group relative rounded bg-obsidian-workbench border border-outline-variant hover:border-pewter p-1.5 cursor-pointer transition-all">
+                    <div class="relative w-full aspect-video rounded overflow-hidden bg-slate-rail">
+                        <img class="w-full h-full object-cover"
+                            data-alt="An over-the-shoulder handheld vlogger walking through an illuminated tropical coastal resort street at dusk with noticeable motion blur and vibrant warm street lantern lighting."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuB0waZ_mdEvxirJffwKk7ixMU3WXEtm0bY6L27cRvHLMNHvU402KrGJiBFVxKhgsHdQ9TnjgdHfNc2uO0qiUUQpafB3EooKZsImTVEAWWgkbbekw7heOzQymAfWTml-_p547zoX1gSBwT3UWyZClWQhN4P4bXHDudoarYcN6DmX2ppGEQooYBQJpzesAEUyuCZxlpHszpvgdvHJP_4J7eGAeZddqjg7onYTEeWV4LFu1IZm6QNxruAwfKlbySsxGtskm_dPJYsY9Jyo" />
+                        <!-- Amber warning badge -->
+                        <div
+                            class="absolute top-1 left-1 bg-amber-trim/90 backdrop-blur-sm text-obsidian-workbench px-1.5 py-0.5 rounded text-[10px] font-footnote font-bold flex items-center space-x-1 shadow">
+                            <span class="material-symbols-outlined text-[12px]" data-icon="warning"
+                                data-weight="fill">warning</span>
+                            <span>SHAKY INTRO</span>
+                        </div>
+                        <div
+                            class="absolute bottom-1 right-1 bg-obsidian-workbench/90 px-1 py-0.5 rounded text-axis-label font-telemetry text-platinum">
+                            02:08:19
+                        </div>
+                    </div>
+                    <div class="mt-1.5 flex items-center justify-between">
+                        <span
+                            class="text-footnote font-footnote font-medium text-platinum truncate">vlog_a_roll_take2.mp4</span>
+                        <span class="text-axis-label font-telemetry text-pewter">24fps</span>
+                    </div>
+                </div>
+                <!-- Asset 4: Audio Waveform File -->
+                <div
+                    class="group relative rounded bg-obsidian-workbench border border-outline-variant hover:border-pewter p-2 cursor-pointer transition-all flex items-center space-x-2.5">
+                    <div
+                        class="w-12 h-10 rounded bg-slate-rail border border-outline-variant flex items-center justify-center text-cyan-signal">
+                        <span class="material-symbols-outlined text-[20px]" data-icon="graphic_eq">graphic_eq</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between">
+                            <span
+                                class="text-footnote font-footnote font-medium text-platinum truncate">summer_vibes_bgm.wav</span>
+                            <span class="text-axis-label font-telemetry text-pewter">48kHz</span>
+                        </div>
+                        <!-- Waveform preview dummy line -->
+                        <div class="flex items-end h-3 space-x-0.5 mt-1 opacity-70">
+                            <span class="w-1 h-2 bg-amber-trim rounded-full"></span>
+                            <span class="w-1 h-3 bg-amber-trim rounded-full"></span>
+                            <span class="w-1 h-1 bg-amber-trim rounded-full"></span>
+                            <span class="w-1 h-2.5 bg-amber-trim rounded-full"></span>
+                            <span class="w-1 h-3 bg-amber-trim rounded-full"></span>
+                            <span class="w-1 h-1.5 bg-amber-trim rounded-full"></span>
+                            <span class="w-1 h-2 bg-amber-trim rounded-full"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Bottom Docked Actions (Import / Record) -->
+            <div class="p-2.5 border-t border-outline-variant bg-obsidian-workbench grid grid-cols-2 gap-2">
+                <button
+                    class="flex items-center justify-center space-x-1.5 py-1.5 px-2 rounded bg-gunmetal-raised hover:bg-surface-container-high border border-outline-variant text-platinum text-footnote font-footnote transition-colors">
+                    <span class="material-symbols-outlined text-[16px] text-electric-indigo"
+                        data-icon="add_circle">add_circle</span>
+                    <span>Import Media</span>
+                </button>
+                <button
+                    class="flex items-center justify-center space-x-1.5 py-1.5 px-2 rounded bg-gunmetal-raised hover:bg-surface-container-high border border-outline-variant text-platinum text-footnote font-footnote transition-colors">
+                    <span class="material-symbols-outlined text-[16px] text-ruby-alert" data-icon="fiber_manual_record"
+                        data-weight="fill">fiber_manual_record</span>
+                    <span>Record</span>
+                </button>
+            </div>
+        </aside>
+        <!-- ----------------------------------------------------------------------- -->
+        <!-- B. CENTER COLUMN (Preview Monitor + Multi-Track Timeline)                -->
+        <!-- ----------------------------------------------------------------------- -->
+        <section class="flex-1 flex flex-col h-full overflow-hidden bg-obsidian-workbench min-w-0">
+            <!-- Top 55%: Preview Monitor Viewport -->
+            <div
+                class="h-[52%] w-full flex flex-col border-b border-outline-variant bg-surface-container-lowest relative">
+                <!-- Viewport Header Toolbar -->
+                <div
+                    class="h-8 px-3 bg-graphite-panel/90 border-b border-outline-variant/60 flex items-center justify-between text-axis-label font-telemetry text-pewter">
+                    <div class="flex items-center space-x-3">
+                        <span class="flex items-center space-x-1 text-cyan-signal font-medium">
+                            <span class="w-1.5 h-1.5 rounded-full bg-cyan-signal"></span>
+                            <span>PROGRAM MONITOR</span>
+                        </span>
+                        <span class="text-outline-variant">|</span>
+                        <span>REC.709 3840×2160</span>
+                        <span class="text-outline-variant">|</span>
+                        <span class="text-platinum">Fit (58%)</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button class="hover:text-platinum flex items-center space-x-1" title="Toggle Safe Area Guides">
+                            <span class="material-symbols-outlined text-[15px] text-cyan-signal"
+                                data-icon="crop_free">crop_free</span>
+                            <span>Guides On</span>
+                        </button>
+                        <span class="text-outline-variant">|</span>
+                        <button class="hover:text-platinum" title="Split Screen Comparison">
+                            <span class="material-symbols-outlined text-[16px]"
+                                data-icon="splitscreen">splitscreen</span>
+                        </button>
+                        <button class="hover:text-platinum" title="Fullscreen Playback">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="fullscreen">fullscreen</span>
+                        </button>
+                    </div>
+                </div>
+                <!-- Video Canvas with Safe Area and Ocean Footage -->
+                <div class="flex-1 relative flex items-center justify-center p-3 overflow-hidden">
+                    <div
+                        class="relative aspect-video max-h-full w-auto max-w-full rounded shadow-2xl border border-outline-variant/70 overflow-hidden group">
+                        <img class="h-full w-full object-cover"
+                            data-alt="A breathtaking widescreen cinematic frame of a golden hour ocean shoreline. Rich turquoise foam waves surge onto dark volcanic sand under an intense amber and magenta sunset sky, graded with high dynamic contrast for a professional master film finish."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOWH-MhehILa9llX4QAxLswwlo2PDA2ilDr_flE8LMkkWEEaLrb4a3eDYeAlul10_w3d7HAbILYnnmUDZwmlIpLeUnWSjb-ymRmgRHhLVeg3KaLsWCtCQtMQICYhfjMNxvG229_WQUzGV3CLrbtzhzumhp-KZknO3DGg2amFjelW7ck1VYuECf7PT5U_GWsv2GvsMvgMolJuf3AV5JBKKery87FB7vJGUqQeSQwnD5IIS_0uZVIhMul1Z5E7i7oriBDzA5vYGBKZUQ" />
+                        <!-- Safe Area Title & Action Crosshairs Overlay -->
+                        <div class="absolute inset-[5%] border border-cyan-signal/20 pointer-events-none"></div>
+                        <div class="absolute inset-[10%] border border-cyan-signal/30 pointer-events-none">
+                            <!-- Center crosshairs -->
+                            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4">
+                                <div class="absolute top-0 bottom-0 left-1/2 w-px bg-cyan-signal/40 -translate-x-1/2">
+                                </div>
+                                <div class="absolute left-0 right-0 top-1/2 h-px bg-cyan-signal/40 -translate-y-1/2">
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Floating Preview HUD Controls -->
+                        <div
+                            class="absolute bottom-2 left-2 right-2 flex items-center justify-between bg-obsidian-workbench/85 backdrop-blur-md px-3 py-1.5 rounded border border-outline-variant/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <div class="flex items-center space-x-2 text-footnote">
+                                <span class="material-symbols-outlined text-[18px] text-cyan-signal cursor-pointer"
+                                    data-icon="pause" data-weight="fill">pause</span>
+                                <span class="font-telemetry text-telemetry text-platinum">00:04:12:08</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span
+                                    class="text-axis-label font-telemetry bg-gunmetal-raised px-1.5 py-0.5 rounded text-pewter">16:9</span>
+                                <span
+                                    class="material-symbols-outlined text-[18px] text-pewter hover:text-platinum cursor-pointer"
+                                    data-icon="photo_camera" title="Snapshot Frame">photo_camera</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Mini Filmstrip Scrubber Strip -->
+                <div
+                    class="h-7 w-full bg-slate-rail border-t border-outline-variant flex items-center px-3 relative overflow-hidden select-none">
+                    <div class="w-full h-3 bg-obsidian-workbench rounded-sm relative overflow-hidden flex">
+                        <!-- Simulated micro-frames across duration -->
+                        <div class="w-1/4 h-full bg-indigo-900/40 border-r border-outline-variant"></div>
+                        <div class="w-1/3 h-full bg-indigo-950/70 border-r border-outline-variant"></div>
+                        <div class="w-1/4 h-full bg-cyan-950/40 border-r border-outline-variant"></div>
+                        <div class="w-1/6 h-full bg-indigo-900/40"></div>
+                        <!-- Mini scrubber handle -->
+                        <div
+                            class="absolute top-0 bottom-0 left-[62%] w-1 bg-cyan-signal z-10 shadow-[0_0_8px_#22d3ee]">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Bottom 48%: Precision Multi-Track Timeline -->
+            <div class="flex-1 flex flex-col bg-obsidian-workbench relative min-h-[300px]">
+                <!-- Timeline Toolbar -->
+                <div
+                    class="h-9 px-3 bg-graphite-panel border-b border-outline-variant flex items-center justify-between shrink-0">
+                    <!-- Tools (Select, Razor, Ripple, Track) -->
+                    <div class="flex items-center space-x-1">
+                        <button
+                            class="w-7 h-7 flex items-center justify-center rounded bg-gunmetal-raised text-electric-indigo border border-electric-indigo/50"
+                            title="Selection Tool (V)">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="near_me">near_me</span>
+                        </button>
+                        <button
+                            class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum"
+                            title="Blade / Razor Tool (C)">
+                            <span class="material-symbols-outlined text-[16px]"
+                                data-icon="content_cut">content_cut</span>
+                        </button>
+                        <button
+                            class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum"
+                            title="Ripple Edit (B)">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="sync_alt">sync_alt</span>
+                        </button>
+                        <button
+                            class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum"
+                            title="Slip Tool (Y)">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="swap_horiz">swap_horiz</span>
+                        </button>
+                        <div class="h-4 w-px bg-outline-variant mx-1"></div>
+                        <button
+                            class="w-7 h-7 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum"
+                            title="Add Video/Audio Track">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="add">add</span>
+                        </button>
+                        <span class="text-footnote font-footnote font-semibold text-platinum ml-2">Sequence 01</span>
+                    </div>
+                    <!-- Zoom & Display Helpers -->
+                    <div class="flex items-center space-x-2.5">
+                        <button class="text-pewter hover:text-platinum" title="Zoom Out (Cmd -)">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="zoom_out">zoom_out</span>
+                        </button>
+                        <div class="w-24 h-1.5 bg-slate-rail rounded-full overflow-hidden relative cursor-pointer">
+                            <div class="absolute left-0 top-0 bottom-0 w-3/5 bg-electric-indigo rounded-full"></div>
+                        </div>
+                        <button class="text-pewter hover:text-platinum" title="Zoom In (Cmd +)">
+                            <span class="material-symbols-outlined text-[16px]" data-icon="zoom_in">zoom_in</span>
+                        </button>
+                        <div class="h-3 w-px bg-outline-variant"></div>
+                        <button
+                            class="w-6 h-6 flex items-center justify-center rounded hover:bg-gunmetal-raised text-pewter hover:text-platinum"
+                            title="Fit Timeline to View (\)">
+                            <span class="material-symbols-outlined text-[15px]" data-icon="fit_screen">fit_screen</span>
+                        </button>
+                    </div>
+                </div>
+                <!-- Timeline Body (Track Headers Rail + Track Canvas) -->
+                <div class="flex-1 flex overflow-x-auto overflow-y-auto relative">
+                    <!-- Track Header Left Rail (Fixed 180px Width) -->
+                    <div class="w-44 shrink-0 bg-slate-rail border-r border-outline-variant z-20 flex flex-col">
+                        <!-- Header Ruler spacer -->
+                        <div class="h-6 bg-graphite-panel border-b border-outline-variant flex items-center px-2">
+                            <span class="text-axis-label font-telemetry text-pewter">TRACKS</span>
+                        </div>
+                        <!-- V2 Track Header (Titles) -->
+                        <div
+                            class="h-14 border-b border-outline-variant/70 px-2 flex items-center justify-between bg-slate-rail/90">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-footnote font-telemetry font-bold text-electric-indigo">V2</span>
+                                <span class="text-axis-label font-footnote text-pewter">Titles</span>
+                            </div>
+                            <div class="flex items-center space-x-1 text-pewter">
+                                <button class="hover:text-platinum"><span class="material-symbols-outlined text-[15px]"
+                                        data-icon="lock_open">lock_open</span></button>
+                                <button class="hover:text-platinum"><span class="material-symbols-outlined text-[15px]"
+                                        data-icon="visibility">visibility</span></button>
+                            </div>
+                        </div>
+                        <!-- V1 Track Header (Video Master) -->
+                        <div
+                            class="h-14 border-b border-outline-variant/70 px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-footnote font-telemetry font-bold text-cyan-signal">V1</span>
+                                <span class="text-axis-label font-footnote text-platinum font-semibold">Video</span>
+                            </div>
+                            <div class="flex items-center space-x-1 text-pewter">
+                                <button class="hover:text-platinum"><span class="material-symbols-outlined text-[15px]"
+                                        data-icon="lock_open">lock_open</span></button>
+                                <button class="hover:text-cyan-signal text-cyan-signal"><span
+                                        class="material-symbols-outlined text-[15px]" data-icon="visibility"
+                                        data-weight="fill">visibility</span></button>
+                            </div>
+                        </div>
+                        <!-- A1 Track Header (Voice Dialogue) -->
+                        <div
+                            class="h-14 border-b border-outline-variant/70 px-2 flex items-center justify-between bg-slate-rail/95">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-footnote font-telemetry font-bold text-emerald-sync">A1</span>
+                                <div class="flex flex-col">
+                                    <span class="text-axis-label font-footnote text-platinum">Voice</span>
+                                    <span class="text-[10px] font-telemetry text-pewter">-2.4 dB</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-1 text-pewter">
+                                <span
+                                    class="text-axis-label font-telemetry px-1 rounded bg-gunmetal-raised hover:text-ruby-alert cursor-pointer">M</span>
+                                <span
+                                    class="text-axis-label font-telemetry px-1 rounded bg-gunmetal-raised hover:text-emerald-sync cursor-pointer">S</span>
+                            </div>
+                        </div>
+                        <!-- A2 Track Header (Background Music) -->
+                        <div
+                            class="h-14 border-b border-outline-variant/70 px-2 flex items-center justify-between bg-slate-rail">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-footnote font-telemetry font-bold text-amber-trim">A2</span>
+                                <div class="flex flex-col">
+                                    <span class="text-axis-label font-footnote text-platinum">Music</span>
+                                    <span class="text-[10px] font-telemetry text-pewter">-6.0 dB</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-1 text-pewter">
+                                <span
+                                    class="text-axis-label font-telemetry px-1 rounded bg-gunmetal-raised hover:text-ruby-alert cursor-pointer">M</span>
+                                <span
+                                    class="text-axis-label font-telemetry px-1 rounded bg-gunmetal-raised hover:text-emerald-sync cursor-pointer">S</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Timeline Track Canvas (Scrollable Grid) -->
+                    <div class="flex-1 min-w-[900px] bg-obsidian-workbench relative flex flex-col">
+                        <!-- Monospaced Time Ruler (00:00:00:00 -> 00:06:00:00) -->
+                        <div
+                            class="h-6 bg-graphite-panel border-b border-outline-variant relative flex items-center text-axis-label font-telemetry text-pewter select-none">
+                            <div class="absolute left-0 px-2">00:00:00:00</div>
+                            <div class="absolute left-[150px] px-2 border-l border-outline-variant/40 h-3">00:01:00:00
+                            </div>
+                            <div class="absolute left-[300px] px-2 border-l border-outline-variant/40 h-3">00:02:00:00
+                            </div>
+                            <div class="absolute left-[450px] px-2 border-l border-outline-variant/40 h-3">00:03:00:00
+                            </div>
+                            <div
+                                class="absolute left-[600px] px-2 border-l border-outline-variant/40 h-3 font-semibold text-platinum">
+                                00:04:00:00</div>
+                            <div class="absolute left-[750px] px-2 border-l border-outline-variant/40 h-3">00:05:00:00
+                            </div>
+                            <div class="absolute left-[900px] px-2 border-l border-outline-variant/40 h-3">00:06:00:00
+                            </div>
+                        </div>
+                        <!-- V2 Track Lane: Titles -->
+                        <div class="h-14 border-b border-outline-variant/50 relative bg-obsidian-workbench/40">
+                            <!-- Violet title block -->
+                            <div
+                                class="absolute left-[80px] w-[260px] top-1.5 bottom-1.5 rounded-sm bg-purple-900/60 border border-purple-500/80 px-2 flex items-center justify-between overflow-hidden shadow">
+                                <div class="flex items-center space-x-1.5 truncate">
+                                    <span class="material-symbols-outlined text-[14px] text-purple-300"
+                                        data-icon="title">title</span>
+                                    <span
+                                        class="text-footnote font-footnote text-purple-100 font-medium truncate">Cinematic
+                                        Title Intro (Dissolve)</span>
+                                </div>
+                                <span class="text-[10px] font-telemetry text-purple-300">03:12</span>
+                            </div>
+                        </div>
+                        <!-- V1 Track Lane: Video Clips -->
+                        <div class="h-14 border-b border-outline-variant/50 relative bg-obsidian-workbench/20">
+                            <!-- Clip 1: Cliff Jump -->
+                            <div
+                                class="absolute left-[20px] w-[280px] top-1.5 bottom-1.5 rounded-sm bg-indigo-950/90 border border-indigo-500/60 px-2 flex items-center justify-between overflow-hidden">
+                                <div class="flex items-center space-x-1 truncate">
+                                    <span
+                                        class="text-footnote font-footnote text-platinum font-medium truncate">cliff_jump.mov</span>
+                                </div>
+                                <span
+                                    class="text-[10px] font-telemetry bg-black/40 px-1 rounded text-cyan-signal">4K</span>
+                            </div>
+                            <!-- Clip 2: Drone Beach Sunset (Selected with Active Indigo Rim) -->
+                            <div
+                                class="absolute left-[302px] w-[390px] top-1.5 bottom-1.5 rounded-sm bg-cyan-950/80 border-2 border-electric-indigo px-2 flex items-center justify-between overflow-hidden shadow-[0_0_12px_rgba(99,102,241,0.25)]">
+                                <div class="flex items-center space-x-1.5 truncate">
+                                    <span class="material-symbols-outlined text-[14px] text-cyan-signal"
+                                        data-icon="movie">movie</span>
+                                    <span
+                                        class="text-footnote font-footnote text-platinum font-semibold truncate">drone_beach_sunset.mp4</span>
+                                </div>
+                                <div class="flex items-center space-x-1">
+                                    <span
+                                        class="text-[10px] font-telemetry text-cyan-signal bg-black/50 px-1 rounded">RAW</span>
+                                    <span class="text-axis-label font-telemetry text-pewter">02:36:00</span>
+                                </div>
+                            </div>
+                            <!-- Clip 3: Next segment cut -->
+                            <div
+                                class="absolute left-[694px] w-[200px] top-1.5 bottom-1.5 rounded-sm bg-indigo-950/80 border border-indigo-500/50 px-2 flex items-center">
+                                <span
+                                    class="text-footnote font-footnote text-pewter truncate">vlog_a_roll_take2.mp4</span>
+                            </div>
+                        </div>
+                        <!-- A1 Track Lane: Dialogue with Audio Waveforms -->
+                        <div class="h-14 border-b border-outline-variant/50 relative bg-obsidian-workbench/40">
+                            <div
+                                class="absolute left-[60px] w-[580px] top-1.5 bottom-1.5 rounded-sm bg-emerald-950/70 border border-emerald-500/60 px-2 flex flex-col justify-between overflow-hidden">
+                                <div class="flex items-center justify-between pt-0.5">
+                                    <span
+                                        class="text-footnote font-footnote text-emerald-200 font-medium truncate">Dialogue_Take1.wav</span>
+                                    <span class="text-[10px] font-telemetry text-emerald-400">Sync Locked</span>
+                                </div>
+                                <!-- Simulated SVG Waveform -->
+                                <div class="h-5 w-full flex items-center space-x-1 opacity-70 pb-1">
+                                    <div class="flex-1 h-3 flex items-center space-x-0.5">
+                                        <span class="w-1 h-1 bg-emerald-400"></span>
+                                        <span class="w-1 h-3 bg-emerald-400"></span>
+                                        <span class="w-1 h-4 bg-emerald-400"></span>
+                                        <span class="w-1 h-2 bg-emerald-400"></span>
+                                        <span class="w-1 h-5 bg-emerald-300"></span>
+                                        <span class="w-1 h-3 bg-emerald-400"></span>
+                                        <span class="w-1 h-1 bg-emerald-400"></span>
+                                        <span class="w-1 h-4 bg-emerald-400"></span>
+                                        <span class="w-1 h-5 bg-emerald-300"></span>
+                                        <span class="w-1 h-2 bg-emerald-400"></span>
+                                        <span class="w-1 h-4 bg-emerald-400"></span>
+                                        <span class="w-1 h-1 bg-emerald-400"></span>
+                                        <span class="w-1 h-3 bg-emerald-400"></span>
+                                        <span class="w-1 h-5 bg-emerald-300"></span>
+                                        <span class="w-1 h-2 bg-emerald-400"></span>
+                                        <span class="w-1 h-4 bg-emerald-400"></span>
+                                        <span class="w-1 h-1 bg-emerald-400"></span>
+                                        <span class="w-1 h-3 bg-emerald-400"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- A2 Track Lane: Music Bed -->
+                        <div class="h-14 border-b border-outline-variant/50 relative bg-obsidian-workbench/20">
+                            <div
+                                class="absolute left-[20px] w-[820px] top-1.5 bottom-1.5 rounded-sm bg-amber-950/60 border border-amber-600/60 px-2 flex flex-col justify-between overflow-hidden">
+                                <div class="flex items-center justify-between pt-0.5">
+                                    <span
+                                        class="text-footnote font-footnote text-amber-200 font-medium truncate">summer_vibes_bgm.wav
+                                        (Full Loop)</span>
+                                    <span class="text-[10px] font-telemetry text-amber-400">-6.0 dB</span>
+                                </div>
+                                <!-- Continuous Audio Amplitude Waveform -->
+                                <div class="h-5 w-full flex items-center space-x-1 opacity-60 pb-1">
+                                    <div class="w-full h-3 flex items-center justify-around">
+                                        <span class="w-1 h-2 bg-amber-400"></span>
+                                        <span class="w-1 h-4 bg-amber-300"></span>
+                                        <span class="w-1 h-3 bg-amber-400"></span>
+                                        <span class="w-1 h-5 bg-amber-300"></span>
+                                        <span class="w-1 h-2 bg-amber-400"></span>
+                                        <span class="w-1 h-4 bg-amber-300"></span>
+                                        <span class="w-1 h-3 bg-amber-400"></span>
+                                        <span class="w-1 h-1 bg-amber-400"></span>
+                                        <span class="w-1 h-5 bg-amber-300"></span>
+                                        <span class="w-1 h-3 bg-amber-400"></span>
+                                        <span class="w-1 h-4 bg-amber-300"></span>
+                                        <span class="w-1 h-2 bg-amber-400"></span>
+                                        <span class="w-1 h-5 bg-amber-300"></span>
+                                        <span class="w-1 h-3 bg-amber-400"></span>
+                                        <span class="w-1 h-4 bg-amber-300"></span>
+                                        <span class="w-1 h-2 bg-amber-400"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Master Vertical Cyan Signal Playhead (#22d3ee) -->
+                        <div
+                            class="absolute left-[625px] top-0 bottom-0 w-0.5 bg-cyan-signal z-30 pointer-events-none shadow-[0_0_10px_#22d3ee]">
+                            <!-- Playhead Head Indicator & Timecode Tooltip -->
+                            <div
+                                class="absolute -top-1 -left-[18px] bg-cyan-signal text-obsidian-workbench text-[10px] font-telemetry font-bold px-1.5 py-0.5 rounded-sm shadow-md flex items-center justify-center">
+                                00:04:12:08
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- ----------------------------------------------------------------------- -->
+        <!-- C. RIGHT COLLAPSIBLE COLUMN - INSPECTOR & AI AGENT DRAWER (400px Fixed) -->
+        <!-- ----------------------------------------------------------------------- -->
+        <aside
+            class="w-[400px] shrink-0 bg-graphite-panel border-l border-outline-variant flex flex-col h-full z-40 transition-all duration-300"
+            id="agentDrawer">
+            <!-- Top Inspector Tabs & Mini Controls -->
+            <div class="border-b border-outline-variant">
+                <!-- Inspector Navigation -->
+                <div class="flex items-center justify-between px-3 pt-2">
+                    <div class="flex space-x-1">
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote font-semibold text-platinum border-b-2 border-electric-indigo">Properties</button>
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote text-pewter hover:text-platinum">Effects</button>
+                        <button
+                            class="px-2.5 py-1.5 text-footnote font-footnote text-pewter hover:text-platinum">Color</button>
+                    </div>
+                    <span class="text-axis-label font-telemetry text-cyan-signal">drone_beach_sunset</span>
+                </div>
+                <!-- Selected Clip Transform Properties (Compact NLE inspector) -->
+                <div class="p-3 bg-obsidian-workbench/40 space-y-2 text-axis-label font-footnote">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <span class="text-pewter">Position X/Y</span>
+                            <div class="flex space-x-1 mt-0.5">
+                                <input
+                                    class="w-full bg-slate-rail border border-outline-variant rounded px-1.5 py-1 text-telemetry font-telemetry text-platinum focus:border-electric-indigo outline-none"
+                                    type="text" value="1920" />
+                                <input
+                                    class="w-full bg-slate-rail border border-outline-variant rounded px-1.5 py-1 text-telemetry font-telemetry text-platinum focus:border-electric-indigo outline-none"
+                                    type="text" value="1080" />
+                            </div>
+                        </div>
+                        <div>
+                            <span class="text-pewter">Scale</span>
+                            <div class="flex items-center space-x-1 mt-0.5">
+                                <input
+                                    class="w-full bg-slate-rail border border-outline-variant rounded px-1.5 py-1 text-telemetry font-telemetry text-platinum focus:border-electric-indigo outline-none"
+                                    type="text" value="100.0%" />
+                                <span class="material-symbols-outlined text-[16px] text-pewter"
+                                    data-icon="link">link</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between pt-1">
+                        <span class="text-pewter">Opacity: 100%</span>
+                        <div class="w-36 h-1.5 bg-slate-rail rounded-full overflow-hidden">
+                            <div class="w-full h-full bg-cyan-signal"></div>
+                        </div>
+                        <span class="text-axis-label font-telemetry text-platinum">Normal</span>
+                    </div>
+                </div>
+            </div>
+            <!-- AI Editing Agent Drawer Header -->
+            <div class="px-3.5 py-2.5 bg-slate-rail border-b border-outline-variant flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-sync status-pulse shadow-[0_0_8px_#10b981]"></div>
+                    <span class="text-footnote font-subheading font-bold text-platinum tracking-wide">AI Editing
+                        Agent</span>
+                    <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-telemetry bg-emerald-sync/20 text-emerald-sync font-bold border border-emerald-sync/40">READY</span>
+                </div>
+                <button class="text-pewter hover:text-platinum p-1 rounded hover:bg-gunmetal-raised"
+                    title="Minimize Drawer">
+                    <span class="material-symbols-outlined text-[18px]" data-icon="dock_to_right">dock_to_right</span>
+                </button>
+            </div>
+            <!-- Chat & Timeline Analysis Transcript -->
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-3.5">
+                <!-- User Speech Bubble (Right-aligned, Electric Indigo) -->
+                <div class="flex justify-end">
+                    <div
+                        class="max-w-[85%] bg-electric-indigo text-platinum rounded-2xl rounded-tr-sm px-3.5 py-2.5 shadow-md">
+                        <p class="text-footnote font-body leading-relaxed">
+                            Trim the shaky intro and add captions for the dialogue track.
+                        </p>
+                        <span class="text-[10px] font-telemetry text-platinum/70 block text-right mt-1">14:28</span>
+                    </div>
+                </div>
+                <!-- Agent Response Card (Left-aligned, Graphite Panel) -->
+                <div class="flex flex-col space-y-2">
+                    <div class="flex items-center space-x-2">
+                        <div
+                            class="w-6 h-6 rounded-full bg-electric-indigo/20 border border-electric-indigo flex items-center justify-center text-electric-indigo">
+                            <span class="material-symbols-outlined text-[14px]" data-icon="psychology"
+                                data-weight="fill">psychology</span>
+                        </div>
+                        <span class="text-footnote font-footnote font-semibold text-platinum">FrameForge
+                            Intelligence</span>
+                        <span class="text-axis-label font-telemetry text-pewter">Just now</span>
+                    </div>
+                    <div class="bg-obsidian-workbench border border-outline-variant rounded-xl p-3 space-y-2.5">
+                        <p class="text-footnote font-body text-platinum leading-relaxed">
+                            Analyzing sequence timeline. Found 3 segments with excessive camera shake in clip <span
+                                class="text-cyan-signal font-telemetry">vlog_a_roll_take2.mp4</span>.
+                        </p>
+                        <!-- Agent Execution Tool-Call Status Chips -->
+                        <div class="space-y-1.5 pt-1">
+                            <div
+                                class="flex items-center justify-between bg-graphite-panel px-2.5 py-1.5 rounded border border-outline-variant/60">
+                                <div class="flex items-center space-x-2">
+                                    <span class="material-symbols-outlined text-[15px] text-emerald-sync"
+                                        data-icon="check_circle" data-weight="fill">check_circle</span>
+                                    <span class="text-axis-label font-telemetry text-platinum">Analyzed optical flow
+                                        motion (42 frames)</span>
+                                </div>
+                                <span class="text-[10px] font-telemetry text-pewter">0.4s</span>
+                            </div>
+                            <div
+                                class="flex items-center justify-between bg-graphite-panel px-2.5 py-1.5 rounded border border-outline-variant/60">
+                                <div class="flex items-center space-x-2">
+                                    <span class="material-symbols-outlined text-[15px] text-emerald-sync"
+                                        data-icon="check_circle" data-weight="fill">check_circle</span>
+                                    <span class="text-axis-label font-telemetry text-platinum">Detected camera
+                                        rotational jitter (+4.2° variance)</span>
+                                </div>
+                                <span class="text-[10px] font-telemetry text-pewter">0.2s</span>
+                            </div>
+                            <div
+                                class="flex items-center justify-between bg-graphite-panel px-2.5 py-1.5 rounded border border-outline-variant/60">
+                                <div class="flex items-center space-x-2">
+                                    <span class="material-symbols-outlined text-[15px] text-emerald-sync"
+                                        data-icon="check_circle" data-weight="fill">check_circle</span>
+                                    <span class="text-axis-label font-telemetry text-platinum">Generated 14 synchronized
+                                        subtitle blocks (Dialogue A1)</span>
+                                </div>
+                                <span class="text-[10px] font-telemetry text-pewter">1.1s</span>
+                            </div>
+                        </div>
+                        <!-- Interactive AI Action Card Proposal -->
+                        <div
+                            class="mt-2.5 p-3 rounded-lg bg-gunmetal-raised/70 border border-electric-indigo/60 shadow-lg">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <span class="text-footnote font-footnote font-bold text-platinum block">Magic
+                                        Stabilization &amp; Auto-Captions</span>
+                                    <span class="text-axis-label font-body text-pewter">2 clips ready for
+                                        non-destructive commit</span>
+                                </div>
+                                <span
+                                    class="px-2 py-0.5 rounded bg-electric-indigo/20 text-electric-indigo text-axis-label font-telemetry font-bold">PROPOSED</span>
+                            </div>
+                            <div class="mt-3 flex items-center space-x-2">
+                                <button
+                                    class="flex-1 py-1.5 px-2 rounded bg-graphite-panel hover:bg-surface-container-high border border-outline-variant text-platinum text-footnote font-footnote transition-colors">
+                                    Preview Changes
+                                </button>
+                                <button
+                                    class="flex-1 py-1.5 px-2 rounded bg-electric-indigo hover:bg-indigo-500 text-platinum text-footnote font-footnote font-bold shadow transition-all active:scale-95">
+                                    Apply to Timeline
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Quick Action Prompt Pills -->
+            <div
+                class="px-3 pt-2 pb-1 bg-obsidian-workbench/80 border-t border-outline-variant flex items-center space-x-1.5 overflow-x-auto">
+                <button
+                    class="shrink-0 px-2.5 py-1 rounded-full bg-graphite-panel border border-outline-variant text-pewter hover:text-cyan-signal hover:border-cyan-signal text-[11px] font-footnote transition-colors flex items-center space-x-1">
+                    <span class="material-symbols-outlined text-[13px]" data-icon="palette">palette</span>
+                    <span>Auto color grade</span>
+                </button>
+                <button
+                    class="shrink-0 px-2.5 py-1 rounded-full bg-graphite-panel border border-outline-variant text-pewter hover:text-cyan-signal hover:border-cyan-signal text-[11px] font-footnote transition-colors flex items-center space-x-1">
+                    <span class="material-symbols-outlined text-[13px]" data-icon="content_cut">content_cut</span>
+                    <span>Remove silence</span>
+                </button>
+                <button
+                    class="shrink-0 px-2.5 py-1 rounded-full bg-graphite-panel border border-outline-variant text-pewter hover:text-cyan-signal hover:border-cyan-signal text-[11px] font-footnote transition-colors flex items-center space-x-1">
+                    <span class="material-symbols-outlined text-[13px]" data-icon="video_library">video_library</span>
+                    <span>Add B-roll</span>
+                </button>
+                <button
+                    class="shrink-0 px-2.5 py-1 rounded-full bg-graphite-panel border border-outline-variant text-pewter hover:text-cyan-signal hover:border-cyan-signal text-[11px] font-footnote transition-colors flex items-center space-x-1">
+                    <span class="material-symbols-outlined text-[13px]" data-icon="volume_down">volume_down</span>
+                    <span>Sound ducking</span>
+                </button>
+            </div>
+            <!-- Drawer Composer Footer -->
+            <div class="p-3 bg-obsidian-workbench border-t border-outline-variant">
+                <div
+                    class="flex items-center bg-graphite-panel border border-outline-variant rounded-lg p-1.5 focus-within:border-electric-indigo focus-within:ring-1 focus-within:ring-electric-indigo transition-all">
+                    <button class="text-pewter hover:text-platinum p-1.5 rounded" title="Dictate Prompt">
+                        <span class="material-symbols-outlined text-[18px]" data-icon="mic">mic</span>
+                    </button>
+                    <input
+                        class="bg-transparent border-none text-footnote font-body text-platinum placeholder-pewter/60 focus:ring-0 px-2 w-full outline-none"
+                        placeholder="Tell the agent what to edit..." type="text" />
+                    <button
+                        class="w-8 h-8 rounded-md bg-electric-indigo hover:bg-indigo-500 text-platinum flex items-center justify-center transition-transform active:scale-90 shadow-[0_0_8px_rgba(99,102,241,0.4)]">
+                        <span class="material-symbols-outlined text-[16px]" data-icon="arrow_upward">arrow_upward</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </main>
+    <!-- Micro-interaction inline script for drawer toggle -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const agentToggleBtn = document.getElementById('agentToggleBtn');
+            const agentDrawer = document.getElementById('agentDrawer');
+
+            if (agentToggleBtn && agentDrawer) {
+                agentToggleBtn.addEventListener('click', () => {
+                    agentDrawer.classList.toggle('hidden');
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

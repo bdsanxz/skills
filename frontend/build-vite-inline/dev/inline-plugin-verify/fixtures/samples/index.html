@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TShop by Telkomsel</title>
+<style>
+@font-face { font-family: Poppins; src: url(fonts/shop-Poppins-Light.otf); font-weight: 300; }
+@font-face { font-family: Poppins; src: url(fonts/shop-Poppins-Regular.otf); font-weight: 400; }
+@font-face { font-family: Poppins; src: url(fonts/Poppins-Medium.ttf); font-weight: 500; }
+@font-face { font-family: Poppins; src: url(fonts/Poppins-SemiBold.ttf); font-weight: 600; }
+@font-face { font-family: Poppins; src: url(fonts/shop-Poppins-Bold.otf); font-weight: 700; }
+@font-face { font-family: "Telkomsel Batik Sans"; src: url(fonts/shop-TelkomselBatikSans-Bold.woff) format("woff"); font-weight: 700; }
+
+:root {
+  --navy: #03163d;
+  --ink: #000;
+  --red: #da2f32;
+  --red-bright: #ea3334;
+  --price: #ec0026;
+  --surface: #f5f4f2;
+  --muted: #9b9ca1;
+  --dot: #cbd5e6;
+  --page: 1231px;
+  --display: "Telkomsel Batik Sans", Poppins, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Poppins, sans-serif; color: var(--navy); background: #fff; }
+a { color: inherit; text-decoration: none; }
+ul { margin: 0; padding: 0; list-style: none; }
+button { font: inherit; color: inherit; border: 0; padding: 0; background: none; cursor: pointer; }
+img { display: block; }
+h1, h2, h3, p { margin: 0; }
+.sprite { position: absolute; }
+.page { max-width: var(--page); margin: 0 auto; }
+
+/* ---------- top bar ---------- */
+.topbar { background: #f6f3f3; }
+.topbar__inner { display: flex; justify-content: space-between; height: 43px; padding: 0 21.5px 0 21px; font-size: 11.5px; text-transform: uppercase; color: #001138; }
+.topbar__list { display: flex; }
+.topbar__link { display: block; height: 43px; line-height: 47.5px; border-bottom: 2px solid transparent; }
+.topbar__link--current { border-bottom-color: #d61b1e; }
+.topbar__list--sections { gap: 26.5px; letter-spacing: .25px; }
+.topbar__list--apps { gap: 54px; margin-right: 52px; letter-spacing: -.2px; }
+.topbar__right { display: flex; }
+.lang { display: grid; grid-template-columns: 54px auto; width: 88px; }
+.lang__option { display: flex; gap: 3px; height: 43px; position: relative; }
+.lang__flag { width: 17px; height: 17px; margin-top: 14.5px; }
+.lang__option--divided::before { content: ""; position: absolute; left: -11.5px; top: 18px; width: 1px; height: 10.5px; background: #bbbcbc; }
+
+/* ---------- header ---------- */
+.header__inner { display: flex; align-items: center; height: 71px; padding: 0 30.5px 0 44px; }
+.header__logo-image { width: 70px; height: 31px; }
+.nav { font-family: var(--display); display: flex; gap: 36.1px; margin-left: auto; padding-top: 1.5px; font-size: 11.25px; font-weight: 700; }
+.nav__item { display: flex; align-items: center; gap: 12px; line-height: 20px; }
+.nav__chevron { width: 9.5px; height: 5px; }
+.header__search { margin-left: 36.5px; }
+.search-btn { width: 48px; height: 48px; border-radius: 50%; background: #edecf0; color: #001138; display: grid; place-items: center; }
+.search-btn__icon { width: 48px; height: 48px; }
+.btn { display: inline-grid; place-items: center; border-radius: 999px; background: var(--red); color: #fff; font-weight: 700; }
+.header__signin { margin-left: 34px; }
+.btn--signin { width: 126px; height: 48px; font-size: 14px; }
+
+/* ---------- carousel controls ---------- */
+.arrow { width: 34.5px; height: 34.5px; border-radius: 50%; background: #fff; box-shadow: 0 2.5px 6px rgba(0, 0, 0, .1); display: grid; place-items: center; color: #858585; }
+.arrow__icon { width: 16px; height: 14px; }
+.arrow--next { color: #ec606a; }
+.arrow--bold { color: #e92c1c; }
+.dots { display: flex; align-items: center; gap: 14px; }
+.dots__dot { width: 13.5px; height: 13.5px; border-radius: 999px; background: var(--dot); }
+.dots__dot--current { width: 37.5px; background: var(--price); }
+.dots--small { gap: 6.5px; }
+.dots--small .dots__dot { width: 10.5px; height: 10.5px; background: #cfd6e6; }
+.dots--small .dots__dot--current { width: 21px; background: #ea3323; }
+.dots--loose { gap: 17px; }
+
+/* ---------- hero ---------- */
+/* Sections that carry arrows are themselves the centered column, so the arrows stay beside the content on wide screens. */
+.hero, .shelf, .bundle, .stories { max-width: var(--page); margin-left: auto; margin-right: auto; }
+.hero { position: relative; padding: 14px 0 41px; }
+.hero__track { display: flex; gap: 21.5px; padding-left: 48px; overflow: hidden; }
+.hero__image { width: 364.5px; height: 205px; }
+.hero__arrow { position: absolute; top: 91px; }
+.hero__arrow--prev { left: 5.25px; }
+.hero__arrow--next { right: 5.25px; }
+.hero__dots { margin: 11.5px 0 0 89px; }
+
+/* ---------- quick actions ---------- */
+.quick { background: #fafafb; }
+.quick__inner { display: flex; height: 179.5px; padding: 27.5px 41px 0 65px; }
+.quick__actions { display: flex; }
+.quick__action { display: block; width: 182px; padding-top: 11.5px; text-align: center; font-size: 12px; font-weight: 700; line-height: 18.5px; }
+.quick__item { position: relative; }
+.quick__item--divided::before { content: ""; position: absolute; left: 4px; top: 6.5px; width: 1px; height: 112px; background: #c8cace; }
+.quick__label { display: block; width: 110px; margin: 0 auto; }
+.quick__icon { height: 43.5px; display: grid; place-items: center; margin-bottom: 26px; }
+.quick__icon-image--daftar { width: 34px; height: 43.5px; }
+.quick__icon-image--ganti { width: 30px; height: 32.5px; }
+.quick__icon-image--sim { width: 25px; height: 32.5px; }
+.finder { width: 540.5px; height: 123.5px; margin-left: auto; background: #fff; }
+.finder__tabs { display: flex; justify-content: center; border-bottom: 1px solid #e4e4e4; height: 48.5px; }
+.finder__tab { width: 137px; font-size: 12px; font-weight: 700; line-height: 20px; padding-top: 9px; height: 48.5px; border-bottom: 3px solid transparent; margin-bottom: -1px; text-align: center; }
+.finder__tab--selected { color: #e81f20; border-bottom-color: #e81f20; }
+.finder__form { display: flex; gap: 13px; padding: 13.5px 20.5px 0; }
+.finder__input { flex: 1; height: 48px; border: 1px solid #d0d2d6; border-radius: 6px; padding: 0 0 0 16px; font: inherit; font-size: 14px; color: var(--navy); outline-offset: 2px; min-width: 0; }
+.finder__input::placeholder { color: #6b707d; opacity: 1; }
+.finder__submit { margin-top: 1px; }
+.btn--find { width: 200.5px; height: 46px; background: var(--red-bright); font-size: 12.1px; }
+
+/* ---------- shelf: heading, cards, controls ---------- */
+.shelf { position: relative; }
+.section-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 0 81.5px 0 82.5px; }
+.section-head__title { font-family: var(--display); font-size: 27.3px; font-weight: 700; line-height: 36px; color: var(--ink); }
+.section-head__link { font-size: 13.8px; font-weight: 700; line-height: 20px; color: var(--ink); margin-top: 6.5px; padding: 0 0 3.5px; border-bottom: 2px solid #d00e2d; }
+.shelf__list { display: flex; gap: 19.5px; padding-left: 82px; overflow: hidden; }
+.shelf__dots { margin: 24.5px 0 0 130px; }
+.shelf__arrow { position: absolute; }
+.shelf__arrow--prev { left: 26.25px; }
+.shelf__arrow--next { right: 26.25px; }
+
+.card { width: 163.5px; flex: none; border-radius: 13.5px; background: var(--surface); display: flex; flex-direction: column; position: relative; }
+.card__media { width: 163.5px; height: auto; border-radius: 13.5px 13.5px 0 0; }
+.card__body { padding: 17px 4px 0 10.5px; }
+.card__title { font-family: var(--display); font-size: 10.25px; font-weight: 700; line-height: 13.5px; color: var(--ink); min-height: 27px; }
+.card__price { font-size: 12.1px; font-weight: 700; line-height: 18px; color: var(--price); margin-top: 15.75px; }
+.card__note { font-size: 12px; line-height: 20.25px; color: var(--muted); margin-top: 1px; }
+.card--plain .card__title { min-height: 13.5px; }
+.card--plain .card__note { margin-top: 21px; }
+.card--product { background: linear-gradient(#fff 163.5px, var(--surface) 163.5px); }
+.card--badged { margin-top: 2px; }
+.card--product .card__body { padding-top: 16.5px; }
+.card__badge { position: absolute; left: 0; top: -2px; width: 82.5px; height: 22.75px; padding-left: 8.5px; background: #fff; border-bottom-right-radius: 16px 19px; font-size: 10.6px; font-weight: 700; line-height: 24px; letter-spacing: .2px; color: #e5304d; }
+
+.shelf--esim { padding: 63.5px 0 3.5px; }
+.shelf--esim .shelf__list { margin-top: 29px; height: 301.5px; }
+.shelf--esim .shelf__arrow { top: 300.5px; }
+.shelf--digital { padding: 19.5px 0 2.5px; }
+.shelf--digital .shelf__list { margin-top: 31.5px; height: 300px; }
+.shelf--voucher { padding: 20.5px 0 3px; }
+.shelf--voucher .shelf__list { margin-top: 29px; height: 302.5px; }
+.shelf--voucher .shelf__arrow { top: 257.5px; }
+.shelf--phones { padding: 20px 0 5.5px; }
+.shelf--phones .shelf__list { margin-top: 31px; height: 300px; }
+
+/* ---------- device bundling ---------- */
+.bundle { position: relative; padding-top: 19px; }
+.section-head--inset { padding: 0 102px 0 103px; }
+.bundle__stage { position: relative; height: 396.5px; margin: 30px 82px 0; }
+.bundle__panel { position: absolute; left: 188px; right: 0; top: 0; bottom: 0; background: var(--surface); border-radius: 12px; }
+.bundle__shape { position: absolute; left: 0; top: 0; width: 372px; height: 376px; }
+.bundle__intro { position: absolute; left: 41px; top: 69.5px; width: 220px; color: #fff; }
+.bundle__eyebrow { font-size: 13.7px; line-height: 18px; }
+.bundle__name { font-family: var(--display); font-size: 20.5px; font-weight: 700; line-height: 24px; margin-top: 5.5px; }
+.bundle__text { font-size: 8.55px; font-weight: 400; line-height: 12.8px; margin-top: 19.75px; }
+.bundle__list { position: absolute; left: 260.5px; right: 0; top: 48px; display: flex; gap: 10px; overflow: hidden; }
+.device { flex: none; }
+.device__media { background: #fff; height: 182px; }
+.device__image { height: 182px; width: auto; }
+.device__title { font-family: var(--display); font-size: 12px; font-weight: 700; line-height: 14px; color: var(--ink); margin: 15.5px 11px 0 13.5px; white-space: nowrap; }
+.device__price { font-size: 13.7px; font-weight: 700; line-height: 18px; color: var(--price); margin: 7px 11px 0 13.5px; }
+.bundle__dots { position: absolute; z-index: 1; right: 39px; bottom: 39.5px; }
+.bundle__arrow { position: absolute; top: 254.5px; }
+.bundle__arrow--prev { left: 26.25px; }
+.bundle__arrow--next { right: 26.25px; }
+
+/* ---------- stories ---------- */
+.stories { position: relative; padding: 92px 0 81.5px; }
+.section-head__title--sm { font-size: 20.5px; line-height: 28px; }
+.section-head__link--plain { font-size: 13.6px; color: #074fa3; border: 0; padding: 0; margin: 3.5px 21.5px 0 0; }
+.stories__list { display: flex; gap: 9.5px; margin: 16px 81px 0 81.5px; overflow: hidden; }
+.story { width: 190.5px; flex: none; }
+.story__media { position: relative; border-radius: 11px; overflow: hidden; }
+.story__image { width: auto; max-width: none; height: 275px; }
+.story__play { position: absolute; right: 7.5px; top: 7.75px; width: 20px; height: 20px; color: #fff; filter: drop-shadow(0 0 .5px rgba(3, 22, 61, .7)); }
+.story__title { font-family: var(--display); font-size: 13.9px; font-weight: 700; line-height: 17px; color: #0a1f44; margin: 7px 0 0 9px; }
+.story__views { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500; line-height: 14px; margin: 7.5px 0 0 10.5px; color: #0a1f44; }
+.story__views-icon { width: 11.5px; height: 8px; }
+.stories__arrow { position: absolute; top: 172px; }
+.stories__arrow--prev { left: 26.25px; }
+.stories__arrow--next { right: 26.25px; }
+
+/* ---------- footer ---------- */
+.footer { background: #fafafa; position: relative; overflow: hidden; }
+/* Anchored to the centred column; its diagonal continues past the column's left edge on wider screens. */
+.footer__shape { position: absolute; z-index: -1; left: 0; top: 0; width: 728px; height: 548.5px; overflow: visible; }
+.footer__inner { position: relative; z-index: 0; display: flex; height: 547.5px; padding: 55px 0 0 102.5px; }
+.footer__title { font-family: var(--display); font-size: 13.7px; font-weight: 700; line-height: 20px; color: #051a3c; }
+.footer__apps { width: 395.5px; }
+.footer__downloads { display: flex; align-items: flex-start; gap: 61px; margin-top: 20.5px; padding-bottom: 20.5px; border-bottom: 1px solid #d3d2d7; }
+.footer__badges { display: flex; flex-wrap: wrap; gap: 6.5px 6px; padding-top: 7px; width: 260px; }
+.footer__app-logo--mytelkomsel { width: 48px; height: 48.5px; }
+.footer__badge--googleplay { width: 124px; height: 34.5px; }
+.footer__badge--appstore { width: 123.5px; height: 34.5px; }
+.footer__badge--appgallery { width: 124px; height: 35px; }
+.footer__social-icon--facebook { width: 16.5px; height: 17px; }
+.footer__social-icon--x { width: 16px; height: 17px; }
+.footer__social-icon--youtube { width: 16.5px; height: 17px; }
+.footer__social-icon--instagram { width: 16px; height: 17px; }
+.footer__social-icon--linkedin { width: 17px; height: 17px; }
+.footer__social-icon--telegram { width: 16px; height: 17px; }
+.footer__social-icon--tiktok { width: 17px; height: 17px; }
+.footer__social { display: flex; gap: 40px; margin: 23px 0 0 20.5px; }
+.footer__follow { margin-top: 34px; }
+.footer__nav { display: grid; grid-template-columns: 190px 189.5px auto; row-gap: 40.5px; margin-left: 61px; align-content: start; }
+.footer__links { margin-top: 14px; font-size: 12px; font-weight: 300; line-height: 20.5px; color: #0f1b2f; }
+
+.legal { background: #011a42; color: #fff; }
+.legal__inner { display: flex; justify-content: space-between; height: 82px; padding: 0 95px 0 95.5px; font-size: 11.8px; line-height: 82px; }
+.legal__links { display: flex; gap: 34.5px; font-size: 11.75px; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<svg class="sprite" width="0" height="0" aria-hidden="true">
+  <symbol id="i-chevron" viewBox="0 0 19 10"><path d="M1.5 1.5 9.5 8.5 17.5 1.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 16 14"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="2" d="M1.75 7h12.5"/><path stroke-width="1.6" d="M6.5 1.75 1.75 7l4.75 5.25"/></g></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 16 14"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="2" d="M1.75 7h12.5"/><path stroke-width="1.6" d="M9.5 1.75 14.25 7 9.5 12.25"/></g></symbol>
+  <symbol id="i-arrow-left-bold" viewBox="0 0 16 14"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="2.2" d="M2.25 7h11.5"/><path stroke-width="2.4" d="M7.25 2 2.25 7l5 5"/></g></symbol>
+  <symbol id="i-arrow-right-bold" viewBox="0 0 16 14"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="2.2" d="M2.25 7h11.5"/><path stroke-width="2.4" d="M8.75 2l5 5-5 5"/></g></symbol>
+  <symbol id="i-search" viewBox="0 0 48 48"><g fill="none" stroke="currentColor"><circle cx="23.25" cy="23.2" r="7" stroke-width="1.9"/><path d="M29.300 29.250 31.630 31.580" stroke-width="1.7" stroke-linecap="round"/></g></symbol>
+  <symbol id="i-eye" viewBox="0 0 23 16"><path d="M1 8c2.5-4.5 6-7 10.500-7S19.500 3.500 22 8c-2.500 4.500-6 7-10.500 7S3.500 12.500 1 8Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="11.5" cy="8" r="4" fill="currentColor"/></symbol>
+  <symbol id="i-play" viewBox="0 0 20 20"><path d="M1.75 1.75 18.25 10 1.75 18.250Z" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></symbol>
+</svg>
+
+<div class="topbar">
+  <div class="page topbar__inner">
+    <ul class="topbar__list topbar__list--sections">
+      <li><a class="topbar__link topbar__link--current" href="#" aria-current="page">Personal</a></li>
+      <li><a class="topbar__link" href="#">Enterprise</a></li>
+      <li><a class="topbar__link" href="#">Tentang Kami</a></li>
+    </ul>
+    <div class="topbar__right">
+      <ul class="topbar__list topbar__list--apps">
+        <li><a class="topbar__link" href="#">TShop</a></li>
+        <li><a class="topbar__link" href="#">MyTelkomsel</a></li>
+      </ul>
+      <div class="lang">
+        <a class="lang__option" href="#" lang="id"><img class="lang__flag" src="assets/flag-id.png" alt=""><span class="topbar__link topbar__link--current" aria-current="true">ID</span></a>
+        <a class="lang__option lang__option--divided" href="#" lang="en"><img class="lang__flag" src="assets/flag-en.png" alt=""><span class="topbar__link">EN</span></a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header class="header">
+  <div class="page header__inner">
+    <a class="header__logo" href="#"><img class="header__logo-image" src="assets/logo-tshop.png" alt="TShop by Telkomsel"></a>
+    <nav class="nav" aria-label="Utama">
+      <a class="nav__item" href="#">IndiHome <svg class="nav__chevron" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+      <a class="nav__item" href="#">Produk <svg class="nav__chevron" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+      <a class="nav__item" href="#">Layanan Digital <svg class="nav__chevron" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+      <a class="nav__item" href="#">Jelajah <svg class="nav__chevron" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+      <a class="nav__item" href="#">Bantuan <svg class="nav__chevron" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+    </nav>
+    <button class="search-btn header__search" type="button" aria-label="Cari"><svg class="search-btn__icon" aria-hidden="true"><use href="#i-search"/></svg></button>
+    <a class="btn btn--signin header__signin" href="#">Sign In</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-label="Promo">
+    <div class="page">
+      <ul class="hero__track">
+        <li class="hero__slide"><a href="#"><img class="hero__image" src="assets/hero-1.png" alt="iPhone 17e, paket Halo+ 150 ribu"></a></li>
+        <li class="hero__slide"><a href="#"><img class="hero__image" src="assets/hero-2.png" alt="Upgrade smartphone baru dengan Bundling Halo+ bold"></a></li>
+        <li class="hero__slide"><a href="#"><img class="hero__image" src="assets/hero-3.png" alt="iPhone 17 Pro dengan jaringan 5G tercepat"></a></li>
+      </ul>
+      <div class="dots dots--small hero__dots" role="tablist" aria-label="Slide promo">
+        <button class="dots__dot dots__dot--current" type="button" aria-current="true" aria-label="Slide 1"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 2"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 3"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 4"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 5"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 6"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 7"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 8"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 9"></button>
+        <button class="dots__dot" type="button" aria-label="Slide 10"></button>
+      </div>
+    </div>
+    <button class="arrow arrow--bold hero__arrow hero__arrow--prev" type="button" aria-label="Sebelumnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-left-bold"/></svg></button>
+    <button class="arrow arrow--bold hero__arrow hero__arrow--next" type="button" aria-label="Berikutnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-right-bold"/></svg></button>
+  </section>
+
+  <section class="quick" aria-label="Layanan cepat">
+    <div class="page quick__inner">
+      <ul class="quick__actions">
+        <li class="quick__item"><a class="quick__action" href="#"><span class="quick__icon"><img class="quick__icon-image quick__icon-image--daftar" src="assets/quick-daftar.png" alt=""></span><span class="quick__label">Daftar Telkomsel Halo</span></a></li>
+        <li class="quick__item quick__item--divided"><a class="quick__action" href="#"><span class="quick__icon"><img class="quick__icon-image quick__icon-image--ganti" src="assets/quick-ganti.png" alt=""></span><span class="quick__label">Ganti Kartu Hilang / Upgrade</span></a></li>
+        <li class="quick__item quick__item--divided"><a class="quick__action" href="#"><span class="quick__icon"><img class="quick__icon-image quick__icon-image--sim" src="assets/quick-sim.png" alt=""></span><span class="quick__label">SIM Card Pelanggan Baru</span></a></li>
+      </ul>
+      <div class="finder">
+        <div class="finder__tabs" role="tablist">
+          <button class="finder__tab finder__tab--selected" type="button" role="tab" aria-selected="true">Paket</button>
+          <button class="finder__tab" type="button" role="tab" aria-selected="false">Pulsa</button>
+          <button class="finder__tab" type="button" role="tab" aria-selected="false">Tagihan</button>
+        </div>
+        <form class="finder__form">
+          <input class="finder__input" type="tel" placeholder="Masukkan nomor HP" aria-label="Nomor HP">
+          <button class="btn btn--find finder__submit" type="submit">Cari Paket</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="shelf shelf--esim">
+    <div class="page">
+      <div class="section-head"><h2 class="section-head__title">eSIM RoaMAX</h2><a class="section-head__link" href="#">Lihat semua</a></div>
+      <ul class="shelf__list">
+        <li class="card"><img class="card__media" src="assets/esim-1.png" alt=""><div class="card__body"><h3 class="card__title">eSIM RoaMAX Singapore</h3><p class="card__price">Rp 50.000</p><p class="card__note">Internet Roaming 5GB - 7 Hari</p></div></li>
+        <li class="card"><img class="card__media" src="assets/esim-2.png" alt=""><div class="card__body"><h3 class="card__title">eSIM RoaMAX Malaysia</h3><p class="card__price">Rp 50.000</p><p class="card__note">Internet Roaming 5GB - 7 Hari</p></div></li>
+        <li class="card"><img class="card__media" src="assets/esim-3.png" alt=""><div class="card__body"><h3 class="card__title">eSIM RoaMAX Australia &amp; New Zealand</h3><p class="card__price">Rp 50.000</p><p class="card__note">Internet Roaming 5GB - 7 Hari</p></div></li>
+        <li class="card"><img class="card__media" src="assets/esim-4.png" alt=""><div class="card__body"><h3 class="card__title">eSIM RoaMAX Thailand</h3><p class="card__price">Rp 80.000</p><p class="card__note">Internet Roaming 5GB - 7 Hari</p></div></li>
+        <li class="card"><img class="card__media" src="assets/esim-5.png" alt=""><div class="card__body"><h3 class="card__title">eSIM RoaMAX Japan</h3><p class="card__price">Rp 80.000</p><p class="card__note">Internet Roaming 3GB - 7 Hari</p></div></li>
+        <li class="card"><img class="card__media" src="assets/esim-6.png" alt=""><div class="card__body"><h3 class="card__title">eSIM RoaMAX South Korea</h3><p class="card__price">Rp 80.000</p><p class="card__note">Internet Roaming 5GB - 7 Hari</p></div></li>
+      </ul>
+      <div class="dots shelf__dots"><button class="dots__dot dots__dot--current" type="button" aria-current="true" aria-label="Halaman 1"></button><button class="dots__dot" type="button" aria-label="Halaman 2"></button></div>
+    </div>
+    <button class="arrow shelf__arrow shelf__arrow--prev" type="button" aria-label="Sebelumnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-left"/></svg></button>
+    <button class="arrow arrow--next shelf__arrow shelf__arrow--next" type="button" aria-label="Berikutnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+  </section>
+
+  <section class="shelf shelf--digital">
+    <div class="page">
+      <div class="section-head"><h2 class="section-head__title">Beragam Kemudahan Digital</h2></div>
+      <ul class="shelf__list">
+        <li class="card card--plain"><img class="card__media" src="assets/digital-1.png" alt=""><div class="card__body"><h3 class="card__title">Pasang IndiHome</h3><p class="card__note">#DekatkanPengalaman bersama IndiHome</p></div></li>
+        <li class="card card--plain"><img class="card__media" src="assets/digital-2.png" alt=""><div class="card__body"><h3 class="card__title">Bayar BPJS</h3><p class="card__note">Diskon LinkAja 2ribu</p></div></li>
+        <li class="card card--plain"><img class="card__media" src="assets/digital-3.png" alt=""><div class="card__body"><h3 class="card__title">Bayar Listrik</h3><p class="card__note">Diskon LinkAja 2ribu</p></div></li>
+        <li class="card card--plain"><img class="card__media" src="assets/digital-4.png" alt=""><div class="card__body"><h3 class="card__title">Voucher Indomaret</h3><p class="card__note">Diskon LinkAja 2ribu</p></div></li>
+        <li class="card card--plain"><img class="card__media" src="assets/digital-5.png" alt=""><div class="card__body"><h3 class="card__title">Layanan eSiM</h3><p class="card__note">+Paket Lite mulai 6GB</p></div></li>
+        <li class="card card--plain"><img class="card__media" src="assets/digital-6.png" alt=""><div class="card__body"><h3 class="card__title">Bayar Internet</h3><p class="card__note">Lebih praktis</p></div></li>
+      </ul>
+      <div class="dots shelf__dots"><button class="dots__dot dots__dot--current" type="button" aria-current="true" aria-label="Halaman 1"></button></div>
+    </div>
+  </section>
+
+  <section class="shelf shelf--voucher">
+    <div class="page">
+      <div class="section-head"><h2 class="section-head__title">Voucher Games Murah</h2><a class="section-head__link" href="#">Lihat Semua</a></div>
+      <ul class="shelf__list">
+        <li class="card card--badged"><img class="card__media" src="assets/game-1.png" alt=""><span class="card__badge">BONUS 3GB</span><div class="card__body"><h3 class="card__title">Mobile Legends: Bang-Bang</h3><p class="card__price">Rp 1.195</p><p class="card__note">Bonus 3GB</p></div></li>
+        <li class="card card--badged"><img class="card__media" src="assets/game-2.png" alt=""><span class="card__badge">BONUS 3GB</span><div class="card__body"><h3 class="card__title">Free Fire</h3><p class="card__price">Rp 1.000</p><p class="card__note">Bonus 3GB</p></div></li>
+        <li class="card card--badged"><img class="card__media" src="assets/game-3.png" alt=""><span class="card__badge">BONUS 3GB</span><div class="card__body"><h3 class="card__title">Genshin Impact</h3><p class="card__price">Rp 16.700</p><p class="card__note">Bonus 3GB</p></div></li>
+        <li class="card card--badged"><img class="card__media" src="assets/game-4.png" alt=""><span class="card__badge">BONUS 3GB</span><div class="card__body"><h3 class="card__title">PUBG Mobile</h3><p class="card__price">Rp 15.000</p><p class="card__note">Bonus 3GB</p></div></li>
+        <li class="card card--badged"><img class="card__media" src="assets/game-5.png" alt=""><span class="card__badge">BONUS 3GB</span><div class="card__body"><h3 class="card__title">Honor of Kings</h3><p class="card__price">Rp 1.600</p><p class="card__note">Bonus 3GB</p></div></li>
+        <li class="card card--badged"><img class="card__media" src="assets/game-6.png" alt=""><span class="card__badge">BONUS 3GB</span><div class="card__body"><h3 class="card__title">EA Sports FC Mobile</h3><p class="card__price">Rp 6.500</p><p class="card__note">Bonus 3GB</p></div></li>
+      </ul>
+      <div class="dots shelf__dots"><button class="dots__dot dots__dot--current" type="button" aria-current="true" aria-label="Halaman 1"></button><button class="dots__dot" type="button" aria-label="Halaman 2"></button></div>
+    </div>
+    <button class="arrow shelf__arrow shelf__arrow--prev" type="button" aria-label="Sebelumnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-left"/></svg></button>
+    <button class="arrow arrow--next shelf__arrow shelf__arrow--next" type="button" aria-label="Berikutnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+  </section>
+
+  <section class="shelf shelf--phones">
+    <div class="page">
+      <div class="section-head"><h2 class="section-head__title">Smartphone 1jt-an</h2><a class="section-head__link" href="#">Lihat Semua</a></div>
+      <ul class="shelf__list">
+        <li class="card card--product"><img class="card__media" src="assets/phone-1.png" alt=""><div class="card__body"><h3 class="card__title">Redmi A3</h3><p class="card__price">Rp 1.199.000</p><p class="card__note">Garansi Resmi 1 Tahun</p></div></li>
+        <li class="card card--product"><img class="card__media" src="assets/phone-2.png" alt=""><div class="card__body"><h3 class="card__title">OPPO A3x</h3><p class="card__price">Rp 1.599.000</p><p class="card__note">Garansi Resmi 1 Tahun</p></div></li>
+        <li class="card card--product"><img class="card__media" src="assets/phone-3.png" alt=""><div class="card__body"><h3 class="card__title">Redmi 13</h3><p class="card__price">Rp 1.999.000</p><p class="card__note">Garansi Resmi 1 Tahun</p></div></li>
+        <li class="card card--product"><img class="card__media" src="assets/phone-4.png" alt=""><div class="card__body"><h3 class="card__title">Redmi 14C</h3><p class="card__price">Rp 1.799.000</p><p class="card__note">Garansi Resmi 1 Tahun</p></div></li>
+        <li class="card card--product"><img class="card__media" src="assets/phone-5.png" alt=""><div class="card__body"><h3 class="card__title">Infinix HOT 30</h3><p class="card__price">Rp 1.899.000</p><p class="card__note">Garansi Resmi 1 Tahun</p></div></li>
+        <li class="card card--product"><img class="card__media" src="assets/phone-6.png" alt=""><div class="card__body"><h3 class="card__title">vivo Y19s</h3><p class="card__price">Rp 1.999.000</p><p class="card__note">Garansi Resmi 1 Tahun</p></div></li>
+      </ul>
+      <div class="dots shelf__dots"><button class="dots__dot dots__dot--current" type="button" aria-current="true" aria-label="Halaman 1"></button></div>
+    </div>
+  </section>
+
+  <section class="bundle">
+    <div class="page">
+      <div class="section-head section-head--inset"><h2 class="section-head__title">Smartphone Pilihan untuk Anda</h2><a class="section-head__link" href="#">Lihat Semua</a></div>
+      <div class="bundle__stage">
+        <div class="bundle__panel"></div>
+        <svg class="bundle__shape" viewBox="0 0 744 752" aria-hidden="true"><defs><linearGradient id="bundle-blue" gradientUnits="userSpaceOnUse" x1="695.7" y1="-172.1" x2="-168" y2="41.5"><stop offset="0" stop-color="#0c3573"/><stop offset="1" stop-color="#0043aa"/></linearGradient></defs><path fill="url(#bundle-blue)" d="M737 1.5 L732 6.5 L732 9.5 L730 10.5 L714 27.5 L700 37.5 L684 45.5 L668 50.5 L655 52.5 L228 53.5 L195 58.5 L169 65.5 L156 70.5 L130 82.5 L105 98.5 L92 108.5 L63 136.5 L63 137.5 L53 148.5 L51 152.5 L47 156.5 L39 168.5 L34 178.5 L32 180.5 L19 207.5 L18 212.5 L16 215.5 L16 218.5 L14 220.5 L14 223.5 L11 230.5 L11 233.5 L10 234.5 L8 244.5 L7 245.5 L7 249.5 L6 250.5 L6 254.5 L5 255.5 L5 259.5 L4 260.5 L4 267.5 L3 268.5 L3 272.5 L2 273.5 L2 286.5 L1 287.5 L1 291.5 L0 292.5 L0 739.5 L4 744.5 L9 744.5 L20 729.5 L29 720.5 L46 708.5 L61 701.5 L73 697.5 L85 695.5 L92 694.5 L521 693.5 L553 688.5 L586 678.5 L602 671.5 L621 661.5 L647 643.5 L647 642.5 L645 641.5 L534 640.5 L529 638.5 L523 632.5 L520 625.5 L520 425.5 L744 424.5 L744 420.5 L732 418.5 L717 413.5 L707 407.5 L696 398.5 L687 386.5 L682 376.5 L681 371.5 L679 368.5 L678 360.5 L677 359.5 L677 347.5 L744 346.5 L744 345.5 L732 343.5 L720 339.5 L716 336.5 L713 335.5 L706 326.5 L706 318.5 L705 316.5 L706 314.5 L744 313.5 L744 312.5 L736 310.5 L728 306.5 L722 301.5 L719 296.5 L715 294.5 L699 293.5 L714 282.5 L520 281.5 L520 244.5 L705 243.5 L520 242.5 L520 232.5 L678 231.5 L677 230.5 L700 229.5 L690 228.5 L520 227.5 L698 226.5 L520 225.5 L687 224.5 L520 223.5 L520 222.5 L696 221.5 L695 216.5 L520 215.5 L682 214.5 L694 213.5 L694 207.5 L520 206.5 L695 205.5 L695 204.5 L520 203.5 L696 202.5 L678 201.5 L678 198.5 L701 197.5 L677 196.5 L677 194.5 L520 193.5 L677 192.5 L677 178.5 L520 177.5 L520 176.5 L678 175.5 L678 170.5 L520 169.5 L520 168.5 L679 167.5 L679 165.5 L520 164.5 L680 163.5 L681 160.5 L520 159.5 L682 158.5 L682 157.5 L520 156.5 L683 155.5 L684 153.5 L520 152.5 L685 151.5 L686 150.5 L520 149.5 L687 148.5 L690 143.5 L520 142.5 L520 141.5 L693 140.5 L700 134.5 L520 133.5 L702 132.5 L706 129.5 L716 124.5 L725 123.5 L722 122.5 L520 121.5 L520 111.5 L523 104.5 L528 99.5 L534 96.5 L744 95.5 L744 2.5 L743 1.5Z"/></svg>
+        <div class="bundle__intro">
+          <p class="bundle__eyebrow">Device</p>
+          <h3 class="bundle__name">Device Bundling</h3>
+          <p class="bundle__text">Nikmati penawaran potongan, paket spesial BundlingMAX dan Halo+ Device Plan, dan benefit lainnya dengan Bundling.</p>
+        </div>
+        <ul class="bundle__list">
+          <li class="device"><div class="device__media"><img class="device__image" src="assets/bundle-1.png" alt=""></div><h3 class="device__title">iPhone 16, Hijau Kebiruan</h3><p class="device__price">Rp. 14.999.000</p></li>
+          <li class="device"><div class="device__media"><img class="device__image" src="assets/bundle-2.png" alt=""></div><h3 class="device__title">iPhone 16, Pink</h3><p class="device__price">Rp. 14.999.000</p></li>
+          <li class="device"><div class="device__media"><img class="device__image" src="assets/bundle-3.png" alt=""></div><h3 class="device__title">iPhone 16 Pro, Titanium Putih</h3><p class="device__price">Rp. 18.499.000</p></li>
+          <li class="device"><div class="device__media"><img class="device__image" src="assets/bundle-4.png" alt=""></div><h3 class="device__title">iPhone 16 Pro, Titanium Hitam</h3><p class="device__price">Rp. 18.499.000</p></li>
+          <li class="device"><div class="device__media"><img class="device__image" src="assets/bundle-5.png" alt=""></div><h3 class="device__title">iPhone 16 Pro, Titanium Gurun</h3><p class="device__price">Rp. 18.499.000</p></li>
+        </ul>
+        <div class="dots dots--loose bundle__dots"><button class="dots__dot dots__dot--current" type="button" aria-current="true" aria-label="Halaman 1"></button><button class="dots__dot" type="button" aria-label="Halaman 2"></button></div>
+      </div>
+    </div>
+    <button class="arrow bundle__arrow bundle__arrow--prev" type="button" aria-label="Sebelumnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-left"/></svg></button>
+    <button class="arrow arrow--next bundle__arrow bundle__arrow--next" type="button" aria-label="Berikutnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+  </section>
+
+  <section class="stories">
+    <div class="page">
+      <div class="section-head"><h2 class="section-head__title section-head__title--sm">Cerita trending di Telkomsel</h2><a class="section-head__link section-head__link--plain" href="#">Lihat Semua</a></div>
+      <ul class="stories__list">
+        <li class="story"><a href="#"><div class="story__media"><img class="story__image" src="assets/story-1.png" alt=""><svg class="story__play" aria-hidden="true"><use href="#i-play"/></svg></div><h3 class="story__title">Pantes aja betah dan ketinggalan di rumah,...</h3><p class="story__views"><svg class="story__views-icon" aria-hidden="true"><use href="#i-eye"/></svg>1562</p></a></li>
+        <li class="story"><a href="#"><div class="story__media"><img class="story__image" src="assets/story-2.png" alt=""><svg class="story__play" aria-hidden="true"><use href="#i-play"/></svg></div><h3 class="story__title">IndiHome Paket Gamer, jodohnya buat gamin...</h3><p class="story__views"><svg class="story__views-icon" aria-hidden="true"><use href="#i-eye"/></svg>2111</p></a></li>
+        <li class="story"><a href="#"><div class="story__media"><img class="story__image" src="assets/story-3.png" alt=""><svg class="story__play" aria-hidden="true"><use href="#i-play"/></svg></div><h3 class="story__title">Dapatkan Voucher Belanja dengan...</h3><p class="story__views"><svg class="story__views-icon" aria-hidden="true"><use href="#i-eye"/></svg>1392</p></a></li>
+        <li class="story"><a href="#"><div class="story__media"><img class="story__image" src="assets/story-4.png" alt=""><svg class="story__play" aria-hidden="true"><use href="#i-play"/></svg></div><h3 class="story__title">Langganan paketnya seharga Rp350.000,...</h3><p class="story__views"><svg class="story__views-icon" aria-hidden="true"><use href="#i-eye"/></svg>1120</p></a></li>
+        <li class="story"><a href="#"><div class="story__media"><img class="story__image" src="assets/story-5.png" alt=""><svg class="story__play" aria-hidden="true"><use href="#i-play"/></svg></div><h3 class="story__title">Kumpulkan stamp dan hadiahnya di...</h3><p class="story__views"><svg class="story__views-icon" aria-hidden="true"><use href="#i-eye"/></svg>1621</p></a></li>
+        <li class="story"><a href="#"><div class="story__media"><img class="story__image" src="assets/story-6.png" alt=""><svg class="story__play" aria-hidden="true"><use href="#i-play"/></svg></div><h3 class="story__title">🎉 SIMPATI Untukmu</h3><p class="story__views"><svg class="story__views-icon" aria-hidden="true"><use href="#i-eye"/></svg>3359</p></a></li>
+      </ul>
+    </div>
+    <button class="arrow stories__arrow stories__arrow--prev" type="button" aria-label="Sebelumnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-left"/></svg></button>
+    <button class="arrow arrow--next stories__arrow stories__arrow--next" type="button" aria-label="Berikutnya"><svg class="arrow__icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+  </section>
+</main>
+
+<footer>
+  <div class="footer">
+    <div class="page footer__inner">
+    <svg class="footer__shape" viewBox="0 0 1456 1097" aria-hidden="true"><path fill="#edecf1" d="M0 0 L-824 0 L0 664Z M0 1.5 L0 661.5 L5 665.5 L5 666.5 L8 667.5 L8 668.5 L15 674.5 L23 679.5 L23 680.5 L26 682.5 L32 684.5 L31 686.5 L35 689.5 L35 690.5 L40 691.5 L38 692.5 L40 693.5 L40 694.5 L55 705.5 L55 706.5 L61 710.5 L64 714.5 L67 715.5 L70 717.5 L72 720.5 L75 721.5 L75 722.5 L92 735.5 L92 736.5 L104 745.5 L104 746.5 L112 748.5 L109 749.5 L112 752.5 L115 753.5 L115 754.5 L122 759.5 L122 760.5 L128 763.5 L128 764.5 L132 767.5 L134 770.5 L137 771.5 L143 776.5 L144 778.5 L149 781.5 L164 794.5 L168 796.5 L168 797.5 L184 809.5 L184 810.5 L192 812.5 L192 814.5 L191 815.5 L200 822.5 L200 823.5 L203 824.5 L204 826.5 L208 827.5 L207 828.5 L216 834.5 L216 836.5 L219 837.5 L224 842.5 L231 847.5 L231 848.5 L234 849.5 L234 850.5 L246 859.5 L248 862.5 L256 867.5 L256 868.5 L261 872.5 L264 874.5 L268 875.5 L267 876.5 L271 877.5 L272 878.5 L271 880.5 L274 882.5 L278 883.5 L276 884.5 L280 885.5 L279 886.5 L283 889.5 L283 890.5 L288 891.5 L286 892.5 L288 893.5 L288 894.5 L297 899.5 L296 900.5 L300 901.5 L299 902.5 L302 905.5 L318 917.5 L320 920.5 L323 921.5 L323 922.5 L328 925.5 L328 926.5 L339 934.5 L340 936.5 L343 938.5 L348 939.5 L351 942.5 L349 943.5 L353 946.5 L357 947.5 L356 948.5 L358 949.5 L358 950.5 L373 962.5 L377 963.5 L375 964.5 L380 965.5 L378 966.5 L392 977.5 L392 978.5 L400 983.5 L402 986.5 L410 991.5 L412 994.5 L416 995.5 L415 996.5 L420 999.5 L421 1001.5 L428 1003.5 L431 1006.5 L429 1007.5 L432 1009.5 L432 1010.5 L442 1017.5 L442 1018.5 L448 1020.5 L449 1021.5 L447 1022.5 L452 1023.5 L450 1024.5 L452 1025.5 L452 1026.5 L456 1027.5 L455 1028.5 L462 1033.5 L462 1034.5 L467 1037.5 L472 1041.5 L472 1042.5 L492 1058.5 L496 1059.5 L495 1060.5 L498 1062.5 L499 1064.5 L507 1069.5 L507 1070.5 L512 1071.5 L510 1072.5 L521 1081.5 L528 1083.5 L525 1084.5 L534 1087.5 L531 1089.5 L536 1093.5 L662 1093.5 L664 1092.5 L663 1091.5 L664 1090.5 L663 1084.5 L664 1082.5 L664 1062.5 L665 1061.5 L665 1051.5 L667 1046.5 L667 1039.5 L669 1034.5 L669 1031.5 L670 1030.5 L670 1026.5 L672 1021.5 L672 1018.5 L673 1017.5 L673 1014.5 L676 1006.5 L676 1003.5 L678 1000.5 L681 989.5 L686 978.5 L686 976.5 L688 974.5 L688 972.5 L690 970.5 L694 961.5 L695.9 960.5 L695 959.5 L697.6 957.5 L697 956.5 L698.8 955.5 L698 954.5 L699.9 953.5 L704.8 945.5 L704 944.5 L706.1 943.5 L708.7 939.5 L708 938.5 L710 937.5 L712.6 933.5 L712 932.5 L714 931.5 L716.7 927.5 L716 926.5 L718.1 925.5 L721.6 920.5 L721 919.5 L723.8 917.5 L724.5 916.5 L724 915.5 L726.7 913.5 L726 912.5 L728 911.5 L740 895.5 L744 892.5 L746 888.5 L755 878.5 L754.5 877.5 L763 868.5 L765 864.5 L768 862.5 L768 859.5 L771 858.5 L774 855.5 L776 851.5 L779 848.5 L778 847.5 L782 845.5 L789 835.5 L792 834.5 L793 831.5 L796 827.5 L798 826.5 L804 817.5 L806 816.5 L809 811.5 L811 810.5 L811 809.5 L816 804.5 L817 801.5 L824 794.5 L828 788.5 L836.3 779.5 L837 777.5 L840 775.5 L842 771.5 L844 770.5 L844 769.5 L849 764.5 L861 748.5 L864 746.5 L870 737.5 L872 736.5 L872 735.5 L877 730.5 L880 725.5 L882.7 723.5 L886 718.5 L888 717.5 L890 713.5 L892 712.5 L898 703.5 L904 698.5 L905 695.5 L908 691.5 L910 690.5 L921 675.5 L923 674.5 L926 669.5 L928 668.5 L933 661.5 L938 656.5 L938 655.5 L940 654.5 L940 652.5 L944 649.5 L945 646.5 L949 642.5 L949 641.5 L952 639.5 L954 635.5 L956 634.5 L961 627.5 L966 622.5 L974 611.5 L976 610.5 L982 601.5 L984 600.5 L992 589.5 L1004 576.5 L1006 572.5 L1008 571.5 L1010 567.5 L1016 562.5 L1016 560.5 L1020 556.5 L1020 555.5 L1024 552.5 L1025 549.5 L1030 544.5 L1030 543.5 L1032 542.5 L1033 539.5 L1035 538.5 L1035 537.5 L1040 532.5 L1040 530.5 L1044 527.5 L1046 523.5 L1049 521.5 L1052 516.5 L1068 498.5 L1070 494.5 L1073 492.5 L1076 487.5 L1086 476.5 L1086 475.5 L1088 474.5 L1094 465.5 L1096 464.5 L1104 453.5 L1112 445.5 L1119 435.5 L1121.6 433.5 L1121 432.5 L1123.2 431.5 L1125 428.5 L1128 426.5 L1129 423.5 L1152.8 395.5 L1156 390.5 L1160 387.5 L1162 383.5 L1164 382.5 L1164 381.5 L1194 345.5 L1194 344.5 L1197 342.5 L1200 338.5 L1202 333.5 L1204.3 332.5 L1222 311.5 L1222 310.5 L1224 309.5 L1224 308.5 L1237 293.5 L1237.8 291.5 L1240 290.5 L1241 287.5 L1246 282.5 L1246 281.5 L1248 280.5 L1254 271.5 L1256 270.5 L1257.5 267.5 L1262 263.5 L1264 259.5 L1267 256.5 L1266 255.5 L1270 253.5 L1269.9 252.5 L1292 226.5 L1292 225.5 L1297 220.5 L1300 215.5 L1316 197.5 L1318 193.5 L1321 191.5 L1325 185.5 L1330 180.5 L1330 179.5 L1332 178.5 L1332 177.5 L1350 155.5 L1352 154.5 L1354 150.5 L1366 136.5 L1366 135.5 L1372 129.5 L1372 128.5 L1374 127.5 L1376 123.5 L1392 104.5 L1402 89.5 L1404 88.5 L1406 85.5 L1406 83.5 L1408 82.5 L1408 80.5 L1417 68.5 L1420 62.5 L1424 58.5 L1424 55.5 L1427 52.5 L1428 49.5 L1432 44.5 L1434 40.5 L1434 38.5 L1438 33.5 L1438 31.5 L1442 26.5 L1446 18.5 L1446 16.5 L1448 15.5 L1448 13.5 L1451 9.5 L1454 1.5Z"/></svg>
+      <div class="footer__apps">
+        <h2 class="footer__title">Lakukan lebih di MyTelkomsel</h2>
+        <div class="footer__downloads">
+          <img class="footer__app-logo footer__app-logo--mytelkomsel" src="assets/logo-mytelkomsel.png" alt="MyTelkomsel">
+          <div class="footer__badges">
+            <a href="#"><img class="footer__badge footer__badge--googleplay" src="assets/badge-googleplay.png" alt="Get it on Google Play"></a>
+            <a href="#"><img class="footer__badge footer__badge--appstore" src="assets/badge-appstore.png" alt="Download on the App Store"></a>
+            <a href="#"><img class="footer__badge footer__badge--appgallery" src="assets/badge-appgallery.png" alt="Explore it on AppGallery"></a>
+          </div>
+        </div>
+        <h2 class="footer__title footer__follow">Tetap terhubung dengan kami</h2>
+        <ul class="footer__social">
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--facebook" src="assets/social-facebook.png" alt="Facebook"></a></li>
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--x" src="assets/social-x.png" alt="X"></a></li>
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--youtube" src="assets/social-youtube.png" alt="YouTube"></a></li>
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--instagram" src="assets/social-instagram.png" alt="Instagram"></a></li>
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--linkedin" src="assets/social-linkedin.png" alt="LinkedIn"></a></li>
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--telegram" src="assets/social-telegram.png" alt="Telegram"></a></li>
+          <li><a href="#"><img class="footer__social-icon footer__social-icon--tiktok" src="assets/social-tiktok.png" alt="TikTok"></a></li>
+        </ul>
+      </div>
+      <nav class="footer__nav" aria-label="Footer">
+        <div><h2 class="footer__title">Pilihan Produk</h2><ul class="footer__links"><li><a href="#">SIMPATI</a></li><li><a href="#">Telkomsel Halo</a></li><li><a href="#">by.U</a></li><li><a href="#">Roaming</a></li><li><a href="#">Telkomsel Orbit</a></li><li><a href="#">Bundling</a></li><li><a href="#">5G</a></li><li><a href="#">Telkomsel One</a></li></ul></div>
+        <div><h2 class="footer__title">Layanan Digital</h2><ul class="footer__links"><li><a href="#">Video</a></li><li><a href="#">Games</a></li><li><a href="#">Musik</a></li><li><a href="#">Kuncie</a></li><li><a href="#">Rewards</a></li><li><a href="#">LinkAja</a></li><li><a href="#">Aplikasi Kami</a></li><li><a href="#">Layanan Tambahan</a></li></ul></div>
+        <div><h2 class="footer__title">Kemudahan Pembayaran</h2><ul class="footer__links"><li><a href="#">Isi Ulang Pulsa</a></li><li><a href="#">Transfer Pulsa</a></li><li><a href="#">Bayar Tagihan</a></li><li><a href="#">LinkAja</a></li><li><a href="#">Mobile Banking</a></li></ul></div>
+        <div><h2 class="footer__title">Dapatkan Bantuan</h2><ul class="footer__links"><li><a href="#">Pusat Bantuan</a></li><li><a href="#">Hubungi Kami</a></li><li><a href="#">Kendala Internet</a></li><li><a href="#">Temukan GraPARI</a></li></ul></div>
+        <div><h2 class="footer__title">Nikmati Reward</h2><ul class="footer__links"><li><a href="#">Katalog POIN</a></li><li><a href="#">Mobile Coupons</a></li></ul></div>
+        <div><h2 class="footer__title">Tentang Kami</h2><ul class="footer__links"><li><a href="#">Profil</a></li><li><a href="#">Kontribusi</a></li><li><a href="#">Inovasi</a></li><li><a href="#">Hubungan Investor</a></li><li><a href="#">Karir</a></li><li><a href="#">Media</a></li></ul></div>
+      </nav>
+    </div>
+  </div>
+  <div class="legal">
+    <div class="page legal__inner">
+      <p>© PT Telekomunikasi Selular, 2026.</p>
+      <ul class="legal__links"><li><a href="#">Privacy Policy</a></li><li><a href="#">Terms and Conditions</a></li><li><a href="#">Contact Us</a></li></ul>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

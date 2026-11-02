@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>TASTE_SKILL_V1.0 | ANTI-SLOP FRONTEND FRAMEWORK</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#393939",
+                        "secondary": "#c6c6c6",
+                        "inverse-surface": "#e4e2e1",
+                        "on-background": "#e4e2e1",
+                        "tertiary-container": "#140000",
+                        "on-surface-variant": "#c4c7c7",
+                        "tertiary": "#ffb4aa",
+                        "surface-container-high": "#2a2a2a",
+                        "secondary-container": "#454747",
+                        "on-primary-container": "#797777",
+                        "on-primary": "#313030",
+                        "inverse-on-surface": "#303030",
+                        "inverse-primary": "#5f5e5e",
+                        "surface-tint": "#c9c6c5",
+                        "on-primary-fixed-variant": "#474646",
+                        "error-container": "#93000a",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface": "#131313",
+                        "primary-fixed": "#e5e2e1",
+                        "primary": "#c9c6c5",
+                        "on-secondary-container": "#b4b5b5",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-highest": "#353535",
+                        "primary-fixed-dim": "#c9c6c5",
+                        "surface-container": "#1f2020",
+                        "on-tertiary-fixed-variant": "#930006",
+                        "primary-container": "#050505",
+                        "on-tertiary": "#690003",
+                        "on-error": "#690005",
+                        "on-secondary-fixed": "#1a1c1c",
+                        "background": "#050505",
+                        "surface-dim": "#131313",
+                        "surface-container-low": "#1b1c1c",
+                        "tertiary-fixed-dim": "#ffb4aa",
+                        "surface-variant": "#353535",
+                        "outline": "#333333",
+                        "error": "#E61919",
+                        "on-secondary": "#2f3131",
+                        "on-secondary-fixed-variant": "#454747",
+                        "on-surface": "#EAEAEA",
+                        "tertiary-fixed": "#ffdad5",
+                        "secondary-fixed-dim": "#c6c6c6",
+                        "outline-variant": "#444748",
+                        "on-primary-fixed": "#1c1b1b",
+                        "on-tertiary-container": "#ea1d1c",
+                        "on-tertiary-fixed": "#410001",
+                        "secondary-fixed": "#e2e2e2",
+                        "hazard": "#E61919",
+                        "carbon": "#050505",
+                        "phosphor": "#EAEAEA"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "full": "0px"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "container-max": "1440px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "40px",
+                        "gutter": "1px"
+                    },
+                    "fontFamily": {
+                        "label-code": ["JetBrains Mono"],
+                        "body-sm": ["Outfit"],
+                        "headline-md": ["Outfit"],
+                        "headline-lg-mobile": ["Outfit"],
+                        "body-lg": ["Outfit"],
+                        "display-xl": ["Outfit"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Outfit"]
+                    },
+                    "fontSize": {
+                        "label-code": ["11px", { "lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "400" }],
+                        "body-sm": ["16px", { "lineHeight": "22px", "letterSpacing": "0em", "fontWeight": "400" }],
+                        "headline-md": ["32px", { "lineHeight": "28px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["48px", { "lineHeight": "42px", "letterSpacing": "-0.04em", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "24px", "letterSpacing": "0em", "fontWeight": "400" }],
+                        "display-xl": ["clamp(64px, 10vw, 120px)", { "lineHeight": "0.9", "letterSpacing": "-0.06em", "fontWeight": "800" }],
+                        "label-mono": ["13px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "500" }],
+                        "headline-lg": ["64px", { "lineHeight": "54px", "letterSpacing": "-0.04em", "fontWeight": "700" }]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            background-color: #050505;
+            color: #EAEAEA;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .grid-line-x {
+            border-bottom: 1px solid #333;
+        }
+
+        .grid-line-y {
+            border-right: 1px solid #333;
+        }
+
+        .bg-noise {
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.05;
+            pointer-events: none;
+        }
+
+        .hover-invert:hover {
+            background-color: #EAEAEA;
+            color: #050505;
+        }
+
+        .hazard-hover:hover {
+            background-color: #E61919;
+            color: #EAEAEA;
+        }
+
+        .custom-cursor {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #E61919;
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            transition: transform 0.1s;
+        }
+    </style>
+</head>
+
+<body class="selection:bg-hazard selection:text-phosphor">
+    <div class="bg-noise fixed inset-0 z-[100]"></div>
+    <!-- TopNavBar Component -->
+    <nav
+        class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-desktop h-16 bg-surface border-b border-outline">
+        <div class="font-headline-md text-headline-md font-bold text-on-surface">TASTE_SKILL_V1.0</div>
+        <div class="hidden md:flex gap-8">
+            <a class="font-label-mono text-label-mono text-tertiary font-bold border-b-2 border-tertiary"
+                href="#">[001]_CORE</a>
+            <a class="font-label-mono text-label-mono text-secondary hover:text-on-surface transition-colors"
+                href="#">[002]_GRID</a>
+            <a class="font-label-mono text-label-mono text-secondary hover:text-on-surface transition-colors"
+                href="#">[003]_META</a>
+        </div>
+        <div class="flex gap-4">
+            <button class="font-label-mono text-label-mono text-secondary hover:text-on-surface">[ LOGIN ]</button>
+            <button class="font-label-mono text-label-mono bg-hazard text-phosphor px-4 py-1">[ JOIN ]</button>
+        </div>
+    </nav>
+    <!-- Main Content -->
+    <main class="pt-16 min-h-screen">
+        <!-- HERO SECTION -->
+        <section class="min-h-screen grid grid-cols-12 border-b border-outline">
+            <div class="col-span-12 md:col-span-8 p-margin-desktop flex flex-col justify-end border-r border-outline">
+                <h1 class="font-display-xl text-display-xl uppercase leading-none mb-12">
+                    THE ANTI-SLOP <br />FRONTEND <br /><span class="text-hazard">FRAMEWORK</span>
+                </h1>
+                <p class="font-body-lg text-body-lg max-w-xl mb-8 border-l-4 border-hazard pl-6">
+                    Portable Agent Skills that upgrade AI-built interfaces. Deploy rigid technical aesthetics to LLM
+                    generated codebases instantly.
+                </p>
+                <div class="flex flex-wrap gap-4">
+                    <a class="bg-phosphor text-carbon font-label-mono text-label-mono py-4 px-8 hover:bg-hazard hover:text-phosphor transition-all flex items-center gap-2"
+                        href="#">
+                        [ START_DEPLOYMENT ]
+                    </a>
+                    <a class="border border-outline text-phosphor font-label-mono text-label-mono py-4 px-8 hover:bg-phosphor hover:text-carbon transition-all"
+                        href="#">
+                        [ READ_DOCS ]
+                    </a>
+                </div>
+            </div>
+            <div
+                class="col-span-12 md:col-span-4 p-margin-desktop bg-surface-container-lowest flex flex-col justify-between">
+                <div class="space-y-4">
+                    <div class="font-label-mono text-label-mono text-hazard">[ VERSION: 1.0.4-BETA ]</div>
+                    <div class="font-label-mono text-label-mono text-secondary">SYSTEM_STATUS: NOMINAL</div>
+                    <div class="w-full h-[1px] bg-outline"></div>
+                </div>
+                <div class="relative w-full aspect-square border border-outline flex items-center justify-center group">
+
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span
+                            class="font-label-mono text-label-mono text-phosphor bg-carbon px-2">CORE_ENGINE_ACTIVE</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- LOGO WALL -->
+        <section class="py-12 border-b border-outline bg-surface-container">
+            <div class="px-margin-desktop">
+                <div class="font-label-mono text-label-mono text-secondary mb-8 text-center uppercase tracking-[0.2em]">
+                    TRUSTED BY AGENTIC INFRASTRUCTURE</div>
+                <div
+                    class="flex flex-wrap justify-between items-center gap-12 opacity-50 filter grayscale contrast-125">
+                    <span class="font-headline-md text-headline-md font-bold italic">ANTHROPIC</span>
+                    <span class="font-headline-md text-headline-md font-bold">REPLICATE</span>
+                    <span class="font-headline-md text-headline-md font-bold">VECEL</span>
+                    <span class="font-headline-md text-headline-md font-bold">COHERE</span>
+                    <span class="font-headline-md text-headline-md font-bold italic">GROQ</span>
+                </div>
+            </div>
+        </section>
+        <!-- THE THREE DIALS -->
+        <section class="grid grid-cols-1 md:grid-cols-3 border-b border-outline">
+            <!-- Dial 1 -->
+            <div class="p-12 border-r border-outline flex flex-col items-center">
+                <div class="font-label-mono text-label-mono text-secondary mb-4">DESIGN_VARIANCE</div>
+                <div class="text-[120px] font-bold leading-none mb-4 text-hazard">9</div>
+                <div class="w-full bg-outline h-2 relative">
+                    <div class="absolute top-0 left-0 h-full bg-hazard" style="width: 90%;"></div>
+                </div>
+                <div class="mt-4 font-label-mono text-label-mono text-secondary w-full flex justify-between">
+                    <span>MIN</span>
+                    <span>MAX</span>
+                </div>
+            </div>
+            <!-- Dial 2 -->
+            <div class="p-12 border-r border-outline flex flex-col items-center">
+                <div class="font-label-mono text-label-mono text-secondary mb-4">MOTION_INTENSITY</div>
+                <div class="text-[120px] font-bold leading-none mb-4">8</div>
+                <div class="w-full bg-outline h-2 relative">
+                    <div class="absolute top-0 left-0 h-full bg-phosphor" style="width: 80%;"></div>
+                </div>
+                <div class="mt-4 font-label-mono text-label-mono text-secondary w-full flex justify-between">
+                    <span>STILL</span>
+                    <span>FLUID</span>
+                </div>
+            </div>
+            <!-- Dial 3 -->
+            <div class="p-12 flex flex-col items-center">
+                <div class="font-label-mono text-label-mono text-secondary mb-4">VISUAL_DENSITY</div>
+                <div class="text-[120px] font-bold leading-none mb-4">3</div>
+                <div class="w-full bg-outline h-2 relative">
+                    <div class="absolute top-0 left-0 h-full bg-phosphor" style="width: 30%;"></div>
+                </div>
+                <div class="mt-4 font-label-mono text-label-mono text-secondary w-full flex justify-between">
+                    <span>SPARSE</span>
+                    <span>DENSE</span>
+                </div>
+            </div>
+        </section>
+        <!-- SKILLS CATALOG -->
+        <section class="p-margin-desktop border-b border-outline">
+            <div class="flex justify-between items-end mb-12">
+                <h2 class="font-headline-lg text-headline-lg uppercase">SKILLS_CATALOG</h2>
+                <div class="font-label-mono text-label-mono text-hazard">[ TOTAL: 13_ASSETS ]</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border-t border-l border-outline">
+                <!-- Card 1 -->
+                <div class="p-8 border-r border-b border-outline hover:bg-surface-container transition-colors group">
+                    <div class="flex justify-between mb-12">
+                        <span class="font-label-mono text-label-mono text-secondary">[ 01 ]</span>
+                        <span class="font-label-mono text-label-mono text-hazard">ACTIVE</span>
+                    </div>
+                    <h3 class="font-headline-md text-headline-md mb-4 uppercase">TASTE-SKILL</h3>
+                    <p class="font-body-sm text-body-sm text-secondary mb-8">The core engine for algorithmic aesthetic
+                        evaluation.</p>
+                    <div class="font-label-mono text-label-mono text-outline">CAT: ENGINE_V1</div>
+                </div>
+                <!-- Card 2 -->
+                <div class="p-8 border-r border-b border-outline hover:bg-surface-container transition-colors group">
+                    <div class="flex justify-between mb-12">
+                        <span class="font-label-mono text-label-mono text-secondary">[ 02 ]</span>
+                        <span class="font-label-mono text-label-mono">STABLE</span>
+                    </div>
+                    <h3 class="font-headline-md text-headline-md mb-4 uppercase">GPT-TASTE</h3>
+                    <p class="font-body-sm text-body-sm text-secondary mb-8">Direct integration layer for OpenAI
+                        reasoning models.</p>
+                    <div class="font-label-mono text-label-mono text-outline">CAT: ADAPTER</div>
+                </div>
+                <!-- Card 3 -->
+                <div class="p-8 border-r border-b border-outline hover:bg-surface-container transition-colors group">
+                    <div class="flex justify-between mb-12">
+                        <span class="font-label-mono text-label-mono text-secondary">[ 03 ]</span>
+                        <span class="font-label-mono text-label-mono text-hazard">RAW</span>
+                    </div>
+                    <h3 class="font-headline-md text-headline-md mb-4 uppercase">BRUTALIST-SKILL</h3>
+                    <p class="font-body-sm text-body-sm text-secondary mb-8">Hard-edge layouts and visible structural
+                        skeletons.</p>
+                    <div class="font-label-mono text-label-mono text-outline">CAT: THEME</div>
+                </div>
+                <!-- Card 4 -->
+                <div class="p-8 border-r border-b border-outline hover:bg-surface-container transition-colors group">
+                    <div class="flex justify-between mb-12">
+                        <span class="font-label-mono text-label-mono text-secondary">[ 04 ]</span>
+                        <span class="font-label-mono text-label-mono">ALPHA</span>
+                    </div>
+                    <h3 class="font-headline-md text-headline-md mb-4 uppercase">AUTO-LAYOUT</h3>
+                    <p class="font-body-sm text-body-sm text-secondary mb-8">Self-correcting grid systems for infinite
+                        viewport scales.</p>
+                    <div class="font-label-mono text-label-mono text-outline">CAT: GEOMETRY</div>
+                </div>
+                <!-- More Skill items (Simplified for brevity) -->
+                <div class="p-8 border-r border-b border-outline opacity-50 flex items-center justify-center">
+                    <span class="font-label-mono text-label-mono">[ +9_REDACTED_SKILLS ]</span>
+                </div>
+            </div>
+        </section>
+        <!-- RESEARCH FOUNDATION -->
+        <section class="grid grid-cols-12 border-b border-outline">
+            <div class="col-span-12 md:col-span-6 p-margin-desktop border-r border-outline bg-surface-container-lowest">
+                <h2 class="font-headline-lg text-headline-lg mb-8 uppercase">LLM_LAZINESS_REPORT</h2>
+                <div class="space-y-6 font-label-mono text-label-mono leading-relaxed">
+                    <p class="text-hazard">&gt; ANALYSIS: AI UI generation defaults to "Mid-journey Slop" (Standard SaaS
+                        aesthetics).</p>
+                    <p>&gt; FINDING: LLMs avoid complexity in CSS grid logic to minimize token cost.</p>
+                    <p>&gt; SOLUTION: TASTE_SKILL injects high-density aesthetic constraints into the prompt chain.</p>
+                    <div class="p-6 bg-carbon border border-outline mt-8">
+                        <code class="block text-secondary">
+                            {<br/>
+                              "aesthetic_constraint": "industrial_brutalism",<br/>
+                              "border_radius": "0px",<br/>
+                              "chromatic_aberration": 0.05,<br/>
+                              "slop_prevention": true<br/>
+                            }
+                        </code>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="col-span-12 md:col-span-6 flex items-center justify-center bg-carbon p-margin-desktop overflow-hidden">
+                <div class="relative w-full h-full border border-outline">
+                    <div class="absolute inset-0 bg-hazard opacity-5 mix-blend-overlay"></div>
+                    <div class="w-full h-full bg-cover bg-center grayscale contrast-150"
+                        data-alt="A macro photograph of an industrial electrical control panel with rigid rows of switches, glowing red indicator lights, and pristine white labels. The lighting is harsh and directional, creating deep black shadows and high-contrast white highlights, emphasizing a brutalist, technical aesthetic with no soft edges or organic elements."
+                        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA8u8o7wPPheo5DS478nkHg7sHOEXmh7geUJt9-lN3rGwJby7CmSuaRZJ1eOpByrJ8pEqhSTU0T0JfGVVyiFesyj25iiv70DO22AmJ1ijbRUI7ahfa510ctZo5kDim382XiXFTEU0mnpfcNWGQx9bdgehsMWwCdqAv98TtwO7XBYwo7GxUlXUO33Z4VZmUfJ1m33Szzv-SoohbDZzFYMalOqCqpW-BZE0_dqPXjxw7Rnl44UO5dv5iwTIROkd00rWqsYYSqtXJBf3Q')">
+                    </div>
+                    <div class="absolute bottom-4 left-4 font-label-mono text-label-mono bg-carbon p-2">FIG_04:
+                        SYSTEM_COHESION</div>
+                </div>
+            </div>
+        </section>
+        <!-- FINAL CTA -->
+        <section class="py-32 px-margin-desktop text-center border-b border-outline relative">
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[1px] h-32 bg-outline"></div>
+            <h2 class="font-display-xl text-display-xl mb-12 uppercase">SHIP BETTER<br />FRONTENDS</h2>
+            <div class="flex justify-center gap-8 items-center">
+                <div class="h-[1px] w-32 bg-outline"></div>
+                <button
+                    class="font-label-mono text-label-mono bg-phosphor text-carbon px-12 py-6 text-xl hover:bg-hazard hover:text-phosphor transition-all">
+                    [ INITIALIZE_FRAMEWORK ]
+                </button>
+                <div class="h-[1px] w-32 bg-outline"></div>
+            </div>
+        </section>
+    </main>
+    <!-- Footer Component -->
+    <footer
+        class="w-full py-10 px-margin-desktop grid grid-cols-2 md:grid-cols-4 gap-gutter bg-surface-container-lowest border-t border-outline">
+        <div class="flex flex-col gap-4">
+            <div class="font-label-mono text-label-mono text-on-surface font-bold">TASTE_SKILL</div>
+            <div class="font-label-mono text-label-mono text-secondary">(C) 2024 TASTE_SKILL. MIT_LICENSE. REG_NO_8829-X
+            </div>
+        </div>
+        <div class="flex flex-col gap-2">
+            <div class="font-label-mono text-label-mono text-secondary mb-2">/ RESOURCES</div>
+            <a class="font-label-mono text-label-mono text-secondary hover:text-tertiary transition-colors"
+                href="#">LICENSE</a>
+            <a class="font-label-mono text-label-mono text-secondary hover:text-tertiary transition-colors"
+                href="#">DOCS</a>
+        </div>
+        <div class="flex flex-col gap-2">
+            <div class="font-label-mono text-label-mono text-secondary mb-2">/ REPO</div>
+            <a class="font-label-mono text-label-mono text-secondary hover:text-tertiary transition-colors"
+                href="#">SOURCE</a>
+            <a class="font-label-mono text-label-mono text-secondary hover:text-tertiary transition-colors"
+                href="#">TERMINAL</a>
+        </div>
+        <div class="flex flex-col gap-4 text-right">
+            <div class="font-label-mono text-label-mono text-secondary">AESTHETIC_QUOTA: EXCEEDED</div>
+            <div class="flex justify-end gap-2">
+                <div class="w-4 h-4 bg-hazard"></div>
+                <div class="w-4 h-4 bg-phosphor"></div>
+                <div class="w-4 h-4 bg-outline"></div>
+            </div>
+        </div>
+    </footer>
+    <!-- Custom Cursor Script -->
+    <div class="custom-cursor hidden md:block" id="cursor"></div>
+    <script>
+        const cursor = document.getElementById('cursor');
+        document.addEventListener('mousemove', (e) => {
+            cursor.style.left = e.clientX + 'px';
+            cursor.style.top = e.clientY + 'px';
+        });
+
+        // Micro-interactions for buttons
+        document.querySelectorAll('button, a').forEach(el => {
+            el.addEventListener('mouseenter', () => {
+                cursor.style.transform = 'scale(2) rotate(45deg)';
+                cursor.style.backgroundColor = '#E61919';
+            });
+            el.addEventListener('mouseleave', () => {
+                cursor.style.transform = 'scale(1) rotate(0deg)';
+                cursor.style.backgroundColor = 'transparent';
+            });
+        });
+    </script>
+</body>
+
+</html>

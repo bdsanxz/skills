@@ -31,7 +31,7 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 
 | Skill | What it does |
 | --- | --- |
-| [`font-design`](design/font-design/SKILL.md) | Designs a complete typeface from a text brief. It records every design decision, draws each glyph as code, and judges its work on rendered proof sheets, with an independent critic agent reviewing each round. It spaces and kerns the font, then delivers a Latin family (about 240 glyphs) as OTF, TTF and WOFF2 for each weight, plus a variable font, an HTML specimen and a QA report. |
+| [`font-design`](design/font-design/SKILL.md) | Designs a complete typeface from a text brief. It records every design decision, draws each glyph as code, and judges its work on rendered proof sheets, with an independent critic worker (the `font-design-critic` template) reviewing each round. It spaces and kerns the font, then delivers a Latin family (about 240 glyphs) as OTF, TTF and WOFF2 for each weight, plus a variable font, an HTML specimen and a QA report. |
 
 ### Engineering
 
@@ -41,6 +41,9 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 | [`tdd`](engineering/tdd/SKILL.md) | Test-Driven Development in Red-Green-Refactor cycles. Each failing test is committed as `[red]` and each passing implementation as `[green]`. |
 | [`peers`](engineering/peers/SKILL.md) | Lets separate agent sessions on one machine message each other, across Claude Code, OpenCode, the Antigravity CLI and pi. Messages work like an inbox: each session keeps its history and receives a short notification when something arrives. Sessions can be resumed, and a peer started from it is visible in [herdr](https://herdr.dev) rather than hidden in the background. |
 | [`agent-roster-design`](engineering/agent-roster-design/SKILL.md) | Designs and launches a squad of long-lived agents that work in their own directories and talk through `peers`. It guides you through the goal, the members, their roles and their skills, writes each member's instructions, then starts the whole squad in herdr. Each member can run its own agent, model and effort level; pi and OpenCode members get `/loop` for repeated work and `/goal` for completion conditions. |
+| [`agent-roster-template`](engineering/agent-roster-template/SKILL.md) | Ready-made roster members you can pick when designing a squad: a codebase explorer, a font critic, a drift auditor and a codebase scout, each with a role, communication rules and a default effort. A script puts a template into a squad's roster, and other skills run one as a one-off worker. |
+| [`computer-use`](engineering/computer-use/SKILL.md) | Operates a local desktop app like a person: captures each screen, reads exact click coordinates from a labeled grid reference, moves, clicks, drags and scrolls, focuses apps, types and presses keys, and checks every action against a fresh capture before going on. A failed step is recovered from the current state without redoing finished ones, and missing screen or input permission stops the work with plain repair steps. A bundled Python package (`scripts/computer_use`) sets up its own isolated environment on first use. |
+| [`session-reader`](engineering/session-reader/SKILL.md) | Exports one Pi agent session, found by its ID, as a clean Markdown transcript in `_swe/session-reader/`: each message, tool call and tool result is its own entry in time order, without the JSONL envelope noise. A bundled Node script (`scripts/session-to-markdown.mjs`) resolves the ID, never overwrites an earlier export and counts anything it had to skip. |
 | [`herdr-peers`](engineering/herdr-peers/SKILL.md) | Lets agent sessions in one herdr workspace message each other using only the `herdr` CLI. Messages are fire-and-forget prompts that arrive as ordinary turns, with a bounded request-to-receipt protocol and no extra CLI. |
 | [`herdr-roster-design`](engineering/herdr-roster-design/SKILL.md) | Designs and launches a squad of agent sessions in one herdr workspace using only the `herdr` CLI. It guides you through the goal and the members, writes each member's files and generated instructions, installs their skills, and starts the squad with semantic `squad-<slug>` and `<slug>-<member>` names. |
 | [`hcx`](engineering/hcx/SKILL.md) | Messages another agent session by tab name and spawns new agents in tabs of their own, without the `<hc from>` tag and with no parent terminal. Everything else passes through to `hc`, with tab names accepted wherever `hc` takes a terminal. |
@@ -56,14 +59,15 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 
 | Skill | What it does |
 | --- | --- |
+| [`build-vite-inline`](frontend/build-vite-inline/SKILL.md) | Builds any Vite web project into one self-contained HTML file, encoded behind a small loader and optionally obfuscated, compatible with Google Gemini Canvas and any static host, and checks or decodes the result. |
 | [`pixel-perfect`](frontend/pixel-perfect/SKILL.md) | Implements UI design images as real, reusable code on web, desktop or mobile, and proves the match with measured values and a per-pixel diff. |
 
 ### Product
 
 | Skill | What it does |
 | --- | --- |
-| [`specifications`](product/specifications/SKILL.md) | Turns the requirements in a conversation into specifications, grounded in facts from your codebase. Features are grouped by actor journey, each with acceptance criteria an observer can check. Anything the conversation leaves unsettled becomes an open question instead of an assumption. |
-| [`tasks`](product/tasks/SKILL.md) | Turns a conversation or a specification into end-to-end tasks with acceptance checklists, a coverage table, and dependencies. A script reads the dependencies as a graph and shows which tasks are ready, which can run in parallel, and which are blocked. |
+| [`specifications`](product/specifications/SKILL.md) | Turns the product idea and decisions in a conversation into one behavior-first specification with a fixed twelve-section structure and stable `CAP-`, `J-`, `STATE-`, `INT-` and `REC-` identifiers. It covers normal, failure and recovery behavior with Mermaid diagrams, keeps scope, non-goals, deferred and unknown items apart, and prescribes no implementation. It saves the result to `_swe/specifications/<name>/specification.md`. |
+| [`tasks`](product/tasks/SKILL.md) | Turns one finalized specification into small, end-to-end tasks with observable acceptance criteria and explicit blocking edges, each traced to the behavior it delivers. It validates the specification first, can gather evidence from your codebase with a scout agent, and writes the task index and one file per task to `_swe/tasks/<name>/`. A script validates the set and tracks it as a dependency graph, showing which tasks are ready, which can run in parallel and which are blocked. |
 | [`drifting-check`](product/drifting-check/SKILL.md) | Checks whether a set of tasks still matches the specifications and the target outcome. It reports over-engineering, uncovered requirements, contradictions and tasks that no longer serve the goal, each with quotes from both sides. |
 | [`research-market`](product/research-market/SKILL.md) | Researches a market from what its audience posts in public on X/Twitter and Bluesky. It codes posts for pains, wishes, alternatives and price signals, counts the themes, and ranks product opportunities. |
 
@@ -72,6 +76,8 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 | Skill | What it does |
 | --- | --- |
 | [`agents-creator`](prompting/agents-creator/SKILL.md) | Creates subagent definitions for Claude Code, OpenCode or Codex. Every agent it creates writes a report file as it works, so its results survive context compaction. A script validates each file. |
+| [`based-on-gemini-canvas`](prompting/based-on-gemini-canvas/SKILL.md) | Deep-dive knowledge for AI agents about Google Gemini Canvas: its sandboxed single-file environment and limits, browser features, storage and sharing, and every Gemini model usable inside it with its abilities, limits, status, errors and fallbacks. |
+| [`hand-hold-me`](prompting/hand-hold-me/SKILL.md) | Guides you through building a project from first idea to release, one copy-paste-ready prompt at a time for your AI coding agent. Each prompt stands on its own, covers one small flow and says what it leaves out, describes the outcome you want rather than how to build it, and is written from the conversation, facts in your codebase, and the result you reported on the last one; failures and missing parts get a fix prompt before the sequence continues. |
 | [`improve-my-instruction`](prompting/improve-my-instruction/SKILL.md) | Rewrites an instruction so that it is clear, well organized and unambiguous, using facts from your codebase, without changing what it asks for. |
 
 ### Research
@@ -86,9 +92,11 @@ Most skills need nothing beyond your agent. The rest bring their own scripts and
 
 | Skill | Needs |
 | --- | --- |
-| `font-design`, `pixel-perfect` | Python 3.9 or newer. On first use, the bundled tool creates its own environment and installs its dependencies, which needs network access. |
-| `edd`, `tasks`, `research-market`, `agents-creator`, `get-knowledge` | [Bun](https://bun.sh) |
+| `font-design`, `pixel-perfect`, `computer-use` | Python 3.9 or newer. On first use, the bundled tool creates its own environment and installs its dependencies, which needs network access. |
+| `edd`, `tasks`, `agent-roster-template`, `research-market`, `agents-creator`, `get-knowledge` | [Bun](https://bun.sh) |
 | `setup-custom-inferences` | [Bun](https://bun.sh) |
+| `session-reader` | [Node.js](https://nodejs.org) |
+| `build-vite-inline` | [Node.js](https://nodejs.org) and a Vite project (Vite 6 to 8) |
 | `peers` | The [`peers`](https://github.com/bdsanxz/peers) command on your `PATH` (see below). [herdr](https://herdr.dev) is needed to start visible peers. |
 | `agent-roster-design` | Bun, herdr, and the agents you choose for the squad (`claude`, `opencode`, `agy`, `pi`, `muse` or `qodercli`). `peers` is installed when it is missing. |
 

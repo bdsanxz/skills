@@ -1,0 +1,852 @@
+// The voxel-garden WebGL engine. Imperative by nature: it owns a WebGL2 context,
+// a render loop and pointer input. Solid mounts it in onMount and talks to it
+// only through `api` (to push UI state out) and the returned control object (to
+// feed UI events in). No DOM lookups live here; the canvas is passed in.
+//
+// TOOL_IDS keeps the keyboard shortcuts (1..n) in step with the toolbar order
+// that App.jsx renders.
+export const TOOL_IDS = ['look', 'tulip', 'lavender', 'sunflower', 'cabbage', 'tree', 'dig'];
+
+export function startGarden(canvas, api) {
+  const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+  if (!gl) {
+    const fallback = document.createElement('div');
+    fallback.className = 'garden__fallback';
+    fallback.textContent = 'This garden needs WebGL 2. Turn on hardware acceleration or open the page in a current browser.';
+    document.body.appendChild(fallback);
+    return null;
+  }
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- World ---------- */
+  const W = 72, H = 46, D = 72;
+  const vox = new Uint8Array(W * H * D);
+  const idx = (x, y, z) => x + z * W + y * W * D;
+  const inb = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D;
+  const get = (x, y, z) => inb(x, y, z) ? vox[idx(x, y, z)] : 0;
+
+  const M = { AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, PATH: 4, SOIL: 5, TRUNK: 6, PLANK: 7, ROOF: 8, LEAF: 9, BLOSSOM: 10, HEDGE: 11, STEM: 12,
+    RED: 13, YELLOW: 14, PINK: 15, PURPLE: 16, WHITE: 17, FRUIT: 18, FENCE: 19, LAMP: 20, WATER: 21, SAND: 22, CABBAGE: 23, CORE: 24, PINE: 25,
+    IRON: 26, ORANGE: 27, TUFT: 28, FALLEN: 29, HIVE: 30, WINDOW: 31 };
+  const PAL = { 1: 0x6db34a, 2: 0x7a5636, 3: 0x7f8085, 4: 0xbcb3a2, 5: 0x4b3323, 6: 0x5d4029, 7: 0xa97c4f, 8: 0xb5503a, 9: 0x4f9a3d, 10: 0xf6a9c6, 11: 0x2f7a3d, 12: 0x4e9436,
+    13: 0xe5383b, 14: 0xffcf33, 15: 0xff77a8, 16: 0x8d67d6, 17: 0xf8f6ee, 18: 0xd8232a, 19: 0xece7da, 20: 0xffd27a, 21: 0x2c86a8, 22: 0xd8c78f, 23: 0x7fc65a, 24: 0x5c3a1e, 25: 0x24603f,
+    26: 0x34363b, 27: 0xf28a2e, 28: 0x7cc24f, 29: 0xf0a8c0, 30: 0xdcb15a, 31: 0xffdf90 };
+  const JIT = { 1: .08, 2: .1, 3: .14, 4: .16, 5: .1, 6: .1, 7: .1, 8: .1, 9: .16, 10: .1, 11: .16, 12: .12, 25: .14, 19: .03, 23: .12, 28: .14, 30: .06 };
+  const SWAY = { 9: .09, 10: .11, 11: .025, 12: .09, 13: .13, 14: .13, 15: .13, 16: .13, 17: .13, 18: .08, 23: .03, 25: .05, 28: .13, 24: .1 };
+  const PLANT = new Set([M.TRUNK, M.LEAF, M.BLOSSOM, M.HEDGE, M.STEM, M.RED, M.YELLOW, M.PINK, M.PURPLE, M.WHITE, M.FRUIT, M.CABBAGE, M.CORE, M.PINE, M.ORANGE, M.TUFT]);
+  const LAMPS = [[33, 50], [38, 50], [33, 28], [38, 28], [42, 36], [14, 20]];
+  const lampPositions = new Float32Array(18);
+
+  function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function hash(x, y, z) { let n = (x * 374761393 + y * 668265263 + z * 2147483647) | 0; n = Math.imul(n ^ n >>> 13, 1274126177); return ((n ^ n >>> 16) >>> 0) / 4294967296; }
+  const smooth = t => t * t * (3 - 2 * t);
+  function vnoise(x, z) {
+    const xi = Math.floor(x), zi = Math.floor(z), u = smooth(x - xi), v = smooth(z - zi);
+    const a = hash(xi, 7, zi), b = hash(xi + 1, 7, zi), c = hash(xi, 7, zi + 1), d = hash(xi + 1, 7, zi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const sstep = (a, b, v) => smooth(clamp((v - a) / (b - a), 0, 1));
+
+  const isFree = m => m === M.AIR || m === M.TUFT;
+  function put(x, y, z, m) { if (inb(x, y, z)) vox[idx(x, y, z)] = m; }
+  function grow(x, y, z, m) { if (inb(x, y, z) && isFree(vox[idx(x, y, z)])) vox[idx(x, y, z)] = m; }
+  function topAt(x, z) { for (let y = H - 1; y >= 0; y--) { const m = get(x, y, z); if (m && m !== M.TUFT) return y; } return -1; }
+
+  /* ---------- Plants ---------- */
+  function tulip(x, z, color, r) {
+    const y = topAt(x, z) + 1, h = 1 + (r() < .4 ? 1 : 0);
+    for (let i = 0; i < h; i++) grow(x, y + i, z, M.STEM);
+    grow(x, y + h, z, color);
+  }
+  function daisy(x, z, color) {
+    const y = topAt(x, z) + 1;
+    grow(x, y, z, M.STEM); grow(x, y + 1, z, M.STEM);
+    grow(x, y + 2, z, M.YELLOW);
+    grow(x + 1, y + 2, z, color); grow(x - 1, y + 2, z, color); grow(x, y + 2, z + 1, color); grow(x, y + 2, z - 1, color);
+  }
+  function lavender(x, z, r) {
+    const y = topAt(x, z) + 1;
+    grow(x, y, z, M.STEM);
+    const h = 1 + Math.floor(r() * 2.5);
+    for (let i = 1; i <= h; i++) grow(x, y + i, z, M.PURPLE);
+  }
+  function sunflower(x, z, r) {
+    const y = topAt(x, z) + 1, h = 4 + Math.floor(r() * 3);
+    for (let i = 0; i < h; i++) grow(x, y + i, z, M.STEM);
+    grow(x + 1, y + 1, z, M.STEM);
+    grow(x - 1, y + 2, z, M.STEM);
+    const c = y + h;
+    grow(x, c, z, M.CORE);
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) grow(x + a, c + b, z, M.YELLOW);
+  }
+  function cabbage(x, z) {
+    const y = topAt(x, z) + 1;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (Math.abs(a) + Math.abs(b) < 2) grow(x + a, y, z + b, M.CABBAGE);
+    grow(x, y + 1, z, M.CABBAGE);
+  }
+  function carrot(x, z) {
+    const y = topAt(x, z) + 1;
+    grow(x, y, z, M.ORANGE); grow(x, y + 1, z, M.STEM);
+  }
+  function tomato(x, z, r) {
+    const y = topAt(x, z) + 1;
+    for (let i = 0; i < 4; i++) grow(x, y + i, z, M.TRUNK);
+    for (let i = 1; i < 4; i++) for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (r() < .55) grow(x + a, y + i, z + b, r() < .35 ? M.FRUIT : M.STEM);
+  }
+  function tree(x, z, opt, r) {
+    const y = topAt(x, z) + 1, h = opt.h, rad = opt.r;
+    for (let i = 0; i < h; i++) grow(x, y + i, z, M.TRUNK);
+    const cy = y + h;
+    for (let a = -rad; a <= rad; a++) for (let c = -rad; c <= rad; c++) for (let b = -rad; b <= rad; b++) {
+      const d = Math.sqrt(a * a + b * b * 1.5 + c * c);
+      if (d > rad + .4 || (d > rad - 1 && r() < .22)) continue;
+      const fruit = opt.fruit && d > rad - 1.3 && r() < .1;
+      const tint = opt.accent && r() < .18;
+      grow(x + a, cy + b, z + c, fruit ? M.FRUIT : tint ? opt.accent : opt.leaf);
+    }
+    if (opt.fallen) for (let i = 0; i < 90; i++) {
+      const a = Math.round((r() - .5) * rad * 3), c = Math.round((r() - .5) * rad * 3), ty = topAt(x + a, z + c);
+      if (get(x + a, ty, z + c) === M.GRASS) put(x + a, ty, z + c, M.FALLEN);
+    }
+  }
+  function pine(x, z, h) {
+    const y = topAt(x, z) + 1;
+    for (let i = 0; i < h; i++) grow(x, y + i, z, M.TRUNK);
+    for (let i = 2; i <= h; i++) {
+      const rad = Math.max(0, Math.round((h - i) * .45 + (i % 2 ? 0 : .8)));
+      for (let a = -rad; a <= rad; a++) for (let b = -rad; b <= rad; b++) if (a * a + b * b <= rad * rad + .5) grow(x + a, y + i, z + b, M.PINE);
+    }
+    grow(x, y + h + 1, z, M.PINE);
+  }
+  const PLANTERS = {
+    tulip: (x, z, r) => { const cols = [M.RED, M.PINK, M.ORANGE, M.WHITE, M.YELLOW]; tulip(x, z, cols[Math.floor(r() * cols.length)], r); },
+    lavender: (x, z, r) => { lavender(x, z, r); },
+    sunflower: (x, z, r) => { sunflower(x, z, r); },
+    cabbage: (x, z) => { cabbage(x, z); },
+    tree: (x, z, r) => { tree(x, z, { h: 4, r: 3, leaf: M.LEAF, fruit: true }, r); }
+  };
+
+  /* ---------- Garden layout ---------- */
+  const pondDist = (x, z) => Math.hypot(x - 52, (z - 38) * 1.15) - (9 + vnoise(x * .17, z * .17) * 2.5);
+
+  function generate() {
+    vox.fill(0);
+    const r = mulberry(20261102), hmap = new Int16Array(W * D).fill(-1), bottom = new Int16Array(W * D);
+    for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+      const dx = Math.abs(x + .5 - 36), dz = Math.abs(z + .5 - 36);
+      const sup = Math.pow(dx ** 8 + dz ** 8, 1 / 8), edge = 33.5 + vnoise(x * .2, z * .2) * 1.5 - sup;
+      if (edge < 0) continue;
+      hmap[x + z * W] = 10 + Math.round(vnoise(x * .09 + 3, z * .09) * 2);
+      bottom[x + z * W] = Math.max(0, hmap[x + z * W] - 2 - Math.floor(Math.min(9, edge * .8 + vnoise(x * .3, z * .3) * 4)));
+    }
+    const flatten = (x0, z0, x1, z1, h) => { for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (hmap[x + z * W] >= 0) hmap[x + z * W] = h; };
+    flatten(29, 12, 43, 27, 11); flatten(8, 8, 20, 20, 11); flatten(8, 50, 28, 64, 11); flatten(25, 49, 46, 66, 11);
+
+    for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+      let h = hmap[x + z * W];
+      if (h < 0) continue;
+      const pd = pondDist(x, z);
+      if (pd < 3.5) h = hmap[x + z * W] = 10;
+      if (pd < 0) {
+        const bed = Math.max(6, 9 - Math.ceil(-pd / 1.6));
+        for (let y = bottom[x + z * W]; y < bed; y++) put(x, y, z, M.STONE);
+        put(x, bed, z, M.SAND);
+        for (let y = bed + 1; y <= 9; y++) put(x, y, z, M.WATER);
+        hmap[x + z * W] = bed;
+        continue;
+      }
+      for (let y = bottom[x + z * W]; y <= h; y++) put(x, y, z, y === h ? (pd < 1.2 ? M.SAND : M.GRASS) : y > h - 4 ? M.DIRT : M.STONE);
+    }
+
+    const pave = (x0, z0, x1, z1) => {
+      for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+        const y = topAt(x, z), onEdge = x === x0 || x === x1 || z === z0 || z === z1;
+        if (y >= 0 && !(onEdge && r() < .14)) put(x, y, z, M.PATH);
+      }
+    };
+    pave(34, 25, 37, 68); pave(18, 46, 33, 48); pave(38, 37, 41, 39); pave(14, 18, 15, 27); pave(14, 26, 33, 27);
+
+    /* Boundary: hedge to the north and west, white pickets to the south and east. */
+    const hedge = (x, z) => { const y = topAt(x, z); if (y < 0) return; const h = 3 + (hash(x, 3, z) < .3 ? 1 : 0); for (let i = 1; i <= h; i++) grow(x, y + i, z, hash(x, y + i, z) < .025 ? M.WHITE : M.HEDGE); };
+    for (let x = 6; x <= 65; x++) { hedge(x, 6); hedge(x, 7); }
+    for (let z = 8; z <= 64; z++) { hedge(6, z); hedge(7, z); }
+    const picket = (x, z) => { const y = topAt(x, z); if (y < 0) return; grow(x, y + 1, z, M.FENCE); grow(x, y + 2, z, M.FENCE); if ((x + z) % 2 === 0) grow(x, y + 3, z, M.FENCE); };
+    for (let x = 8; x <= 65; x++) if (x < 34 || x > 37) picket(x, 65);
+    for (let z = 8; z <= 64; z++) picket(65, z);
+
+    /* Rose arch over the gate. */
+    const gy = topAt(35, 65);
+    for (const ax of [33, 38]) for (let y = gy + 1; y <= gy + 6; y++) put(ax, y, 65, M.TRUNK);
+    for (let x = 32; x <= 39; x++) { put(x, gy + 7, 65, M.PLANK); if (r() < .9) grow(x, gy + 8, 65, r() < .4 ? M.PINK : M.LEAF); }
+    for (const ax of [33, 38]) for (let y = gy + 2; y <= gy + 6; y++) { if (r() < .55) grow(ax, y, 66, r() < .4 ? M.PINK : M.LEAF); if (r() < .55) grow(ax, y, 64, r() < .4 ? M.RED : M.LEAF); }
+
+    /* Gazebo. */
+    const gz = 11;
+    for (let z = 14; z <= 24; z++) for (let x = 31; x <= 41; x++) put(x, gz + 1, z, M.PLANK);
+    for (const [px, pz] of [[31, 14], [41, 14], [31, 24], [41, 24], [36, 14], [31, 19], [41, 19]]) {
+      for (let y = gz + 2; y <= gz + 6; y++) { put(px, y, pz, M.FENCE); if (r() < .3) grow(px + (px < 36 ? -1 : 1), y, pz, M.LEAF); }
+    }
+    for (let l = 0; l < 7; l++) for (let z = 13 + l; z <= 25 - l; z++) for (let x = 30 + l; x <= 42 - l; x++) put(x, gz + 7 + l, z, l % 2 ? M.ROOF : (x === 30 + l || x === 42 - l || z === 13 + l || z === 25 - l ? M.FENCE : M.ROOF));
+    put(36, gz + 14, 19, M.LAMP);
+    for (let x = 35; x <= 37; x++) for (let z = 18; z <= 20; z++) put(x, gz + 3, z, M.PLANK);
+    put(36, gz + 2, 19, M.TRUNK);
+
+    /* Tool shed. */
+    for (let y = 12; y <= 16; y++) for (let z = 10; z <= 17; z++) for (let x = 10; x <= 18; x++) put(x, y, z, M.PLANK);
+    for (let l = 0; l < 5; l++) for (let z = 9 + l; z <= 18 - l; z++) for (let x = 9; x <= 19; x++) put(x, 17 + l, z, l % 2 ? M.TRUNK : M.ROOF);
+    for (let y = 12; y <= 15; y++) for (const x of [14, 15]) put(x, y, 17, M.TRUNK);
+    put(15, 13, 18, M.IRON);
+    for (const y of [14, 15]) for (const x of [11, 12, 17]) put(x, y, 17, M.WINDOW);
+
+    /* Raised flower beds on both sides of the main path. */
+    const bed = (x0, z0, x1, z1) => {
+      for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+        const y = topAt(x, z);
+        put(x, y + 1, z, (x === x0 || x === x1 || z === z0 || z === z1) ? M.PLANK : M.SOIL);
+      }
+    };
+    bed(26, 52, 32, 63); bed(39, 52, 45, 63);
+    const rows = [M.RED, M.YELLOW, M.PINK, M.WHITE, M.ORANGE];
+    for (let z = 53; z <= 62; z++) for (let x = 27; x <= 31; x++) if ((x + z) % 2 === 0) tulip(x, z, rows[(z - 53) % rows.length], r);
+    for (let z = 53; z <= 62; z += 3) for (let x = 41; x <= 44; x += 3) daisy(x, z, z % 2 ? M.WHITE : M.PINK);
+    for (let z = 54; z <= 62; z += 3) tulip(40, z, M.RED, r);
+
+    /* Vegetable plot. */
+    bed(9, 51, 24, 63);
+    for (let x = 11; x <= 23; x += 2) carrot(x, 53);
+    for (let x = 11; x <= 23; x += 4) { cabbage(x, 56); cabbage(x + 2, 59); }
+    for (let x = 12; x <= 23; x += 4) tomato(x, 62, r);
+
+    /* Lavender field and hive. */
+    for (let z = 29; z <= 41; z++) for (let x = 10; x <= 24; x++) if ((z % 3) !== 0 && r() < .8) lavender(x, z, r);
+    const hy = topAt(27, 36);
+    for (let y = 1; y <= 4; y++) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { if (y === 4 && Math.abs(a) + Math.abs(b) === 2) continue; put(27 + a, hy + y, 36 + b, y === 2 ? M.PLANK : M.HIVE); }
+    put(27, hy + 2, 38, M.IRON);
+
+    /* Sunflowers along the south-east fence. */
+    for (let x = 48; x <= 63; x += 5) sunflower(x, 62, r);
+
+    /* Trees. */
+    tree(25, 21, { h: 5, r: 4, leaf: M.LEAF, fruit: true }, r);
+    tree(20, 44, { h: 6, r: 5, leaf: M.LEAF }, r);
+    tree(53, 14, { h: 8, r: 6, leaf: M.LEAF, accent: M.PINE }, r);
+    tree(45, 25, { h: 6, r: 5, leaf: M.BLOSSOM, accent: M.PINK, fallen: true }, r);
+    tree(59, 54, { h: 5, r: 4, leaf: M.BLOSSOM, accent: M.PINK, fallen: true }, r);
+    pine(62, 12, 15); pine(11, 24, 11); pine(59, 21, 11);
+
+    /* Pond shore, jetty and bench. */
+    for (let z = 22; z <= 54; z++) for (let x = 36; x <= 66; x++) {
+      const pd = pondDist(x, z);
+      if (pd > 0 && pd < 1.6 && r() < .14 && !(x < 48 && z > 34 && z < 42)) {
+        const y = topAt(x, z);
+        grow(x, y + 1, z, M.STONE);
+        if (r() < .4) grow(x, y + 2, z, M.STONE);
+      }
+    }
+    for (let z = 37; z <= 39; z++) for (let x = 38; x <= 46; x++) put(x, 10, z, M.PLANK);
+    for (const x of [42, 46]) for (const z of [37, 39]) for (let y = 7; y <= 9; y++) put(x, y, z, M.TRUNK);
+    const by = topAt(47, 52);
+    for (let x = 46; x <= 49; x++) { put(x, by + 2, 52, M.PLANK); put(x, by + 3, 53, M.PLANK); put(x, by + 2, 53, M.PLANK); }
+    for (const x of [46, 49]) { put(x, by + 1, 52, M.TRUNK); put(x, by + 1, 53, M.TRUNK); }
+
+    /* Lanterns. */
+    LAMPS.forEach(([x, z], i) => {
+      const y = topAt(x, z);
+      for (let k = 1; k <= 3; k++) put(x, y + k, z, M.IRON);
+      put(x, y + 4, z, M.LAMP); put(x, y + 5, z, M.IRON);
+      lampPositions.set([x + .5, y + 4.5, z + .5], i * 3);
+    });
+
+    /* Grass tufts and wildflowers. */
+    for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+      const y = topAt(x, z);
+      if (y < 0 || get(x, y, z) !== M.GRASS) continue;
+      const n = r();
+      if (n < .09) put(x, y + 1, z, M.TUFT);
+      else if (n < .105) put(x, y + 1, z, r() < .5 ? M.WHITE : M.YELLOW);
+    }
+  }
+
+  /* ---------- Meshing ---------- */
+  const FACES = [
+    { n: [1, 0, 0], c: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], s: .82 },
+    { n: [-1, 0, 0], c: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]], s: .82 },
+    { n: [0, 1, 0], c: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], s: 1 },
+    { n: [0, -1, 0], c: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [1, 0, 1]], s: .7 },
+    { n: [0, 0, 1], c: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]], s: .9 },
+    { n: [0, 0, -1], c: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], s: .9 }
+  ];
+  const AO = [.42, .62, .82, 1];
+  const STRIDE = 12;
+  const solid = (x, y, z) => { const m = get(x, y, z); return m !== 0 && m !== M.WATER && m !== M.TUFT; };
+  const rgb = hex => [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];
+  const PAL_RGB = {}; for (const k in PAL) PAL_RGB[k] = rgb(PAL[k]);
+  const GRASS_B = rgb(0x4f9a3e);
+
+  function voxelColor(m, x, y, z, f) {
+    let c = PAL_RGB[m], cr = c[0], cg = c[1], cb = c[2];
+    if (m === M.GRASS) { const t = vnoise(x * .13, z * .13); cr += (GRASS_B[0] - cr) * t; cg += (GRASS_B[1] - cg) * t; cb += (GRASS_B[2] - cb) * t; if (f.n[1] === 0) { cr *= .75; cg *= .78; cb *= .7; } }
+    if (m === M.ROOF && y % 2) { cr *= .88; cg *= .85; cb *= .85; }
+    if (m === M.PLANK) { const t = .92 + ((z + y * 3) % 3) * .05; cr *= t; cg *= t; cb *= t; }
+    const j = 1 + (hash(x, y, z) - .5) * (JIT[m] || .02) * 2;
+    return [cr * j, cg * j, cb * j];
+  }
+
+  function buildMesh() {
+    const v = [], w = [];
+    let count = 0;
+    const n = [0, 0, 0];
+    for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+      const m = vox[idx(x, y, z)];
+      if (!m) continue;
+      count++;
+      const sway = SWAY[m] || 0, em = (m === M.LAMP || m === M.WINDOW) ? 1 : 0;
+      if (m === M.WATER) {
+        if (get(x, y + 1, z) === 0) w.push(x, y + .82, z, x, y + .82, z + 1, x + 1, y + .82, z + 1, x + 1, y + .82, z);
+        continue;
+      }
+      for (const f of FACES) {
+        const nb = get(x + f.n[0], y + f.n[1], z + f.n[2]);
+        if (nb !== 0 && nb !== M.WATER && nb !== M.TUFT) continue;
+        const col = voxelColor(m, x, y, z, f);
+        const ao = [];
+        const axis = f.n[0] ? 0 : f.n[1] ? 1 : 2, ua = (axis + 1) % 3, va = (axis + 2) % 3;
+        for (let i = 0; i < 4; i++) {
+          const cn = f.c[i], su = cn[ua] ? 1 : -1, sv = cn[va] ? 1 : -1;
+          n[0] = x + f.n[0]; n[1] = y + f.n[1]; n[2] = z + f.n[2];
+          const a = [n[0], n[1], n[2]], b = [n[0], n[1], n[2]], d = [n[0], n[1], n[2]];
+          a[ua] += su; b[va] += sv; d[ua] += su; d[va] += sv;
+          const s1 = solid(a[0], a[1], a[2]) ? 1 : 0, s2 = solid(b[0], b[1], b[2]) ? 1 : 0, s3 = solid(d[0], d[1], d[2]) ? 1 : 0;
+          ao.push(s1 && s2 ? 0 : 3 - s1 - s2 - s3);
+        }
+        const order = ao[0] + ao[2] < ao[1] + ao[3] ? [1, 2, 3, 0] : [0, 1, 2, 3];
+        for (const i of order) {
+          const cn = f.c[i];
+          v.push(x + cn[0], y + cn[1], z + cn[2], f.n[0], f.n[1], f.n[2], col[0] * f.s, col[1] * f.s, col[2] * f.s, em ? 1 : AO[ao[i]], sway, em);
+        }
+      }
+    }
+    return { verts: new Float32Array(v), water: new Float32Array(w), count };
+  }
+
+  function quadIndices(quads) {
+    const a = new Uint32Array(quads * 6);
+    for (let i = 0; i < quads; i++) { const b = i * 4, o = i * 6; a[o] = b; a[o + 1] = b + 1; a[o + 2] = b + 2; a[o + 3] = b; a[o + 4] = b + 2; a[o + 5] = b + 3; }
+    return a;
+  }
+
+  /* ---------- GL helpers ---------- */
+  function shader(type, src) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, shader(gl.VERTEX_SHADER, vs)); gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[name] = gl.getUniformLocation(p, name); }
+    return { p, u };
+  }
+  const VS = `#version 300 es
+layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNormal; layout(location=2) in vec3 aColor; layout(location=3) in vec3 aMisc;
+uniform mat4 uVP, uLightVP; uniform float uTime, uWind;
+out vec3 vP, vN, vC, vM; out vec4 vL;
+void main(){
+  vec3 p = aPos;
+  if (aMisc.y > 0.0) {
+    float s = sin(uTime*1.7 + p.x*.31 + p.z*.23) + .5*sin(uTime*3.1 + p.x*.7 - p.z*.5);
+    p.x += s*aMisc.y*uWind; p.z += cos(uTime*1.3 + p.z*.29)*aMisc.y*.6*uWind;
+  }
+  vP = p; vN = aNormal; vC = aColor; vM = aMisc;
+  vL = uLightVP * vec4(p + aNormal*.1, 1.0);
+  gl_Position = uVP * vec4(p, 1.0);
+}`;
+  const FS_DEPTH = `#version 300 es
+precision mediump float; void main(){}`;
+  const FS = `#version 300 es
+precision highp float; precision highp sampler2DShadow;
+in vec3 vP, vN, vC, vM; in vec4 vL;
+uniform sampler2DShadow uShadow;
+uniform vec3 uCam, uLdir, uSun, uAmbT, uAmbB, uFog; uniform vec3 uLamps[6];
+uniform float uLamp, uTime; uniform int uMode; uniform vec4 uTint;
+out vec4 o;
+float shadowAt(){
+  vec3 p = vL.xyz/vL.w*.5+.5;
+  if (p.x<0.||p.x>1.||p.y<0.||p.y>1.||p.z>1.) return 1.;
+  float t = 1.3/2048., s = 0.;
+  s += texture(uShadow, vec3(p.xy, p.z)); s += texture(uShadow, vec3(p.xy+vec2(t,0), p.z)); s += texture(uShadow, vec3(p.xy-vec2(t,0), p.z));
+  s += texture(uShadow, vec3(p.xy+vec2(0,t), p.z)); s += texture(uShadow, vec3(p.xy-vec2(0,t), p.z));
+  return s*.2;
+}
+vec3 lampLight(vec3 n){
+  vec3 c = vec3(0);
+  for (int i=0;i<6;i++){ vec3 d = uLamps[i]-vP; float dd = dot(d,d); c += (max(dot(n,normalize(d)),0.)*.85+.15)/(1.+dd*.07); }
+  return c*vec3(1.,.72,.38)*uLamp*1.5;
+}
+void main(){
+  if (uMode==2) { o = uTint; return; }
+  vec3 V = normalize(uCam-vP);
+  float dist = length(uCam-vP), fog = smoothstep(95.,240.,dist);
+  if (uMode==1) {
+    vec2 c = floor(vP.xz*2.)/2.;
+    float r = sin(c.x*1.3+uTime*1.1)+sin(c.y*1.7-uTime*.9)+sin((c.x+c.y)*.9+uTime*.6);
+    vec3 n = normalize(vec3(cos(c.x*1.3+uTime*1.1)*.09, 1., cos(c.y*1.7-uTime*.9)*.09));
+    float sh = shadowAt();
+    vec3 base = mix(vec3(.08,.36,.47), vec3(.2,.6,.65), .5+r*.13);
+    vec3 col = base*(uAmbT+uSun*sh*.75) + lampLight(n)*.35;
+    float fres = pow(1.-max(dot(n,V),0.),3.);
+    col = mix(col, uFog*(uAmbT*.6+.4), fres*.7);
+    col += uSun*sh*pow(max(dot(reflect(-uLdir,n),V),0.),60.)*.8;
+    o = vec4(mix(col,uFog,fog), mix(.68,.92,fres)); return;
+  }
+  vec3 n = vN;
+  float sun = max(dot(n,uLdir),0.)*shadowAt();
+  vec3 light = mix(uAmbB,uAmbT,.5+.5*n.y)*vM.x + uSun*sun + lampLight(n);
+  vec3 col = vC*light;
+  if (vM.z > 1.5) col = vC;
+  else if (vM.z > .5) col = mix(col, vC*1.15, uLamp);
+  o = vec4(mix(col,uFog,fog),1.);
+}`;
+  const VS_SKY = `#version 300 es
+out vec2 vUV; void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2); vUV = p*2.-1.; gl_Position = vec4(vUV,.9999,1.); }`;
+  const FS_SKY = `#version 300 es
+precision highp float; in vec2 vUV; uniform mat4 uInv; uniform vec3 uCam, uTop, uHor, uSunDir; uniform float uNight, uRain; out vec4 o;
+float h(vec3 p){ return fract(sin(dot(p,vec3(12.9,78.2,37.7)))*43758.5); }
+float disc(vec3 d, vec3 s, float size){
+  vec3 u = normalize(cross(s,vec3(0,1,.01))), v = cross(u,s);
+  if (dot(d,s)<=0.) return 0.;
+  return step(max(abs(dot(d,u)),abs(dot(d,v))),size);
+}
+void main(){
+  vec4 w = uInv*vec4(vUV,1.,1.); vec3 d = normalize(w.xyz/w.w-uCam);
+  vec3 c = mix(uHor,uTop,smoothstep(-.05,.6,d.y));
+  c = mix(c, uHor*.86+vec3(.03), smoothstep(0.,-.55,d.y));
+  vec3 cell = floor(d*110.);
+  if (d.y>-.1 && h(cell)>.994) c += vec3(.85,.9,1.)*uNight*(1.-uRain)*(.4+.6*h(cell+1.));
+  c = mix(c, vec3(1.,.94,.62), disc(d,uSunDir,.075)*(1.-uRain*.9));
+  c = mix(c, vec3(.9,.92,1.), disc(d,-uSunDir,.05)*uNight*(1.-uRain*.9));
+  o = vec4(c,1.);
+}`;
+
+  const mainProg = program(VS, FS), depth = program(VS, FS_DEPTH), sky = program(VS_SKY, FS_SKY);
+
+  function makeMesh(dynamicQuads) {
+    const vao = gl.createVertexArray(), vbo = gl.createBuffer(), ibo = gl.createBuffer();
+    gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+    const s = STRIDE * 4;
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, s, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, s, 12);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, s, 24);
+    gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 3, gl.FLOAT, false, s, 36);
+    if (dynamicQuads) {
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(dynamicQuads), gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, dynamicQuads * 4 * s, gl.DYNAMIC_DRAW);
+    }
+    gl.bindVertexArray(null);
+    return { vao, vbo, ibo, n: 0 };
+  }
+  function upload(mesh, verts) {
+    const quads = verts.length / STRIDE / 4;
+    gl.bindVertexArray(mesh.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vbo); gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(quads), gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    mesh.n = quads * 6;
+  }
+  function draw(mesh) { if (!mesh.n) return; gl.bindVertexArray(mesh.vao); gl.drawElements(gl.TRIANGLES, mesh.n, gl.UNSIGNED_INT, 0); }
+
+  const solidMesh = makeMesh(), waterMesh = makeMesh(), ghostMesh = makeMesh(), dynMesh = makeMesh(4200 * 6);
+  const DYN_QUADS = 4200 * 6, dyn = new Float32Array(DYN_QUADS * 4 * STRIDE);
+  let dynN = 0;
+
+  function addBox(x, y, z, sx, sy, sz, c, em, sway) {
+    if ((dynN / STRIDE / 4) + 6 > DYN_QUADS) return;
+    for (const f of FACES) for (const k of f.c) {
+      dyn[dynN++] = x + (k[0] - .5) * sx; dyn[dynN++] = y + (k[1] - .5) * sy; dyn[dynN++] = z + (k[2] - .5) * sz;
+      dyn[dynN++] = f.n[0]; dyn[dynN++] = f.n[1]; dyn[dynN++] = f.n[2];
+      dyn[dynN++] = c[0] * f.s; dyn[dynN++] = c[1] * f.s; dyn[dynN++] = c[2] * f.s;
+      dyn[dynN++] = 1; dyn[dynN++] = sway || 0; dyn[dynN++] = em || 0;
+    }
+  }
+
+  /* Shadow map */
+  const SHADOW = 2048, shadowTex = gl.createTexture(), shadowFbo = gl.createFramebuffer();
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowTex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, SHADOW, SHADOW);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowTex, 0);
+  gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  /* ---------- Math ---------- */
+  const m4 = {
+    mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[r + 4] * b[c * 4 + 1] + a[r + 8] * b[c * 4 + 2] + a[r + 12] * b[c * 4 + 3]; return o; },
+    persp(fov, asp, n, f) { const t = 1 / Math.tan(fov / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]); },
+    ortho(s, n, f) { return new Float32Array([1 / s, 0, 0, 0, 0, 1 / s, 0, 0, 0, 0, -2 / (f - n), 0, 0, 0, -(f + n) / (f - n), 1]); },
+    look(e, c, u) {
+      let z = norm([e[0] - c[0], e[1] - c[1], e[2] - c[2]]), x = norm(cross(u, z)), y = cross(z, x);
+      return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1]);
+    },
+    inv(m) {
+      const r = new Float32Array(16), a = m;
+      const b00 = a[0] * a[5] - a[1] * a[4], b01 = a[0] * a[6] - a[2] * a[4], b02 = a[0] * a[7] - a[3] * a[4], b03 = a[1] * a[6] - a[2] * a[5], b04 = a[1] * a[7] - a[3] * a[5], b05 = a[2] * a[7] - a[3] * a[6];
+      const b06 = a[8] * a[13] - a[9] * a[12], b07 = a[8] * a[14] - a[10] * a[12], b08 = a[8] * a[15] - a[11] * a[12], b09 = a[9] * a[14] - a[10] * a[13], b10 = a[9] * a[15] - a[11] * a[13], b11 = a[10] * a[15] - a[11] * a[14];
+      const det = 1 / (b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06);
+      r[0] = (a[5] * b11 - a[6] * b10 + a[7] * b09) * det; r[1] = (a[2] * b10 - a[1] * b11 - a[3] * b09) * det; r[2] = (a[13] * b05 - a[14] * b04 + a[15] * b03) * det; r[3] = (a[10] * b04 - a[9] * b05 - a[11] * b03) * det;
+      r[4] = (a[6] * b08 - a[4] * b11 - a[7] * b07) * det; r[5] = (a[0] * b11 - a[2] * b08 + a[3] * b07) * det; r[6] = (a[14] * b02 - a[12] * b05 - a[15] * b01) * det; r[7] = (a[8] * b05 - a[10] * b02 + a[11] * b01) * det;
+      r[8] = (a[4] * b10 - a[5] * b08 + a[7] * b06) * det; r[9] = (a[1] * b08 - a[0] * b10 - a[3] * b06) * det; r[10] = (a[12] * b04 - a[13] * b02 + a[15] * b00) * det; r[11] = (a[9] * b02 - a[8] * b04 - a[11] * b00) * det;
+      r[12] = (a[5] * b07 - a[4] * b09 - a[6] * b06) * det; r[13] = (a[0] * b09 - a[1] * b07 + a[2] * b06) * det; r[14] = (a[13] * b01 - a[12] * b03 - a[14] * b00) * det; r[15] = (a[8] * b03 - a[9] * b01 + a[10] * b00) * det;
+      return r;
+    }
+  };
+  function norm(a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+  function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+  /* ---------- State and persistence ---------- */
+  const STORE_KEY = 'voxel-garden-ops-v1';
+  let ops = [];
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) ops = JSON.parse(raw) || []; } catch (e) { ops = []; }
+  const saveOps = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(ops)); } catch (e) { /* Garden still works without saving. */ } };
+
+  function digAt(x, y, z) {
+    const stack = [[x, y, z]]; let removed = 0;
+    while (stack.length) {
+      const [a, b, c] = stack.pop();
+      if (!PLANT.has(get(a, b, c))) continue;
+      put(a, b, c, 0); removed++;
+      stack.push([a + 1, b, c], [a - 1, b, c], [a, b + 1, c], [a, b - 1, c], [a, b, c + 1], [a, b, c - 1]);
+    }
+    return removed;
+  }
+  function applyOp(op) {
+    if (op.t === 'dig') return digAt(op.x, op.y, op.z);
+    const planter = PLANTERS[op.t];
+    if (!planter) return 0;
+    planter(op.x, op.z, mulberry(op.x * 7919 + op.z * 104729));
+    return 1;
+  }
+  function rebuild() {
+    const mesh = buildMesh();
+    upload(solidMesh, mesh.verts);
+    const wv = new Float32Array(mesh.water.length / 3 * STRIDE);
+    for (let i = 0, j = 0; i < mesh.water.length; i += 3, j += STRIDE) { wv[j] = mesh.water[i]; wv[j + 1] = mesh.water[i + 1]; wv[j + 2] = mesh.water[i + 2]; wv[j + 4] = 1; wv[j + 9] = 1; }
+    upload(waterMesh, wv);
+    const planted = ops.filter(o => o.t !== 'dig').length;
+    api.setStats(mesh.count.toLocaleString('en-US') + ' voxels, ' + planted + ' planted by you');
+  }
+
+  /* ---------- UI bridge ---------- */
+  // Tool selection, the clock and the toast live in Solid; the engine reads and
+  // drives them through `api`. setTool keeps the aiming cursor and ghost preview
+  // in step and pushes the active id back to the signal so the toolbar lights up.
+  let tool = 'look';
+  function setTool(id) {
+    tool = id;
+    canvas.classList.toggle('garden__canvas--aiming', id !== 'look');
+    ghost = null; pointerDirty = true;
+    api.setActiveTool(id);
+  }
+
+  let hours = 16.5, cycling = false, raining = false, rainAmt = 0;
+  const fmt = h => { const t = Math.floor(h * 60 + .5) % 1440; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+  function setHours(h) { hours = h; api.setReadout(fmt(hours)); }
+  function toggleCycle() { cycling = !cycling; api.setCycling(cycling); }
+  function toggleRain() { raining = !raining; api.setRaining(raining); }
+  function reset() {
+    ops = []; saveOps(); generate(); rebuild();
+    api.toast('Garden restored to its original planting');
+  }
+
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    const n = +e.key;
+    if (n >= 1 && n <= TOOL_IDS.length) setTool(TOOL_IDS[n - 1]);
+    if (e.key === 'ArrowLeft') { cam.yaw -= .08; stopAuto(); }
+    if (e.key === 'ArrowRight') { cam.yaw += .08; stopAuto(); }
+    if (e.key === 'ArrowUp') { cam.pitch = clamp(cam.pitch + .05, .03, 1.45); stopAuto(); }
+    if (e.key === 'ArrowDown') { cam.pitch = clamp(cam.pitch - .05, .03, 1.45); stopAuto(); }
+  });
+
+  /* ---------- Camera and picking ---------- */
+  const cam = { yaw: .62, pitch: .56, dist: 108, target: [36, 9, 36] };
+  let auto = !reducedMotion, VP = new Float32Array(16), invVP = new Float32Array(16), eye = [0, 0, 0];
+  const stopAuto = () => { auto = false; };
+  const pointers = new Map();
+  let pinch = 0, dragDist = 0, downAt = 0, pointer = null, pointerDirty = false, ghost = null;
+
+  function fitDistance() { if (innerWidth < innerHeight) cam.dist = 128; }
+  fitDistance();
+
+  function rayHit(px, py) {
+    const rect = canvas.getBoundingClientRect();
+    const nx = (px - rect.left) / rect.width * 2 - 1, ny = -((py - rect.top) / rect.height * 2 - 1);
+    const un = (x, y, z) => { const m = invVP, w = m[3] * x + m[7] * y + m[11] * z + m[15]; return [(m[0] * x + m[4] * y + m[8] * z + m[12]) / w, (m[1] * x + m[5] * y + m[9] * z + m[13]) / w, (m[2] * x + m[6] * y + m[10] * z + m[14]) / w]; };
+    const a = un(nx, ny, -1), b = un(nx, ny, 1), d = norm([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+    for (let t = 0; t < 320; t += .07) {
+      const x = Math.floor(a[0] + d[0] * t), y = Math.floor(a[1] + d[1] * t), z = Math.floor(a[2] + d[2] * t), m = get(x, y, z);
+      if (m) return { x, y, z, m };
+    }
+    return null;
+  }
+  function plantTarget(hit) {
+    if (!hit) return null;
+    let { x, y, z, m } = hit;
+    if (m === M.TUFT) { y -= 1; m = get(x, y, z); }
+    if ((m === M.GRASS || m === M.SOIL || m === M.FALLEN) && isFree(get(x, y + 1, z))) return { x, y, z };
+    return null;
+  }
+  function updateGhost() {
+    pointerDirty = false; ghost = null;
+    if (tool === 'look' || !pointer || pointers.size > 1) return;
+    const hit = rayHit(pointer.x, pointer.y);
+    if (tool === 'dig') { if (hit && PLANT.has(hit.m)) ghost = { x: hit.x, y: hit.y, z: hit.z, ok: false }; return; }
+    const t = plantTarget(hit);
+    if (t) ghost = { x: t.x, y: t.y + 1, z: t.z, ok: true };
+  }
+  const bursts = [];
+  function burst(x, y, z, colors) {
+    for (let i = 0; i < 16; i++) bursts.push({ p: [x + .5, y + .5, z + .5], v: [(Math.random() - .5) * 5, 3 + Math.random() * 4, (Math.random() - .5) * 5], c: colors[i % colors.length], t: 0, life: .55 + Math.random() * .4 });
+  }
+  const BURST_COLORS = { tulip: [M.RED, M.PINK, M.STEM], lavender: [M.PURPLE, M.STEM], sunflower: [M.YELLOW, M.STEM], cabbage: [M.CABBAGE, M.SOIL], tree: [M.LEAF, M.FRUIT], dig: [M.DIRT, M.SOIL] };
+  function clickAt(px, py) {
+    if (tool === 'look') return;
+    const hit = rayHit(px, py);
+    if (tool === 'dig') {
+      if (!hit || !PLANT.has(hit.m)) { api.toast('Only plants can be dug up'); return; }
+      const op = { t: 'dig', x: hit.x, y: hit.y, z: hit.z };
+      applyOp(op); ops.push(op); saveOps(); rebuild();
+      burst(hit.x, hit.y, hit.z, BURST_COLORS.dig.map(c => PAL_RGB[c]));
+      pointerDirty = true;
+      return;
+    }
+    const t = plantTarget(hit);
+    if (!t) { api.toast('Pick an open patch of grass or soil'); return; }
+    const op = { t: tool, x: t.x, z: t.z };
+    applyOp(op); ops.push(op); saveOps(); rebuild();
+    burst(t.x, t.y + 1, t.z, BURST_COLORS[tool].map(c => PAL_RGB[c]));
+    pointerDirty = true;
+  }
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragDist = 0; downAt = performance.now(); canvas.classList.add('garden__canvas--dragging');
+  });
+  canvas.addEventListener('pointermove', e => {
+    pointer = { x: e.clientX, y: e.clientY }; pointerDirty = true;
+    const prev = pointers.get(e.pointerId);
+    if (!prev) return;
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    prev.x = e.clientX; prev.y = e.clientY;
+    if (pointers.size === 1) {
+      dragDist += Math.abs(dx) + Math.abs(dy);
+      if (dragDist > 6) { cam.yaw -= dx * .006; cam.pitch = clamp(cam.pitch + dy * .005, .03, 1.45); stopAuto(); }
+    } else if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch) cam.dist = clamp(cam.dist * pinch / d, 34, 170);
+      pinch = d; dragDist = 99; stopAuto();
+    }
+  });
+  const endPointer = e => {
+    if (e.type === 'pointerup' && pointers.size === 1 && dragDist <= 6 && performance.now() - downAt < 600) clickAt(e.clientX, e.clientY);
+    pointers.delete(e.pointerId); if (pointers.size < 2) pinch = 0;
+    if (!pointers.size) canvas.classList.remove('garden__canvas--dragging');
+    if (e.pointerType === 'touch') { pointer = null; ghost = null; }
+  };
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', () => { if (!pointers.size) { pointer = null; ghost = null; } });
+  canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * .001), 34, 170); stopAuto(); }, { passive: false });
+
+  /* ---------- Living things ---------- */
+  const seed = mulberry(77);
+  const butterflies = Array.from({ length: 9 }, () => ({ cx: 26 + seed() * 22, cz: 44 + seed() * 18, r: 3 + seed() * 6, s: .3 + seed() * .4, ph: seed() * 6.28, c: [[1, .55, .2], [.95, .9, .3], [.55, .75, 1], [1, .6, .85]][Math.floor(seed() * 4)] }));
+  const bees = Array.from({ length: 7 }, () => ({ r: 2 + seed() * 7, s: .8 + seed() * 1.3, ph: seed() * 6.28 }));
+  const koi = Array.from({ length: 5 }, () => ({ r: 2.5 + seed() * 4.5, s: .25 + seed() * .3, ph: seed() * 6.28, c: seed() < .5 ? [1, .48, .16] : [.97, .93, .86] }));
+  const lily = Array.from({ length: 8 }, () => { const a = seed() * 6.28, d = 2 + seed() * 5; return { x: 53 + Math.cos(a) * d, z: 38 + Math.sin(a) * d * .85, s: 1 + seed() * .9, flower: seed() < .4, ph: seed() * 6.28 }; });
+  const flies = Array.from({ length: 40 }, () => ({ x: 10 + seed() * 52, z: 10 + seed() * 52, y: 12.5 + seed() * 5, ph: seed() * 6.28, s: .3 + seed() * .6 }));
+  const clouds = Array.from({ length: 7 }, () => {
+    const boxes = [], n = 4 + Math.floor(seed() * 4);
+    for (let i = 0; i < n; i++) boxes.push({ x: (seed() - .5) * 20, y: (seed() - .5) * 2.4, z: (seed() - .5) * 12, sx: 7 + seed() * 10, sy: 2 + seed() * 2.4, sz: 6 + seed() * 8 });
+    return { x: seed() * 220 - 110, y: 46 + seed() * 12, z: seed() * 190 - 95, s: .9 + seed() * 1.2, boxes };
+  });
+  const rain = Array.from({ length: 340 }, () => ({ x: seed() * 90 - 9, z: seed() * 90 - 9, y: seed() * 60, s: 38 + seed() * 16 }));
+
+  function buildDynamics(time, dt, day, night) {
+    dynN = 0;
+    if (day > .1 && rainAmt < .5) {
+      for (const b of butterflies) {
+        const t = time * b.s + b.ph, x = b.cx + Math.cos(t) * b.r, z = b.cz + Math.sin(t * 1.4) * b.r * .8, y = 14.5 + Math.sin(t * 2.1) * 1.5, flap = Math.sin(time * 16 + b.ph) * .2;
+        addBox(x, y, z, .12, .12, .5, [.12, .1, .1]);
+        addBox(x + .24, y + flap, z, .36, .05, .46, b.c);
+        addBox(x - .24, y + flap, z, .36, .05, .46, b.c);
+      }
+      for (const b of bees) {
+        const t = time * b.s + b.ph, x = 21 + Math.cos(t) * b.r, z = 35 + Math.sin(t * 1.3) * b.r, y = 14.5 + Math.sin(t * 3) * 1.2;
+        addBox(x, y, z, .28, .22, .22, [.98, .78, .15]);
+        addBox(x - .13, y, z, .08, .24, .24, [.1, .08, .06]);
+      }
+    }
+    for (const k of koi) {
+      const t = time * k.s + k.ph, x = 52 + Math.cos(t) * k.r, z = 38 + Math.sin(t) * k.r * .8, tx = -Math.sin(t), tz = Math.cos(t) * .8, wag = Math.sin(time * 7 + k.ph) * .18;
+      addBox(x, 8.8, z, .75, .3, .75, k.c);
+      addBox(x + tx * .6, 8.8, z + tz * .6, .45, .24, .45, k.c);
+      addBox(x - tx * .55 - tz * wag, 8.8, z - tz * .55 + tx * wag, .4, .2, .4, [.95, .3, .1]);
+    }
+    for (const l of lily) {
+      const y = 9.87 + Math.sin(time * .9 + l.ph) * .025;
+      addBox(l.x, y, l.z, l.s * 1.1, .08, l.s * 1.1, [.26, .62, .3]);
+      if (l.flower) { addBox(l.x, y + .17, l.z, .46, .28, .46, [1, .68, .84]); addBox(l.x, y + .35, l.z, .2, .14, .2, [1, .85, .3]); }
+    }
+    if (night > .25 && rainAmt < .6) for (const f of flies) {
+      const blink = Math.sin(time * f.s * 2.4 + f.ph);
+      if (blink < .15) continue;
+      addBox(f.x + Math.sin(time * f.s + f.ph) * 2.5, f.y + Math.sin(time * f.s * 1.7) * 1, f.z + Math.cos(time * f.s * .8 + f.ph) * 2.5, .17, .17, .17, [.85, 1, .4], 2);
+    }
+    const lit = .36 + day * .64;
+    for (const c of clouds) {
+      c.x += c.s * dt * .9; if (c.x > 125) c.x = -125;
+      const g = (1 - rainAmt * .5) * lit;
+      for (const b of c.boxes) addBox(c.x + b.x, c.y + b.y, c.z + b.z, b.sx, b.sy, b.sz, [g, g, g * (1.02 + (1 - day) * .1)], 2);
+    }
+    if (rainAmt > .02) {
+      const count = Math.floor(rain.length * rainAmt);
+      for (let i = 0; i < count; i++) {
+        const d = rain[i]; d.y -= d.s * dt; if (d.y < 6) d.y += 60;
+        addBox(d.x, d.y, d.z, .07, .8, .07, [.62, .78, .95], 2);
+      }
+    }
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const b = bursts[i]; b.t += dt;
+      if (b.t > b.life) { bursts.splice(i, 1); continue; }
+      b.v[1] -= 14 * dt; b.p[0] += b.v[0] * dt; b.p[1] += b.v[1] * dt; b.p[2] += b.v[2] * dt;
+      const s = .32 * (1 - b.t / b.life);
+      addBox(b.p[0], b.p[1], b.p[2], s, s, s, b.c);
+    }
+    return dynN;
+  }
+
+  /* ---------- Frame ---------- */
+  const SKY = {
+    dayTop: [.31, .6, .93], dayHor: [.76, .9, .98], duskTop: [.31, .36, .66], duskHor: [1, .63, .4],
+    nightTop: [.025, .04, .12], nightHor: [.07, .1, .22], rainTop: [.42, .47, .54], rainHor: [.62, .66, .7]
+  };
+  const lightProj = m4.ortho(66, 1, 240);
+  let lastT = performance.now(), simTime = 0;
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2), w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  }
+
+  function frame(now) {
+    const dt = Math.min(.05, (now - lastT) / 1000); lastT = now;
+    if (!reducedMotion) simTime += dt;
+    if (cycling) { hours = (hours + dt * .4) % 24; api.setSlider(hours); api.setReadout(fmt(hours)); }
+    if (auto) cam.yaw += dt * .05;
+    rainAmt += ((raining ? 1 : 0) - rainAmt) * Math.min(1, dt * 1.5);
+    resize();
+
+    const ang = (hours - 6) / 12 * Math.PI, sinA = Math.sin(ang);
+    const sunDir = norm([Math.cos(ang) * .85, sinA, .45]);
+    const day = sstep(-.03, .22, sinA), night = sstep(.02, .24, -sinA), golden = 1 - sstep(.02, .42, Math.abs(sinA));
+    const ldir = sinA >= 0 ? sunDir : [-sunDir[0], -sunDir[1], sunDir[2]];
+    const ld = norm([ldir[0], Math.max(ldir[1], .12), ldir[2]]);
+
+    let skyTop = mix3(SKY.nightTop, SKY.dayTop, day), skyHor = mix3(SKY.nightHor, SKY.dayHor, day);
+    skyTop = mix3(skyTop, SKY.duskTop, golden * .7); skyHor = mix3(skyHor, SKY.duskHor, golden * .85);
+    skyTop = mix3(skyTop, mix3([.08, .09, .12], SKY.rainTop, day), rainAmt * .85); skyHor = mix3(skyHor, mix3([.1, .11, .15], SKY.rainHor, day), rainAmt * .85);
+
+    let sunCol = [1.02 * day + .13 * night, .96 * day + .17 * night, .82 * day + .3 * night];
+    sunCol = mix3(sunCol, [1.05 * day, .68 * day, .42 * day], golden * .75);
+    sunCol = sunCol.map(c => c * (1 - rainAmt * .78));
+    const ambT = mix3(mix3([.09, .12, .24], [.56, .62, .7], day), [.42, .4, .52], golden * .5).map(c => c * (1 - rainAmt * .1));
+    const ambB = mix3([.05, .06, .11], [.4, .38, .3], day);
+    const lamp = sstep(.16, -.04, sinA) * .9 + rainAmt * .2 * (1 - day);
+    const wind = reducedMotion ? 0 : 1 + rainAmt * .9;
+
+    const lightEye = [36 + ld[0] * 110, 18 + ld[1] * 110, 36 + ld[2] * 110];
+    const lightVP = m4.mul(lightProj, m4.look(lightEye, [36, 18, 36], [0, 1, 0]));
+
+    eye = [cam.target[0] + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist, cam.target[1] + Math.sin(cam.pitch) * cam.dist, cam.target[2] + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist];
+    const asp = canvas.width / Math.max(1, canvas.height);
+    VP = m4.mul(m4.persp(.72, asp, .5, 900), m4.look(eye, cam.target, [0, 1, 0]));
+    invVP = m4.inv(VP);
+    if (pointerDirty) updateGhost();
+
+    const dynCount = buildDynamics(simTime, reducedMotion ? 0 : dt, day, night);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dynMesh.vbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, dyn.subarray(0, dynCount));
+    dynMesh.n = dynCount / STRIDE / 4 * 6;
+
+    /* Shadow pass */
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFbo);
+    gl.viewport(0, 0, SHADOW, SHADOW); gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.6, 3);
+    gl.useProgram(depth.p);
+    gl.uniformMatrix4fv(depth.u.uVP, false, lightVP);
+    if (depth.u.uLightVP) gl.uniformMatrix4fv(depth.u.uLightVP, false, lightVP);
+    gl.uniform1f(depth.u.uTime, simTime); gl.uniform1f(depth.u.uWind, wind);
+    draw(solidMesh);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    /* Sky */
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(sky.p);
+    gl.uniformMatrix4fv(sky.u.uInv, false, invVP);
+    gl.uniform3fv(sky.u.uCam, eye); gl.uniform3fv(sky.u.uTop, skyTop); gl.uniform3fv(sky.u.uHor, skyHor); gl.uniform3fv(sky.u.uSunDir, sunDir);
+    gl.uniform1f(sky.u.uNight, night); gl.uniform1f(sky.u.uRain, rainAmt);
+    gl.bindVertexArray(null);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    /* Scene */
+    gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
+    gl.useProgram(mainProg.p);
+    const u = mainProg.u;
+    gl.uniformMatrix4fv(u.uVP, false, VP); gl.uniformMatrix4fv(u.uLightVP, false, lightVP);
+    gl.uniform1f(u.uTime, simTime); gl.uniform1f(u.uWind, wind); gl.uniform1f(u.uLamp, lamp);
+    gl.uniform3fv(u.uCam, eye); gl.uniform3fv(u.uLdir, ld); gl.uniform3fv(u.uSun, sunCol); gl.uniform3fv(u.uAmbT, ambT); gl.uniform3fv(u.uAmbB, ambB); gl.uniform3fv(u.uFog, skyHor);
+    gl.uniform3fv(u.uLamps, lampPositions);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowTex); gl.uniform1i(u.uShadow, 0);
+    gl.uniform1i(u.uMode, 0);
+    draw(solidMesh);
+    draw(dynMesh);
+
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.uniform1i(u.uMode, 1);
+    draw(waterMesh);
+    if (ghost) {
+      const v = [], g = .03;
+      for (const f of FACES) for (const k of f.c) v.push(ghost.x - g + k[0] * (1 + 2 * g), ghost.y - g + k[1] * (1 + 2 * g), ghost.z - g + k[2] * (1 + 2 * g), f.n[0], f.n[1], f.n[2], 0, 0, 0, 1, 0, 0);
+      upload(ghostMesh, new Float32Array(v));
+      gl.uniform1i(u.uMode, 2);
+      if (ghost.ok) gl.uniform4f(u.uTint, .75, 1, .4, .42); else gl.uniform4f(u.uTint, 1, .3, .2, .48);
+      draw(ghostMesh);
+    }
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- Boot ---------- */
+  generate();
+  ops.forEach(applyOp);
+  rebuild();
+  setTool('look');
+  api.setReadout(fmt(hours));
+  requestAnimationFrame(frame);
+
+  return { setTool, setHours, toggleCycle, toggleRain, reset };
+}

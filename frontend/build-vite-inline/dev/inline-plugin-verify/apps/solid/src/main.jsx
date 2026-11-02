@@ -1,0 +1,1 @@
+import { render } from 'solid-js/web';import App from './App.jsx';__p.order.push('solid-main');render(App, document.getElementById('root'));

@@ -1,0 +1,212 @@
+import fs from "node:fs";
+import path from "node:path";
+
+const USAGE = `template - list roster member templates and put one into a squad
+
+Usage:
+  template list [--json]                       list every template with its one-line summary
+  template show <name>                         print a template's defaults and the files it holds
+  template role <name>                         print the template's ROLE.md
+  template requests <name>                     print how to ask the template's member for work
+  template apply <name> --workspace <path> --member <member> [--reports-to <member|user>]
+                 [--talks-to <a,b>] [--display-name <name>] [--force]
+                                               write ROLE.md, COMMUNICATIONS.md and MEMORY.md into
+                                               <workspace>/<member>/ and add the member to roster.json
+  template validate                            check that every template is well formed
+
+Exit code 0 means success, 1 means the check found problems, 2 means the call was wrong.`;
+
+class UsageError extends Error {}
+
+const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const FILES = ["ROLE.md", "COMMUNICATIONS.md", "MEMORY.md"] as const;
+
+function templatesDir(): string {
+  return process.env.TEMPLATES_DIR ?? path.resolve(import.meta.dir, "..", "templates");
+}
+
+interface Template {
+  name: string;
+  summary: string;
+  agent?: string;
+  model?: string;
+  effort?: string;
+  reports_to: string;
+  talks_to: string[];
+  skills: { source: string; skill: string }[];
+}
+
+function readTemplate(name: string): { dir: string; t: Template } {
+  if (!KEBAB.test(name)) throw new UsageError(`"${name}" is not a lowercase kebab-case template name.`);
+  const dir = path.join(templatesDir(), name);
+  const file = path.join(dir, "template.json");
+  if (!fs.existsSync(file)) {
+    const names = names_();
+    throw new UsageError(`No template "${name}". Available: ${names.join(", ") || "none"}.`);
+  }
+  let t: Template;
+  try {
+    t = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    throw new UsageError(`${file} is not valid JSON.`);
+  }
+  return { dir, t };
+}
+
+function names_(): string[] {
+  const d = templatesDir();
+  if (!fs.existsSync(d)) return [];
+  return fs.readdirSync(d).filter((n) => fs.existsSync(path.join(d, n, "template.json"))).sort();
+}
+
+function parse(argv: string[], valued: string[], bools: string[]) {
+  const flags: Record<string, string | true> = {};
+  const pos: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a.startsWith("--")) {
+      const k = a.slice(2);
+      if (valued.includes(k)) {
+        const v = argv[++i];
+        if (v === undefined || v.startsWith("--")) throw new UsageError(`--${k} needs a value.`);
+        flags[k] = v;
+      } else if (bools.includes(k)) flags[k] = true;
+      else throw new UsageError(`Unknown option ${a}.`);
+    } else pos.push(a);
+  }
+  return { flags, pos };
+}
+
+export function validateTemplates(): string[] {
+  const problems: string[] = [];
+  const all = names_();
+  if (!all.length) problems.push(`No templates under ${templatesDir()}.`);
+  for (const n of all) {
+    const dir = path.join(templatesDir(), n);
+    let t: Partial<Template> = {};
+    try {
+      t = JSON.parse(fs.readFileSync(path.join(dir, "template.json"), "utf8"));
+    } catch {
+      problems.push(`${n}: template.json is not valid JSON.`);
+      continue;
+    }
+    if (t.name !== n) problems.push(`${n}: template.json name "${t.name}" does not match the directory.`);
+    if (!t.summary || t.summary.includes("\n")) problems.push(`${n}: summary must be one non-empty line.`);
+    if (t.effort && !["low", "medium", "high", "xhigh", "max"].includes(t.effort)) problems.push(`${n}: effort "${t.effort}" is not a known level.`);
+    if (!t.reports_to) problems.push(`${n}: reports_to is missing.`);
+    if (!Array.isArray(t.talks_to)) problems.push(`${n}: talks_to must be an array.`);
+    if (!Array.isArray(t.skills)) problems.push(`${n}: skills must be an array.`);
+    for (const f of [...FILES, "REQUESTS.md"]) if (!fs.existsSync(path.join(dir, f))) problems.push(`${n}: missing ${f}.`);
+    const comms = fs.existsSync(path.join(dir, "COMMUNICATIONS.md")) ? fs.readFileSync(path.join(dir, "COMMUNICATIONS.md"), "utf8") : "";
+    if (comms && !comms.includes("{{reports_to}}")) problems.push(`${n}: COMMUNICATIONS.md must use {{reports_to}}.`);
+    const role = fs.existsSync(path.join(dir, "ROLE.md")) ? fs.readFileSync(path.join(dir, "ROLE.md"), "utf8") : "";
+    if (role && !/^# /m.test(role)) problems.push(`${n}: ROLE.md has no heading.`);
+  }
+  return problems;
+}
+
+function rosterFile(ws: string): string {
+  return path.join(ws, "roster.json");
+}
+
+export function run(argv: string[]): number {
+  const [cmd, ...rest] = argv;
+  if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
+    console.log(USAGE);
+    return cmd ? 0 : 2;
+  }
+  if (cmd === "list") {
+    const { flags } = parse(rest, [], ["json"]);
+    const rows = names_().map((n) => readTemplate(n).t);
+    if (flags.json) console.log(JSON.stringify(rows, null, 2));
+    else if (!rows.length) console.log("No templates.");
+    else for (const r of rows) console.log(`${r.name.padEnd(26)} ${r.summary}`);
+    return 0;
+  }
+  if (cmd === "validate") {
+    const p = validateTemplates();
+    if (!p.length) {
+      console.log(`${names_().length} templates are well formed.`);
+      return 0;
+    }
+    console.log(`${p.length} problem${p.length === 1 ? "" : "s"}:`);
+    for (const x of p) console.log(`- ${x}`);
+    return 1;
+  }
+  if (cmd === "show" || cmd === "role" || cmd === "requests") {
+    const { pos } = parse(rest, [], []);
+    if (!pos[0]) throw new UsageError("Name a template. Run `template list`.");
+    const { dir, t } = readTemplate(pos[0]);
+    if (cmd === "role") process.stdout.write(fs.readFileSync(path.join(dir, "ROLE.md"), "utf8"));
+    else if (cmd === "requests") process.stdout.write(fs.readFileSync(path.join(dir, "REQUESTS.md"), "utf8"));
+    else {
+      console.log(`${t.name}: ${t.summary}`);
+      console.log(`agent: ${t.agent ?? "(roster default)"}  model: ${t.model ?? "(agent default)"}  effort: ${t.effort ?? "(agent default)"}`);
+      console.log(`reports to: ${t.reports_to}  talks to: ${t.talks_to.join(", ") || "none"}`);
+      console.log(`skills: ${t.skills.map((s) => `${s.source}@${s.skill}`).join(", ") || "none besides peers and agent-shell"}`);
+      for (const f of [...FILES, "REQUESTS.md"]) console.log(`file: ${path.join(dir, f)}`);
+    }
+    return 0;
+  }
+  if (cmd === "apply") {
+    const { flags, pos } = parse(rest, ["workspace", "member", "reports-to", "talks-to", "display-name"], ["force"]);
+    if (!pos[0]) throw new UsageError("Name a template. Run `template list`.");
+    const ws = flags.workspace as string | undefined;
+    const member = flags.member as string | undefined;
+    if (!ws || !member) throw new UsageError("apply needs --workspace <path> and --member <member>.");
+    if (!KEBAB.test(member)) throw new UsageError(`Member "${member}" is not a lowercase kebab-case name.`);
+    const { dir, t } = readTemplate(pos[0]);
+    const wsAbs = path.resolve(ws);
+    const rf = rosterFile(wsAbs);
+    if (!fs.existsSync(rf)) throw new UsageError(`No roster at ${rf}. Create the workspace and roster.json first (agent-roster-design, Step 5).`);
+    let roster: { members?: Record<string, unknown>[] } & Record<string, unknown>;
+    try {
+      roster = JSON.parse(fs.readFileSync(rf, "utf8"));
+    } catch {
+      throw new UsageError(`${rf} is not valid JSON.`);
+    }
+    const members = (roster.members ??= []);
+    if (members.some((m) => m.name === member)) throw new UsageError(`The roster already has a member "${member}".`);
+    const reportsTo = (flags["reports-to"] as string | undefined) ?? t.reports_to;
+    const talksTo = flags["talks-to"] ? (flags["talks-to"] as string).split(",").map((s) => s.trim()).filter(Boolean) : t.talks_to;
+    const known = new Set(["user", ...members.map((m) => String(m.name))]);
+    for (const n of [reportsTo, ...talksTo]) if (!known.has(n)) throw new UsageError(`"${n}" is neither "user" nor a member of the roster; add it first or change the link.`);
+    const cwd = path.join(wsAbs, member);
+    const targets = FILES.map((f) => path.join(cwd, f));
+    if (!flags.force) for (const f of targets) if (fs.existsSync(f)) throw new UsageError(`${f} exists; pass --force to overwrite it.`);
+    fs.mkdirSync(cwd, { recursive: true });
+    const talksLine = talksTo.length
+      ? `- You may message ${talksTo.map((n) => `\`${n}\``).join(", ")} directly, about work that touches both of you. Message no one else.\n`
+      : "";
+    for (const f of FILES) {
+      let text = fs.readFileSync(path.join(dir, f), "utf8");
+      text = text.replaceAll("{{reports_to}}", `\`${reportsTo}\``).replaceAll("{{talks_to}}", talksLine);
+      fs.writeFileSync(path.join(cwd, f), text);
+    }
+    const entry: Record<string, unknown> = { name: member };
+    if (flags["display-name"]) entry.display_name = flags["display-name"];
+    for (const k of ["agent", "model", "effort"] as const) if (t[k]) entry[k] = t[k];
+    Object.assign(entry, { cwd: member, summary: t.summary, reports_to: reportsTo, talks_to: talksTo });
+    if (t.skills.length) entry.skills = t.skills;
+    members.push(entry);
+    fs.writeFileSync(rf + ".tmp", JSON.stringify(roster, null, 2) + "\n");
+    fs.renameSync(rf + ".tmp", rf);
+    console.log(`Added member ${member} from template ${t.name} to ${rf}.`);
+    console.log(`Wrote ${targets.join(", ")}.`);
+    console.log("Still to write: PROJECT.md. Then run `roster.js check` on the workspace.");
+    return 0;
+  }
+  throw new UsageError(`Unknown command "${cmd}". Run \`template help\`.`);
+}
+
+if (import.meta.main) {
+  try {
+    process.exit(run(process.argv.slice(2)));
+  } catch (e) {
+    if (e instanceof UsageError) {
+      console.error(e.message);
+      process.exit(2);
+    }
+    throw e;
+  }
+}

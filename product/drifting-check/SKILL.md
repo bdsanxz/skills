@@ -37,9 +37,9 @@ The check reads and reports. It edits a spec or a task only after the user choos
 ### 3. Audit
 
 1. Divide the work into units: one per feature when the specs or the tasks are grouped by feature, otherwise one unit for the whole.
-2. Invoke `drifting-check-auditor` once per unit, all units at the same time. Give it the unit, the absolute paths of the specs, the tasks and `baseline.md`, the absolute paths of `references/drift-types.md` and `references/report-format.md` (in this skill's directory, not in the work directory), and the report file `reports/audit-<unit>.md` in the work directory. Give it no opinion about where drift might be.
-3. Read each report file. Do not rely on the agent's reply or on your own memory of it. A report whose `Status` is not `done` is incomplete: invoke a new `drifting-check-auditor` to continue it from the report file, and read the file again when it returns.
-4. After a compaction, or when a run is resumed, list `reports/` in the work directory and read `baseline.md`. Reuse every report with `Status: done`, continue every other one, and invoke the auditor only for units that have no report.
+2. Run the `drifting-check-auditor` template as a worker (skill `agent-roster-template`, "Run a template once as a worker"), once per unit, all units at the same time. Give each the unit, the absolute paths of the specs, the tasks and `baseline.md`, the absolute paths of `references/drift-types.md` and `references/report-format.md` (in this skill's directory, not in the work directory), and the report file `reports/audit-<unit>.md` in the work directory. Give it no opinion about where drift might be.
+3. Read each report file. Do not rely on the worker's reply or on your own memory of it. A report whose `Status` is not `done` is incomplete: run a new `drifting-check-auditor` worker to continue it from the report file, and read the file again when it returns.
+4. After a compaction, or when a run is resumed, list `reports/` in the work directory and read `baseline.md`. Reuse every report with `Status: done`, continue every other one, and run an auditor only for units that have no report.
 
 ### 4. Verify and merge
 

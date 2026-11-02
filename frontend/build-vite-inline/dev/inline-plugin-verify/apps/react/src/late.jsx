@@ -1,0 +1,1 @@
+import React from 'react';export default function Late(){return <p id="late">late chunk ok </p>}

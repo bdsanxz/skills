@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>FrameForge AI Video Editor - Projects and Media Library Hub</title>
+    <!-- Material Symbols Outlined -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Google Fonts: Inter, Inter Tight, JetBrains Mono -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Configuration verbatim from Design System -->
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "graphite-panel": "#1a1d24",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "on-secondary-fixed-variant": "#004e5a",
+                        "on-secondary-container": "#00515d",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed": "#a2eeff",
+                        "on-surface": "#e4e1ed",
+                        "on-surface-variant": "#c7c4d7",
+                        "inverse-surface": "#e4e1ed",
+                        "on-error": "#690005",
+                        "surface-tint": "#c0c1ff",
+                        "tertiary": "#ffb783",
+                        "on-secondary-fixed": "#001f25",
+                        "on-secondary": "#00363e",
+                        "surface-bright": "#393841",
+                        "on-tertiary-fixed-variant": "#703700",
+                        "obsidian-workbench": "#0f1115",
+                        "gunmetal-raised": "#2f3440",
+                        "surface-variant": "#34343d",
+                        "tertiary-container": "#d97721",
+                        "platinum": "#e6e8ee",
+                        "primary-container": "#8083ff",
+                        "on-primary-container": "#0d0096",
+                        "outline-variant": "#464554",
+                        "surface-container": "#1f1f27",
+                        "surface-container-low": "#1b1b23",
+                        "on-background": "#e4e1ed",
+                        "on-tertiary-container": "#452000",
+                        "inverse-primary": "#494bd6",
+                        "surface-container-lowest": "#0d0d15",
+                        "surface-container-high": "#292932",
+                        "inverse-on-surface": "#303038",
+                        "slate-rail": "#252933",
+                        "outline": "#908fa0",
+                        "on-primary-fixed": "#07006c",
+                        "on-tertiary-fixed": "#301400",
+                        "cyan-signal": "#22d3ee",
+                        "on-tertiary": "#4f2500",
+                        "tertiary-fixed-dim": "#ffb783",
+                        "surface-container-highest": "#34343d",
+                        "electric-indigo": "#6366f1",
+                        "primary": "#c0c1ff",
+                        "amber-trim": "#f59e0b",
+                        "tertiary-fixed": "#ffdcc5",
+                        "surface-dim": "#13131b",
+                        "secondary-container": "#00cbe6",
+                        "secondary": "#5de6ff",
+                        "error": "#ffb4ab",
+                        "on-primary": "#1000a9",
+                        "emerald-sync": "#10b981",
+                        "background": "#13131b",
+                        "ruby-alert": "#ef4444",
+                        "surface": "#13131b",
+                        "secondary-fixed-dim": "#2fd9f4",
+                        "error-container": "#93000a",
+                        "primary-fixed": "#e1e0ff",
+                        "pewter": "#a1a7b3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "space-sm": "8px",
+                        "space-xl": "24px",
+                        "space-xs": "4px",
+                        "margin": "16px",
+                        "space-2xl": "32px",
+                        "space-md": "12px",
+                        "gutter": "12px",
+                        "space-lg": "16px"
+                    },
+                    "fontFamily": {
+                        "axis-label": ["Inter Tight", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "heading": ["Inter", "sans-serif"],
+                        "display": ["Inter", "sans-serif"],
+                        "footnote": ["Inter", "sans-serif"],
+                        "telemetry": ["JetBrains Mono", "monospace"],
+                        "subheading": ["Inter", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "axis-label": ["11px", { "lineHeight": "14px", "fontWeight": "400" }],
+                        "body": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "heading": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "display": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "footnote": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "telemetry": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "subheading": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Precision custom scrollbar for dark desktop tool */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f1115;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2f3440;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #464554;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+            display: inline-block;
+            vertical-align: middle;
+            line-height: 1;
+        }
+
+        .custom-dotted-border {
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%232F3440' stroke-width='2' stroke-dasharray='6%2c 8' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+        }
+    </style>
+</head>
+
+<body
+    class="bg-obsidian-workbench text-on-surface font-body text-body antialiased selection:bg-electric-indigo selection:text-platinum min-h-screen flex flex-col overflow-x-hidden">
+    <!-- 1. Top Application Bar (56px) - Matching Shared TopNavBar Specs -->
+    <header
+        class="w-full h-14 px-4 flex items-center justify-between gap-4 border-b border-gunmetal-raised bg-obsidian-workbench sticky top-0 z-40 select-none">
+        <!-- Left: Brand + Breadcrumbs -->
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <div
+                    class="w-7 h-7 rounded-lg bg-electric-indigo/20 border border-electric-indigo/40 flex items-center justify-center text-electric-indigo">
+                    <span class="material-symbols-outlined text-[18px]">movie_filter</span>
+                </div>
+                <span class="font-heading text-subheading font-bold text-platinum tracking-tight">FrameForge</span>
+            </div>
+            <div class="h-4 w-[1px] bg-gunmetal-raised mx-1"></div>
+            <!-- Workspace / Project Context Dropdown -->
+            <button
+                class="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gunmetal-raised/60 text-pewter hover:text-platinum transition-colors duration-150">
+                <span class="font-footnote text-footnote font-medium text-platinum">Neon Orbit VFX</span>
+                <span class="text-pewter font-footnote text-footnote">/</span>
+                <span class="font-footnote text-footnote text-cyan-signal font-semibold">All Projects</span>
+                <span class="material-symbols-outlined text-[16px] text-pewter">arrow_drop_down</span>
+            </button>
+            <!-- JSON TopNavBar Navigation Links -->
+            <nav class="hidden lg:flex items-center gap-6 ml-4">
+                <a class="text-cyan-signal font-medium border-b-2 border-cyan-signal py-4 font-body text-body"
+                    href="#projects">Projects</a>
+                <a class="text-pewter hover:text-platinum transition-colors duration-150 py-4 font-body text-body"
+                    href="#media-library">Assets</a>
+                <a class="text-pewter hover:text-platinum transition-colors duration-150 py-4 font-body text-body"
+                    href="#templates">Templates</a>
+                <a class="text-pewter hover:text-platinum transition-colors duration-150 py-4 font-body text-body flex items-center gap-1.5"
+                    href="#render-queue">
+                    <span>Render Queue</span>
+                    <span
+                        class="px-1.5 py-0.2 bg-amber-trim/20 text-amber-trim border border-amber-trim/30 rounded-full font-telemetry text-axis-label">1</span>
+                </a>
+            </nav>
+        </div>
+        <!-- Center/Right: Search Bar with ⌘K Badge -->
+        <div class="flex-1 max-w-md mx-2">
+            <div class="relative flex items-center">
+                <span
+                    class="material-symbols-outlined absolute left-3 text-[18px] text-pewter pointer-events-none">search</span>
+                <input
+                    class="w-full bg-graphite-panel text-platinum placeholder-pewter text-body font-body pl-9 pr-14 py-1.5 rounded-lg border border-gunmetal-raised focus:border-cyan-signal focus:outline-none transition-colors"
+                    placeholder="Search projects, footage, tags..." type="text" />
+                <div
+                    class="absolute right-2 px-1.5 py-0.5 rounded bg-gunmetal-raised border border-slate-rail text-pewter font-telemetry text-axis-label flex items-center gap-0.5 pointer-events-none">
+                    <span>⌘</span><span>K</span>
+                </div>
+            </div>
+        </div>
+        <!-- Far Right: Actions, AI Agent & Profile -->
+        <div class="flex items-center gap-2.5">
+            <!-- Trailing Secondary: AI Assistant -->
+            <button
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gunmetal-raised hover:bg-gunmetal-raised/80 border border-electric-indigo/40 text-platinum hover:text-primary-fixed-dim transition-all duration-150 active:scale-[0.98]">
+                <span class="material-symbols-outlined text-[16px] text-electric-indigo">auto_awesome</span>
+                <span class="font-footnote text-footnote font-medium">AI Assistant</span>
+            </button>
+            <!-- Trailing Primary Action: + New Project -->
+            <button
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-electric-indigo hover:bg-inverse-primary text-platinum font-footnote text-footnote font-semibold transition-all duration-150 active:scale-[0.98] shadow-sm">
+                <span class="material-symbols-outlined text-[16px]">add</span>
+                <span>New Project</span>
+            </button>
+            <div class="h-4 w-[1px] bg-gunmetal-raised mx-0.5"></div>
+            <!-- Icon Actions -->
+            <button
+                class="relative p-1.5 rounded-lg hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors"
+                title="Notifications">
+                <span class="material-symbols-outlined text-[20px]">notifications</span>
+                <span
+                    class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cyan-signal ring-2 ring-obsidian-workbench"></span>
+            </button>
+            <button class="p-1.5 rounded-lg hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors"
+                title="Help">
+                <span class="material-symbols-outlined text-[20px]">help</span>
+            </button>
+            <button class="p-1.5 rounded-lg hover:bg-gunmetal-raised text-pewter hover:text-platinum transition-colors"
+                title="Settings">
+                <span class="material-symbols-outlined text-[20px]">settings</span>
+            </button>
+            <!-- User Avatar -->
+            <div class="flex items-center gap-2 pl-1 cursor-pointer">
+                <div class="relative">
+                    <img class="w-7 h-7 rounded-lg object-cover border border-gunmetal-raised"
+                        data-alt="A refined portrait of a lead video editor named Alex Rivera wearing studio headphones in a dimly lit high-end post-production workstation suite, illuminated by subtle indigo rim lighting with professional monitor displays in the dark background, conveying expertise and sleek modern cinematic style."
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBkLGOJYvPeLfKmlJSqhV6E8W70KfJ-zsvLvzbPmhA6Ww-e7Y4yEbf_6F2fuD0KWMF80qzTmOW5VRERNu8L4kIVFdu_4z7K2Euqm0X-9A8ePL26IKylKTWa4kl8PRIczxub18MtnPkMarSa_YcViN51aFBoCxTkl_MjWfu8H7erKg0vbA5vg4pFXJS9cqAJVC9M3uqZm_Wg39x9FmzRq6aX1YqhlBo65Y7uFtTQDkp9emqxYuEqa7UZIM3AXwuJ4QqUCcPNuWc0qi5" />
+                    <span
+                        class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-sync ring-2 ring-obsidian-workbench"
+                        title="Online &amp; Synced"></span>
+                </div>
+            </div>
+        </div>
+    </header>
+    <!-- App Body Layout (SideNav docked left + Main Scrollable Area) -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Docked Side Navigation Bar (Matching SideNavBar JSON Specs) -->
+        <aside
+            class="w-64 h-[calc(100vh-3.5rem)] flex flex-col justify-between p-3 border-r border-gunmetal-raised bg-graphite-panel shrink-0 select-none">
+            <!-- Studio Header -->
+            <div>
+                <div
+                    class="p-2.5 rounded-lg bg-obsidian-workbench/70 border border-gunmetal-raised mb-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2.5">
+                        <div
+                            class="w-8 h-8 rounded-lg bg-electric-indigo/20 border border-electric-indigo/30 flex items-center justify-center text-electric-indigo font-bold font-telemetry text-footnote">
+                            NO
+                        </div>
+                        <div>
+                            <p class="font-subheading text-footnote font-bold text-platinum leading-none">Neon Orbit VFX
+                            </p>
+                            <p class="font-axis-label text-axis-label text-pewter mt-0.5">Enterprise Tier</p>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-pewter text-[18px]">unfold_more</span>
+                </div>
+                <!-- Import CTA -->
+                <button
+                    class="w-full mb-4 py-2 px-3 rounded-lg bg-gunmetal-raised hover:bg-gunmetal-raised/80 border border-slate-rail text-platinum font-footnote text-footnote font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+                    <span class="material-symbols-outlined text-cyan-signal text-[18px]">cloud_upload</span>
+                    <span>Import Media</span>
+                </button>
+                <!-- Navigation Tabs from JSON -->
+                <div class="space-y-1">
+                    <!-- Active: All Projects -->
+                    <a class="bg-gunmetal-raised text-cyan-signal font-medium rounded-lg px-3 py-2 flex items-center gap-3 border-l-2 border-cyan-signal font-body text-body"
+                        href="#projects">
+                        <span class="material-symbols-outlined text-[20px]">folder</span>
+                        <span class="flex-1">All Projects</span>
+                        <span class="font-telemetry text-axis-label text-cyan-signal font-medium">12</span>
+                    </a>
+                    <a class="text-pewter hover:text-platinum hover:bg-gunmetal-raised/40 rounded-lg px-3 py-2 flex items-center gap-3 transition-colors duration-150 font-body text-body"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">group</span>
+                        <span class="flex-1">Shared Workspaces</span>
+                        <span class="font-telemetry text-axis-label text-pewter">4</span>
+                    </a>
+                    <a class="text-pewter hover:text-platinum hover:bg-gunmetal-raised/40 rounded-lg px-3 py-2 flex items-center gap-3 transition-colors duration-150 font-body text-body"
+                        href="#media-library">
+                        <span class="material-symbols-outlined text-[20px]">cloud</span>
+                        <span class="flex-1">Cloud Assets</span>
+                        <span class="font-telemetry text-axis-label text-pewter">48</span>
+                    </a>
+                    <a class="text-pewter hover:text-platinum hover:bg-gunmetal-raised/40 rounded-lg px-3 py-2 flex items-center gap-3 transition-colors duration-150 font-body text-body"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">auto_awesome</span>
+                        <span class="flex-1">Smart Collections</span>
+                        <span
+                            class="px-1.5 py-0.2 rounded-full bg-electric-indigo/20 text-electric-indigo border border-electric-indigo/30 font-telemetry text-[10px]">AI</span>
+                    </a>
+                    <a class="text-pewter hover:text-platinum hover:bg-gunmetal-raised/40 rounded-lg px-3 py-2 flex items-center gap-3 transition-colors duration-150 font-body text-body"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">delete</span>
+                        <span class="flex-1">Trash</span>
+                    </a>
+                </div>
+            </div>
+            <!-- Footer Specs from JSON: Storage Meter & Preferences -->
+            <div class="border-t border-gunmetal-raised pt-3 space-y-2">
+                <div class="px-3 py-2 rounded-lg bg-obsidian-workbench/40 border border-slate-rail/50">
+                    <div class="flex items-center justify-between text-axis-label font-axis-label text-pewter mb-1.5">
+                        <span class="flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-[15px]">hard_drive</span>
+                            <span>Storage Meter</span>
+                        </span>
+                        <span class="font-telemetry text-axis-label text-platinum">28.4%</span>
+                    </div>
+                    <div class="w-full bg-slate-rail h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-gradient-to-r from-electric-indigo to-cyan-signal h-full w-[28.4%] rounded-full">
+                        </div>
+                    </div>
+                    <p class="font-telemetry text-axis-label text-pewter mt-1">28.4 GB / 100 GB</p>
+                </div>
+                <a class="text-pewter hover:text-platinum hover:bg-gunmetal-raised/40 rounded-lg px-3 py-2 flex items-center gap-3 transition-colors duration-150 font-body text-body"
+                    href="#">
+                    <span class="material-symbols-outlined text-[20px]">tune</span>
+                    <span>Preferences</span>
+                </a>
+            </div>
+        </aside>
+        <!-- Main Content Workspace Canvas -->
+        <main class="flex-1 overflow-y-auto px-6 py-6 space-y-8 bg-obsidian-workbench">
+            <!-- 2. Hero Greeting & AI Assistant Strip -->
+            <section class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                <!-- Welcome Greeting -->
+                <div class="lg:col-span-7 flex flex-col justify-center">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <span
+                            class="px-2 py-0.5 rounded-full bg-emerald-sync/10 border border-emerald-sync/20 text-emerald-sync font-telemetry text-axis-label flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-sync animate-pulse"></span>
+                            GPU CLOUD ONLINE
+                        </span>
+                        <span class="text-pewter text-axis-label font-telemetry">• NVENC v4.2 Enabled</span>
+                    </div>
+                    <h1 class="font-heading text-display font-bold text-platinum tracking-tight">Welcome back, Alex</h1>
+                    <p class="font-body text-body text-pewter mt-1">
+                        You have <span class="text-platinum font-semibold">3 active projects</span> in progress and
+                        <span class="text-amber-trim font-semibold">1 render queued</span>.
+                    </p>
+                </div>
+                <!-- Sleek AI Intelligence Card -->
+                <div
+                    class="lg:col-span-5 bg-gradient-to-br from-gunmetal-raised to-graphite-panel p-4 rounded-xl border border-electric-indigo/40 shadow-lg relative overflow-hidden flex flex-col justify-between">
+                    <div
+                        class="absolute -right-6 -bottom-6 w-32 h-32 bg-electric-indigo/10 rounded-full blur-2xl pointer-events-none">
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <div
+                                    class="w-6 h-6 rounded bg-electric-indigo/20 flex items-center justify-center text-electric-indigo">
+                                    <span class="material-symbols-outlined text-[16px]">auto_awesome</span>
+                                </div>
+                                <span class="font-subheading text-footnote font-bold text-platinum">Intelligent Asset
+                                    Organization</span>
+                            </div>
+                            <span
+                                class="font-telemetry text-axis-label text-cyan-signal bg-cyan-signal/10 px-2 py-0.5 rounded border border-cyan-signal/20">AGENT
+                                READY</span>
+                        </div>
+                        <p class="font-body text-footnote text-pewter leading-relaxed">
+                            Let the agent analyze and auto-tag your 14 unorganized raw clips from yesterday.
+                        </p>
+                    </div>
+                    <div class="mt-3.5 pt-3 border-t border-slate-rail flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span
+                                class="px-2 py-0.5 rounded bg-obsidian-workbench border border-gunmetal-raised text-pewter font-telemetry text-axis-label">
+                                ~24s run
+                            </span>
+                            <span class="font-axis-label text-axis-label text-pewter">Deep Vision v3</span>
+                        </div>
+                        <button
+                            class="px-3.5 py-1.5 rounded-lg bg-electric-indigo hover:bg-inverse-primary text-platinum font-footnote text-footnote font-medium flex items-center gap-1.5 transition-all active:scale-[0.98] shadow-sm">
+                            <span class="material-symbols-outlined text-[16px]">bolt</span>
+                            <span>Run Auto-Tag</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+            <!-- 3. Recent Projects Section -->
+            <section class="space-y-3.5" id="projects">
+                <!-- Header & View Controls -->
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <h2 class="font-heading text-subheading font-bold text-platinum">Recent Projects</h2>
+                        <span
+                            class="px-2 py-0.5 rounded-full bg-slate-rail border border-gunmetal-raised text-pewter font-telemetry text-axis-label">3
+                            active</span>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <!-- Sort dropdown -->
+                        <button
+                            class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-graphite-panel border border-gunmetal-raised text-pewter hover:text-platinum font-footnote text-footnote transition-colors">
+                            <span>Sort by: Last Modified</span>
+                            <span class="material-symbols-outlined text-[16px]">expand_more</span>
+                        </button>
+                        <!-- View Toggles -->
+                        <div class="flex items-center bg-graphite-panel p-0.5 rounded-lg border border-gunmetal-raised">
+                            <button class="p-1 rounded bg-slate-rail text-cyan-signal" title="Grid View">
+                                <span class="material-symbols-outlined text-[18px]">grid_view</span>
+                            </button>
+                            <button class="p-1 rounded text-pewter hover:text-platinum transition-colors"
+                                title="List View">
+                                <span class="material-symbols-outlined text-[18px]">view_list</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 3-Column Projects Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Project 1: Summer Travel Reel 2025 (Rendering) -->
+                    <div
+                        class="group bg-graphite-panel border border-gunmetal-raised hover:border-slate-rail rounded-xl overflow-hidden transition-all duration-200 flex flex-col justify-between">
+                        <div>
+                            <!-- 16:9 Thumbnail with Overlay -->
+                            <div class="relative aspect-video bg-obsidian-workbench overflow-hidden">
+                                <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    data-alt="A breathtaking cinematic 4K video frame of golden hour waves crashing against dramatic Mediterranean cliffs with warm orange light reflecting on deep blue water, shot in ultra-high resolution with soft lens flare and cinematic anamorphic bokeh, fitting a professional color-graded travel montage."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfhfn-9Bs4dfn2_j4LLzDjU1AcJH6LIT5piWQAuKl7sLTsVB4IGLbFP-n86x_TtAr5R21e3rjO53tgBEKSe6rfBmsYJPRlKAjYrELr-KP12n8cdVUroxXAZJ82WUHsgmSieQiwZ9g_ck1SgMovjD-IE203Ya3orvEv6rHndXBDX9csNsQtHO0SQaokQmYKarTUzcWpTFM6BPbnQUHoD1YEU3s65qRM0upz6GKpKbkIqLCMh-CD8ASkR_cJi_iy5cZ7FG10chBS237w" />
+                                <div
+                                    class="absolute inset-0 bg-gradient-to-t from-obsidian-workbench/90 via-transparent to-black/30">
+                                </div>
+                                <!-- Top badges -->
+                                <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded bg-obsidian-workbench/80 backdrop-blur-sm border border-gunmetal-raised font-telemetry text-axis-label text-platinum">
+                                        4K DCI • 60fps
+                                    </span>
+                                </div>
+                                <div class="absolute top-2.5 right-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded-full bg-amber-trim/20 text-amber-trim border border-amber-trim/30 backdrop-blur-sm font-telemetry text-axis-label flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-amber-trim animate-ping"></span>
+                                        Rendering...
+                                    </span>
+                                </div>
+                                <!-- Hover Action Strip Overlay -->
+                                <div
+                                    class="absolute inset-0 bg-obsidian-workbench/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-4">
+                                    <button
+                                        class="px-3 py-1.5 rounded-lg bg-cyan-signal text-obsidian-workbench font-footnote text-footnote font-bold flex items-center gap-1 hover:bg-white transition-colors">
+                                        <span class="material-symbols-outlined text-[16px]">play_arrow</span>
+                                        Open Project
+                                    </button>
+                                    <button
+                                        class="p-1.5 rounded-lg bg-gunmetal-raised text-platinum hover:text-cyan-signal border border-slate-rail transition-colors"
+                                        title="Duplicate">
+                                        <span class="material-symbols-outlined text-[18px]">content_copy</span>
+                                    </button>
+                                    <button
+                                        class="p-1.5 rounded-lg bg-gunmetal-raised text-platinum hover:text-cyan-signal border border-slate-rail transition-colors"
+                                        title="Export">
+                                        <span class="material-symbols-outlined text-[18px]">ios_share</span>
+                                    </button>
+                                </div>
+                                <!-- Bottom stats in thumb -->
+                                <div
+                                    class="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-axis-label font-telemetry text-pewter">
+                                    <span>06:45</span>
+                                    <span>Edited 12m ago</span>
+                                </div>
+                            </div>
+                            <!-- Metadata & Progress -->
+                            <div class="p-3.5 space-y-2.5">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <h3
+                                            class="font-subheading text-footnote font-bold text-platinum group-hover:text-cyan-signal transition-colors">
+                                            Summer Travel Reel 2025</h3>
+                                        <p class="font-body text-axis-label text-pewter mt-0.5">Timeline: 12 Video
+                                            Tracks, 4 Audio stems</p>
+                                    </div>
+                                    <button class="text-pewter hover:text-platinum">
+                                        <span class="material-symbols-outlined text-[18px]">more_vert</span>
+                                    </button>
+                                </div>
+                                <!-- Render Progress Ring/Bar -->
+                                <div class="space-y-1">
+                                    <div class="flex justify-between items-center text-axis-label font-telemetry">
+                                        <span class="text-pewter">Preview Render Target</span>
+                                        <span class="text-cyan-signal font-semibold">84%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-rail h-1 rounded-full overflow-hidden">
+                                        <div class="bg-cyan-signal h-full w-[84%]"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Project 2: SaaS Product Walkthrough (AI Editing in progress) -->
+                    <div
+                        class="group bg-graphite-panel border border-electric-indigo/40 hover:border-electric-indigo rounded-xl overflow-hidden transition-all duration-200 flex flex-col justify-between shadow-lg shadow-electric-indigo/5">
+                        <div>
+                            <!-- 16:9 Thumbnail -->
+                            <div class="relative aspect-video bg-obsidian-workbench overflow-hidden">
+                                <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    data-alt="A sleek desktop monitor displaying a software user interface wireframe with glowing data visualizations, dark modern dashboard graphs, crisp code typography, and subtle cyan highlights in a minimalist high-tech workspace atmosphere."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuDVfr2odpRkq9LRpHlCM8smCAwZFyW-YrNDZXyp3-Kp6Eg9ZICSE900rPHyanMia6niHP1PJ6ZGGuYMz0JAgamUWqdIUd_LR-aubh1yMO8npRni7oi3pohcIJVk1SoVW2OPPo066Z5FGNiY6B69ldSlCCwgGpNZrK1rm4mBZNJy-iGCVCSzD9nreYOyzp-oyGO8fhoB9dN8g_C8T2PuPKgOsw5g2Fx_-o_Xzjc2v4aWZWofcUUHRegwqY9sZWiaCiubjLuVrI81KhJJ" />
+                                <div
+                                    class="absolute inset-0 bg-gradient-to-t from-obsidian-workbench/90 via-transparent to-black/30">
+                                </div>
+                                <!-- Badges -->
+                                <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded bg-obsidian-workbench/80 backdrop-blur-sm border border-gunmetal-raised font-telemetry text-axis-label text-platinum">
+                                        1080p • 30fps
+                                    </span>
+                                </div>
+                                <div class="absolute top-2.5 right-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded-full bg-electric-indigo/25 text-primary-fixed-dim border border-electric-indigo/40 backdrop-blur-sm font-telemetry text-axis-label flex items-center gap-1 animate-pulse">
+                                        <span class="material-symbols-outlined text-[13px]">auto_awesome</span>
+                                        AI Active
+                                    </span>
+                                </div>
+                                <!-- Hover Overlay -->
+                                <div
+                                    class="absolute inset-0 bg-obsidian-workbench/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-4">
+                                    <button
+                                        class="px-3 py-1.5 rounded-lg bg-electric-indigo text-platinum font-footnote text-footnote font-bold flex items-center gap-1 hover:bg-inverse-primary transition-colors">
+                                        <span class="material-symbols-outlined text-[16px]">play_arrow</span>
+                                        Open Project
+                                    </button>
+                                    <button
+                                        class="p-1.5 rounded-lg bg-gunmetal-raised text-platinum hover:text-cyan-signal border border-slate-rail transition-colors"
+                                        title="Duplicate">
+                                        <span class="material-symbols-outlined text-[18px]">content_copy</span>
+                                    </button>
+                                    <button
+                                        class="p-1.5 rounded-lg bg-gunmetal-raised text-platinum hover:text-cyan-signal border border-slate-rail transition-colors"
+                                        title="Export">
+                                        <span class="material-symbols-outlined text-[18px]">ios_share</span>
+                                    </button>
+                                </div>
+                                <div
+                                    class="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-axis-label font-telemetry text-pewter">
+                                    <span>02:18</span>
+                                    <span>Edited 3h ago</span>
+                                </div>
+                            </div>
+                            <!-- Metadata & AI Status -->
+                            <div class="p-3.5 space-y-2.5">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <h3
+                                            class="font-subheading text-footnote font-bold text-platinum group-hover:text-electric-indigo transition-colors">
+                                            SaaS Product Walkthrough</h3>
+                                        <p class="font-body text-axis-label text-pewter mt-0.5">Automated screen
+                                            recording cut</p>
+                                    </div>
+                                    <button class="text-pewter hover:text-platinum">
+                                        <span class="material-symbols-outlined text-[18px]">more_vert</span>
+                                    </button>
+                                </div>
+                                <!-- Live Agent Task Chip -->
+                                <div
+                                    class="px-2.5 py-1.5 rounded-lg bg-obsidian-workbench border border-gunmetal-raised flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-electric-indigo animate-ping"></span>
+                                        <span class="font-telemetry text-axis-label text-platinum">Stabilizing &amp;
+                                            Auto-Captions</span>
+                                    </div>
+                                    <span class="font-telemetry text-axis-label text-pewter">Frame 420/890</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Project 3: Cinematic FPV Drone Reel (Ready to review) -->
+                    <div
+                        class="group bg-graphite-panel border border-gunmetal-raised hover:border-slate-rail rounded-xl overflow-hidden transition-all duration-200 flex flex-col justify-between">
+                        <div>
+                            <!-- 16:9 Thumbnail -->
+                            <div class="relative aspect-video bg-obsidian-workbench overflow-hidden">
+                                <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    data-alt="An electrifying FPV drone perspective flying through narrow coastal sea caves during a dramatic sunset with neon magenta and orange atmospheric sky reflections over dark turquoise ocean spray, exhibiting speed blur and cinematic dynamic color grading."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpiglriGoyP8ccILYdXnpn4lEjl5zvEi2SvPKuieDewtxnPLpxorHNVKdViJvAduVVGJEzq-ksFmfCt-wylhTYqfLtRb6sIkkzTs39-RQADb1DJ33sY43c7fXe-zSnsZVwdWD7zaMNUD9e6rseBGy2RT4f3Jz-zNV_WNi-BeAxv4Aj9Pc81i_Z3MclgBeCg5G0gyx83Om5clSYuUnULPEn3GxUan_j47FjKB4kOC1R7JztJ3gDGeWPhmDoeODMv5-dmiRwfrRZlZI6" />
+                                <div
+                                    class="absolute inset-0 bg-gradient-to-t from-obsidian-workbench/90 via-transparent to-black/30">
+                                </div>
+                                <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded bg-obsidian-workbench/80 backdrop-blur-sm border border-gunmetal-raised font-telemetry text-axis-label text-platinum">
+                                        4K ProRes 422
+                                    </span>
+                                </div>
+                                <div class="absolute top-2.5 right-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded-full bg-emerald-sync/20 text-emerald-sync border border-emerald-sync/30 backdrop-blur-sm font-telemetry text-axis-label flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-sync"></span>
+                                        Ready to review
+                                    </span>
+                                </div>
+                                <!-- Hover Overlay -->
+                                <div
+                                    class="absolute inset-0 bg-obsidian-workbench/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-4">
+                                    <button
+                                        class="px-3 py-1.5 rounded-lg bg-cyan-signal text-obsidian-workbench font-footnote text-footnote font-bold flex items-center gap-1 hover:bg-white transition-colors">
+                                        <span class="material-symbols-outlined text-[16px]">play_arrow</span>
+                                        Open Project
+                                    </button>
+                                    <button
+                                        class="p-1.5 rounded-lg bg-gunmetal-raised text-platinum hover:text-cyan-signal border border-slate-rail transition-colors"
+                                        title="Duplicate">
+                                        <span class="material-symbols-outlined text-[18px]">content_copy</span>
+                                    </button>
+                                    <button
+                                        class="p-1.5 rounded-lg bg-gunmetal-raised text-platinum hover:text-cyan-signal border border-slate-rail transition-colors"
+                                        title="Export">
+                                        <span class="material-symbols-outlined text-[18px]">ios_share</span>
+                                    </button>
+                                </div>
+                                <div
+                                    class="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-axis-label font-telemetry text-pewter">
+                                    <span>01:14</span>
+                                    <span>Edited Yesterday</span>
+                                </div>
+                            </div>
+                            <!-- Metadata & Quick action -->
+                            <div class="p-3.5 flex items-center justify-between">
+                                <div>
+                                    <h3
+                                        class="font-subheading text-footnote font-bold text-platinum group-hover:text-cyan-signal transition-colors">
+                                        Cinematic FPV Drone Reel</h3>
+                                    <p class="font-body text-axis-label text-pewter mt-0.5">Client cut v2 • Approved
+                                        grade</p>
+                                </div>
+                                <button
+                                    class="px-3 py-1 rounded bg-slate-rail hover:bg-gunmetal-raised text-platinum font-footnote text-footnote font-medium transition-colors">
+                                    Open
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <!-- 4. Starter Templates Section -->
+            <section class="space-y-3" id="templates">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <h2 class="font-heading text-subheading font-bold text-platinum">Quick Start Templates</h2>
+                        <span class="text-pewter text-axis-label font-telemetry">• Pre-engineered sequences</span>
+                    </div>
+                    <a class="font-footnote text-footnote text-cyan-signal hover:underline flex items-center gap-1"
+                        href="#">
+                        <span>Explore All (12)</span>
+                        <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                    </a>
+                </div>
+                <!-- Horizontal scrolling row -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    <!-- Template 1: Travel Vlog Reel (9:16) -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-cyan-signal/50 p-3 rounded-xl transition-all group flex flex-col justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-12 h-16 rounded bg-obsidian-workbench border border-gunmetal-raised overflow-hidden relative shrink-0">
+                                <img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    data-alt="A vertical format video portrait showing an adventurous solo traveler walking along a mist-covered pine mountain ridge at sunrise with lens flares and cinematic light rays, dark moody tones with golden highlights."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAaIB0cNQdp_ObH_ZzfPOCwcrGVR7ry_uyAesIe_asnVFZrA6OhqEyz-hu2U5FouWdOLgtBiOIqNojj32liH50HeY7cJxEoiD_kV6KcVzoxESnGXXFAgPgUjdbaMKZyqbK_gUOqbL_NllDKxNvQmhjJL0zcY81Cbfvy7I5D9FnUO6owybO_mtUseT0a-kriR6nMstq_eC5QiUGCrfhdSQCGOWuGjsSCOO8WvzBhL_ab4kGDxL09_cAU2G513tXAA2xflf5M2PuSv0F" />
+                                <div class="absolute inset-0 bg-black/20"></div>
+                                <span
+                                    class="absolute bottom-0.5 right-0.5 font-telemetry text-[9px] bg-black/80 px-1 rounded text-platinum">9:16</span>
+                            </div>
+                            <div>
+                                <h4
+                                    class="font-subheading text-footnote font-semibold text-platinum group-hover:text-cyan-signal transition-colors">
+                                    Travel Vlog Reel</h4>
+                                <p class="font-body text-axis-label text-pewter mt-0.5">Dynamic jump-cut transitions</p>
+                                <span class="inline-block mt-1 text-axis-label font-telemetry text-pewter">8 Cut
+                                    Points</span>
+                            </div>
+                        </div>
+                        <button
+                            class="mt-3 w-full py-1.5 rounded-lg bg-obsidian-workbench hover:bg-gunmetal-raised border border-gunmetal-raised text-platinum font-footnote text-axis-label font-medium transition-colors">
+                            Use template
+                        </button>
+                    </div>
+                    <!-- Template 2: Product Demo 4K (16:9) -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-cyan-signal/50 p-3 rounded-xl transition-all group flex flex-col justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-16 h-12 rounded bg-obsidian-workbench border border-gunmetal-raised overflow-hidden relative shrink-0">
+                                <img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    data-alt="A clean industrial product showcase of a sleek matte black titanium audio gadget surrounded by subtle studio softbox rim lighting and graphite textures, cinematic macro photography."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfxqPvFLhTw4ZINdmK9Y3yrksfk8YERe1zisxV33uBqCOmvERK4oPI0yJfdlLTRrItzcngAdMzZ5iQ3tXI8IS4pOYw1nt-I3ZW6t8ZyIZwuvYU8d1hbLh5Qrlb-P56EKWj6Kef7_iFDv1zPAFG070TysWLulY2uiM8v03urSlWmteTFCwroRldnp1Jq3jY5pveWskfzdASeM2iwwG2-RFI2B2gmVjI8eSde0CX7EdBMEmlyAkc2eXa5cNu4WHCkhOp3BwUqLKTtgrx" />
+                                <div class="absolute inset-0 bg-black/20"></div>
+                                <span
+                                    class="absolute bottom-0.5 right-0.5 font-telemetry text-[9px] bg-black/80 px-1 rounded text-platinum">16:9</span>
+                            </div>
+                            <div>
+                                <h4
+                                    class="font-subheading text-footnote font-semibold text-platinum group-hover:text-cyan-signal transition-colors">
+                                    Product Demo 4K</h4>
+                                <p class="font-body text-axis-label text-pewter mt-0.5">Dynamic kinetic title cards</p>
+                                <span class="inline-block mt-1 text-axis-label font-telemetry text-pewter">4 Titles •
+                                    60fps</span>
+                            </div>
+                        </div>
+                        <button
+                            class="mt-3 w-full py-1.5 rounded-lg bg-obsidian-workbench hover:bg-gunmetal-raised border border-gunmetal-raised text-platinum font-footnote text-axis-label font-medium transition-colors">
+                            Use template
+                        </button>
+                    </div>
+                    <!-- Template 3: Social TikTok / Reel Short (9:16) -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-cyan-signal/50 p-3 rounded-xl transition-all group flex flex-col justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-12 h-16 rounded bg-obsidian-workbench border border-gunmetal-raised overflow-hidden relative shrink-0">
+                                <img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    data-alt="A modern urban dancer under neon night city lights in Tokyo with motion blur and energetic lighting flares, high contrast modern youth culture vertical video shot."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-Hp6dJjBCPSidVw2QguAfXb4isdLyH-euSOZsT2fXRid1dWWN3FyWQS7nFY6dEpAlBc3TGpm-jPd6VZ9Cmy46_ID-1UPRXfdhrJxp4cjHvxHOdsqWnRWixdNQEFMGiXJTLHZNrSO-ONqjequJmsx0kqIDsgma0MLc1G_pBGRoEvAWW8czOSPZeFKtL9LgjGZk72wbnBdxjbRPQ5qi7G5Zaq0QMZcBaFTu6JKVIoCqDmblTCs3GMEuMCUGFiZ1oX_BJRYs6Ap_KgS1" />
+                                <div class="absolute inset-0 bg-black/20"></div>
+                                <span
+                                    class="absolute bottom-0.5 right-0.5 font-telemetry text-[9px] bg-black/80 px-1 rounded text-platinum">9:16</span>
+                            </div>
+                            <div>
+                                <h4
+                                    class="font-subheading text-footnote font-semibold text-platinum group-hover:text-cyan-signal transition-colors">
+                                    Social TikTok / Reel</h4>
+                                <p class="font-body text-axis-label text-pewter mt-0.5">Auto-beat audio synchronization
+                                </p>
+                                <span class="inline-block mt-1 text-axis-label font-telemetry text-electric-indigo">AI
+                                    Beat Markers</span>
+                            </div>
+                        </div>
+                        <button
+                            class="mt-3 w-full py-1.5 rounded-lg bg-obsidian-workbench hover:bg-gunmetal-raised border border-gunmetal-raised text-platinum font-footnote text-axis-label font-medium transition-colors">
+                            Use template
+                        </button>
+                    </div>
+                    <!-- Template 4: Cinematic Documentary (2.39:1) -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-cyan-signal/50 p-3 rounded-xl transition-all group flex flex-col justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-16 h-10 rounded bg-obsidian-workbench border border-gunmetal-raised overflow-hidden relative shrink-0">
+                                <img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    data-alt="An expansive panoramic 2.39 widescreen cinematic view of an arctic ice glacier under twilight purple and midnight blue aurora borealis, subtle letterboxing matte bars, documentary aesthetic."
+                                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuDvXb4o2SziWSa4poK2tnM1aWYqa2vEJeVnQV_DLlXfAYjKO-x6N1Cm6oC4SZfeAJhK7RntW7bfXRFUSeioOuB9E2BuJZ4NyYvXcjWqqqyf0cVe8tgy7l2NpQxVZr7O8UwZQXSUJVPhGXJqUi-QdmO3bT5C-IDoYQlphGjhrH-jIyCsfc3CGlrOk1vUwUY2RAS9Dh6YVmA6dcPCaOwTMRrVA5J4WHVjGFq3jedlgbLF_OAW229XEaTBZRbAXoXD1FwIr2Dg2RckiuNJ" />
+                                <div class="absolute inset-0 bg-black/20"></div>
+                                <span
+                                    class="absolute bottom-0.5 right-0.5 font-telemetry text-[9px] bg-black/80 px-1 rounded text-platinum">2.39:1</span>
+                            </div>
+                            <div>
+                                <h4
+                                    class="font-subheading text-footnote font-semibold text-platinum group-hover:text-cyan-signal transition-colors">
+                                    Cinematic Doc</h4>
+                                <p class="font-body text-axis-label text-pewter mt-0.5">Letterbox grade &amp; grain
+                                    preset</p>
+                                <span class="inline-block mt-1 text-axis-label font-telemetry text-pewter">Film Grain +
+                                    LUT</span>
+                            </div>
+                        </div>
+                        <button
+                            class="mt-3 w-full py-1.5 rounded-lg bg-obsidian-workbench hover:bg-gunmetal-raised border border-gunmetal-raised text-platinum font-footnote text-axis-label font-medium transition-colors">
+                            Use template
+                        </button>
+                    </div>
+                </div>
+            </section>
+            <!-- 5. Media Library Section -->
+            <section class="space-y-4 pb-20" id="media-library">
+                <!-- Header & Telemetry -->
+                <div
+                    class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gunmetal-raised pb-3">
+                    <div class="flex items-center gap-3">
+                        <h2 class="font-heading text-subheading font-bold text-platinum">Media Library</h2>
+                        <div
+                            class="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-graphite-panel border border-gunmetal-raised">
+                            <span class="material-symbols-outlined text-[15px] text-cyan-signal">cloud_done</span>
+                            <span class="font-telemetry text-axis-label text-platinum">28.4 GB of 100 GB used</span>
+                        </div>
+                    </div>
+                    <!-- Filter Chips -->
+                    <div class="flex items-center gap-1.5 overflow-x-auto py-1">
+                        <button
+                            class="px-2.5 py-1 rounded-full bg-cyan-signal/20 text-cyan-signal border border-cyan-signal/40 font-footnote text-axis-label font-medium">
+                            All Media (48)
+                        </button>
+                        <button
+                            class="px-2.5 py-1 rounded-full bg-graphite-panel hover:bg-gunmetal-raised text-pewter hover:text-platinum border border-gunmetal-raised font-footnote text-axis-label transition-colors">
+                            Video (32)
+                        </button>
+                        <button
+                            class="px-2.5 py-1 rounded-full bg-graphite-panel hover:bg-gunmetal-raised text-pewter hover:text-platinum border border-gunmetal-raised font-footnote text-axis-label transition-colors">
+                            Audio (10)
+                        </button>
+                        <button
+                            class="px-2.5 py-1 rounded-full bg-graphite-panel hover:bg-gunmetal-raised text-pewter hover:text-platinum border border-gunmetal-raised font-footnote text-axis-label transition-colors">
+                            Images (4)
+                        </button>
+                        <button
+                            class="px-2.5 py-1 rounded-full bg-graphite-panel hover:bg-gunmetal-raised text-pewter hover:text-platinum border border-gunmetal-raised font-footnote text-axis-label transition-colors">
+                            Graphics &amp; Titles (2)
+                        </button>
+                    </div>
+                </div>
+                <!-- Multi-Column Asset Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                    <!-- Clip 1: drone_beach_sunset.mp4 (Checked) -->
+                    <div
+                        class="bg-graphite-panel border-2 border-electric-indigo/70 rounded-xl overflow-hidden group relative">
+                        <div class="relative aspect-video bg-obsidian-workbench">
+                            <img class="w-full h-full object-cover"
+                                data-alt="A vivid drone aerial perspective above ocean waves during sunset, sparkling golden water textures with gentle ripples, dark obsidian palette with rich orange highlights."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFlW1zk79EyDmgAaI4xe9vfFcgzxnnq2pPXfP2yGLWpeDUjE5ZhW5Ic3DPR172jNkF3HyTXwQ4J4Syza3BG1Mwbp8jB2z7EeqOOTXgrZeQt3AKhDrHe4vY7RzxHltzqHuelErAQCg0C0E4o-EViFzYwLLP978ZGtxESS5V5BzjN_Lf-s1-J4WPvH3uS-acKNtpENNKYXHa7IvEvV0rbqPrxUGV3q9jbaxO6xX4zyJKGeinwyeCxecf044dg1r_aWi_TJqXJPizvI3A" />
+                            <!-- Checkbox checked -->
+                            <div class="absolute top-2 left-2 z-10">
+                                <input checked=""
+                                    class="w-4 h-4 rounded bg-obsidian-workbench border-electric-indigo text-electric-indigo focus:ring-0 cursor-pointer"
+                                    type="checkbox" />
+                            </div>
+                            <span
+                                class="absolute bottom-1.5 right-1.5 bg-obsidian-workbench/80 px-1.5 py-0.2 rounded font-telemetry text-[10px] text-platinum">
+                                00:42
+                            </span>
+                        </div>
+                        <div class="p-2.5 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-telemetry text-axis-label font-medium text-platinum truncate"
+                                    title="drone_beach_sunset.mp4">drone_beach_sunset.mp4</span>
+                            </div>
+                            <div class="flex items-center justify-between text-pewter font-telemetry text-axis-label">
+                                <span>4K RAW</span>
+                                <span>1.2 GB</span>
+                            </div>
+                            <div class="pt-1">
+                                <span
+                                    class="px-1.5 py-0.5 rounded bg-electric-indigo/20 text-primary-fixed-dim border border-electric-indigo/30 font-telemetry text-[10px] flex items-center gap-1 w-max">
+                                    <span class="material-symbols-outlined text-[11px]">label</span>
+                                    B-roll / Golden Hour
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Clip 2: cliff_jump_fpv.mov (Checked) -->
+                    <div
+                        class="bg-graphite-panel border-2 border-electric-indigo/70 rounded-xl overflow-hidden group relative">
+                        <div class="relative aspect-video bg-obsidian-workbench">
+                            <img class="w-full h-full object-cover"
+                                data-alt="An adrenaline-fueled POV frame of a cliff diver leaping into a deep turquoise ocean lagoon with white sea foam, surrounded by sheer dark volcanic rock cliffs under intense sunlight."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBqvsfIUzK0Rt7zMnm2e1eq78ufhei5BnVYSpBuKRyBbQUDPdubclpT4TTqlIAPpgoDPXS--4vW0b0iz8I7zlACjY8uKntUJA45BfQPJ8estHPG_xCmvS_TOrTiY-1Y_RcwhwarQk2hmPif32coWwDSRq-o768BdKG1Ec6lstqcZyX_g9uN8RzsoSV0VKWu7re_csAPkZTzL0JiZrBbG__4HAesXRVXR88SM_qQpGflN4OMdz-cGmBohuNburbZIUq0rtPYFCAgoOrG" />
+                            <!-- Checkbox checked -->
+                            <div class="absolute top-2 left-2 z-10">
+                                <input checked=""
+                                    class="w-4 h-4 rounded bg-obsidian-workbench border-electric-indigo text-electric-indigo focus:ring-0 cursor-pointer"
+                                    type="checkbox" />
+                            </div>
+                            <span
+                                class="absolute bottom-1.5 right-1.5 bg-obsidian-workbench/80 px-1.5 py-0.2 rounded font-telemetry text-[10px] text-platinum">
+                                01:14
+                            </span>
+                        </div>
+                        <div class="p-2.5 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-telemetry text-axis-label font-medium text-platinum truncate"
+                                    title="cliff_jump_fpv.mov">cliff_jump_fpv.mov</span>
+                            </div>
+                            <div class="flex items-center justify-between text-pewter font-telemetry text-axis-label">
+                                <span>4K UHD</span>
+                                <span>840 MB</span>
+                            </div>
+                            <div class="pt-1">
+                                <span
+                                    class="px-1.5 py-0.5 rounded bg-electric-indigo/20 text-primary-fixed-dim border border-electric-indigo/30 font-telemetry text-[10px] flex items-center gap-1 w-max">
+                                    <span class="material-symbols-outlined text-[11px]">label</span>
+                                    Action / Slow-Mo
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Clip 3: founder_interview_take1.mp4 -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-slate-rail rounded-xl overflow-hidden group relative">
+                        <div class="relative aspect-video bg-obsidian-workbench">
+                            <img class="w-full h-full object-cover"
+                                data-alt="A professional documentary talking-head interview setup in a sleek architectural tech office with blurred background bokeh, shallow depth of field, warm key light and cyan backlight accent."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKVLjsSFiN_0NsI42sJJYOELQE8Y9i6R62n-gHXry64DV97kMn2qBubBe2v0PStjmzjFwuCVY0SXWUA2VsUOavaa2wZBwxWmx-3lQWaU1cVQv0QOCqNhrdkM4qXcvNp5NRM0VTHZPf00N88mkHYlHXpjDuVQSvXDPLRH3W2on2_AsLa_kUGHNRMgzNHeu1wiX-1Ic_6No1QEGTbEuvYXXLs0dhF69VLG0MVJhZBBIj8SC82LPFMrPL4ce99GgX0NG-OTOOgZkFzPOs" />
+                            <div class="absolute top-2 left-2 z-10">
+                                <input
+                                    class="w-4 h-4 rounded bg-obsidian-workbench border-gunmetal-raised text-electric-indigo focus:ring-0 cursor-pointer"
+                                    type="checkbox" />
+                            </div>
+                            <span
+                                class="absolute bottom-1.5 right-1.5 bg-obsidian-workbench/80 px-1.5 py-0.2 rounded font-telemetry text-[10px] text-platinum">
+                                04:12
+                            </span>
+                        </div>
+                        <div class="p-2.5 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-telemetry text-axis-label font-medium text-platinum truncate"
+                                    title="founder_interview_take1.mp4">founder_interview...</span>
+                            </div>
+                            <div class="flex items-center justify-between text-pewter font-telemetry text-axis-label">
+                                <span>1080p</span>
+                                <span>620 MB</span>
+                            </div>
+                            <div class="pt-1">
+                                <span
+                                    class="px-1.5 py-0.5 rounded bg-slate-rail text-pewter border border-gunmetal-raised font-telemetry text-[10px] flex items-center gap-1 w-max">
+                                    <span class="material-symbols-outlined text-[11px]">label</span>
+                                    Talking Head
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Clip 4: summer_vibes_bgm.wav (Audio Waveform) -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-slate-rail rounded-xl overflow-hidden group relative flex flex-col justify-between">
+                        <div class="relative aspect-video bg-slate-rail flex items-center justify-center p-3">
+                            <div class="absolute top-2 left-2 z-10">
+                                <input
+                                    class="w-4 h-4 rounded bg-obsidian-workbench border-gunmetal-raised text-electric-indigo focus:ring-0 cursor-pointer"
+                                    type="checkbox" />
+                            </div>
+                            <!-- Stylized audio waveform bars -->
+                            <div class="flex items-end gap-1 h-12 w-full px-2">
+                                <div class="flex-1 bg-cyan-signal/60 rounded-t h-4"></div>
+                                <div class="flex-1 bg-cyan-signal/80 rounded-t h-8"></div>
+                                <div class="flex-1 bg-cyan-signal rounded-t h-12"></div>
+                                <div class="flex-1 bg-cyan-signal/90 rounded-t h-6"></div>
+                                <div class="flex-1 bg-cyan-signal/70 rounded-t h-10"></div>
+                                <div class="flex-1 bg-cyan-signal rounded-t h-11"></div>
+                                <div class="flex-1 bg-cyan-signal/80 rounded-t h-7"></div>
+                                <div class="flex-1 bg-cyan-signal/50 rounded-t h-4"></div>
+                                <div class="flex-1 bg-cyan-signal/90 rounded-t h-9"></div>
+                                <div class="flex-1 bg-cyan-signal/60 rounded-t h-5"></div>
+                            </div>
+                            <span
+                                class="absolute bottom-1.5 right-1.5 bg-obsidian-workbench/80 px-1.5 py-0.2 rounded font-telemetry text-[10px] text-platinum">
+                                02:30
+                            </span>
+                        </div>
+                        <div class="p-2.5 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-telemetry text-axis-label font-medium text-platinum truncate"
+                                    title="summer_vibes_bgm.wav">summer_vibes_bgm.wav</span>
+                            </div>
+                            <div class="flex items-center justify-between text-pewter font-telemetry text-axis-label">
+                                <span>48kHz WAV</span>
+                                <span>42 MB</span>
+                            </div>
+                            <div class="pt-1">
+                                <span
+                                    class="px-1.5 py-0.5 rounded bg-slate-rail text-pewter border border-gunmetal-raised font-telemetry text-[10px] flex items-center gap-1 w-max">
+                                    <span class="material-symbols-outlined text-[11px]">music_note</span>
+                                    Upbeat Instrumental
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Clip 5: lower_third_clean.mov (Alpha Motion Graphic) -->
+                    <div
+                        class="bg-graphite-panel border border-gunmetal-raised hover:border-slate-rail rounded-xl overflow-hidden group relative flex flex-col justify-between">
+                        <div
+                            class="relative aspect-video bg-obsidian-workbench flex items-center justify-center p-3 border-b border-gunmetal-raised/40">
+                            <div class="absolute top-2 left-2 z-10">
+                                <input
+                                    class="w-4 h-4 rounded bg-obsidian-workbench border-gunmetal-raised text-electric-indigo focus:ring-0 cursor-pointer"
+                                    type="checkbox" />
+                            </div>
+                            <!-- Motion graphic card mockup -->
+                            <div
+                                class="w-full py-1.5 px-2 bg-gradient-to-r from-gunmetal-raised to-transparent border-l-2 border-cyan-signal rounded">
+                                <div class="h-2 w-16 bg-platinum/80 rounded-sm mb-1"></div>
+                                <div class="h-1.5 w-10 bg-pewter/60 rounded-sm"></div>
+                            </div>
+                            <span
+                                class="absolute bottom-1.5 right-1.5 bg-obsidian-workbench/80 px-1.5 py-0.2 rounded font-telemetry text-[10px] text-platinum">
+                                Alpha
+                            </span>
+                        </div>
+                        <div class="p-2.5 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-telemetry text-axis-label font-medium text-platinum truncate"
+                                    title="lower_third_clean.mov">lower_third_clean.mov</span>
+                            </div>
+                            <div class="flex items-center justify-between text-pewter font-telemetry text-axis-label">
+                                <span>ProRes 4444</span>
+                                <span>18 MB</span>
+                            </div>
+                            <div class="pt-1">
+                                <span
+                                    class="px-1.5 py-0.5 rounded bg-slate-rail text-pewter border border-gunmetal-raised font-telemetry text-[10px] flex items-center gap-1 w-max">
+                                    <span class="material-symbols-outlined text-[11px]">layers</span>
+                                    Motion Graphic
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 6. Drag & Drop Import Dropzone -->
+                <div
+                    class="custom-dotted-border p-6 rounded-xl bg-graphite-panel/30 hover:bg-graphite-panel/60 transition-colors cursor-pointer text-center flex flex-col items-center justify-center gap-2 mt-4">
+                    <div
+                        class="w-10 h-10 rounded-full bg-cyan-signal/10 border border-cyan-signal/20 flex items-center justify-center text-cyan-signal">
+                        <span class="material-symbols-outlined text-[22px]">cloud_upload</span>
+                    </div>
+                    <div>
+                        <p class="font-body text-body font-semibold text-platinum">
+                            Drag footage, audio, or LUTs here or <span
+                                class="text-cyan-signal underline cursor-pointer">browse files</span>
+                        </p>
+                        <p class="font-telemetry text-axis-label text-pewter mt-1">
+                            Supports MP4, MOV, ProRes, WAV, MP3, PNG, CUBE up to 10GB per asset
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <!-- Docked / Floating Batch Action Bar (Triggered when items selected) -->
+    <aside
+        class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-graphite-panel/95 backdrop-blur-md border border-electric-indigo/50 rounded-xl px-4 py-2.5 shadow-2xl flex items-center gap-4 animate-in fade-in duration-200">
+        <div class="flex items-center gap-2 border-r border-gunmetal-raised pr-3">
+            <span class="w-2 h-2 rounded-full bg-cyan-signal animate-pulse"></span>
+            <span class="font-telemetry text-axis-label text-platinum font-semibold">2 assets selected</span>
+            <span class="text-axis-label font-telemetry text-pewter">(2.04 GB)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <!-- Add to sequence -->
+            <button
+                class="px-3 py-1.5 rounded-lg bg-electric-indigo hover:bg-inverse-primary text-platinum font-footnote text-footnote font-medium flex items-center gap-1.5 transition-all active:scale-[0.98]">
+                <span class="material-symbols-outlined text-[16px]">add_to_photos</span>
+                <span>Add to Sequence (+)</span>
+            </button>
+            <!-- Batch tag AI -->
+            <button
+                class="px-3 py-1.5 rounded-lg bg-gunmetal-raised hover:bg-gunmetal-raised/80 border border-slate-rail text-platinum font-footnote text-footnote font-medium flex items-center gap-1.5 transition-all">
+                <span class="material-symbols-outlined text-electric-indigo text-[16px]">auto_awesome</span>
+                <span>Batch Tag with AI</span>
+            </button>
+            <!-- Move to bin -->
+            <button
+                class="px-2.5 py-1.5 rounded-lg bg-gunmetal-raised hover:bg-gunmetal-raised/80 border border-slate-rail text-pewter hover:text-platinum font-footnote text-footnote transition-all"
+                title="Move to Bin">
+                <span class="material-symbols-outlined text-[16px]">drive_file_move</span>
+            </button>
+            <!-- Delete -->
+            <button
+                class="px-2.5 py-1.5 rounded-lg bg-ruby-alert/10 hover:bg-ruby-alert/20 border border-ruby-alert/30 text-ruby-alert font-footnote text-footnote transition-all"
+                title="Delete Assets">
+                <span class="material-symbols-outlined text-[16px]">delete</span>
+            </button>
+        </div>
+        <!-- Dismiss close button -->
+        <button class="text-pewter hover:text-platinum pl-1">
+            <span class="material-symbols-outlined text-[16px]">close</span>
+        </button>
+    </aside>
+</body>
+
+</html>

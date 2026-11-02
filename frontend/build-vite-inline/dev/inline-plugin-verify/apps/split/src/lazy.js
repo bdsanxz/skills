@@ -1,0 +1,1 @@
+export const lazy = 'lazy-ok </script> $& 日本語 ' + (6*7);

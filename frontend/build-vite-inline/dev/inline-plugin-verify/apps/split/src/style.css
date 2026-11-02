@@ -1,0 +1,74 @@
+
+/* Layout: a full-bleed diorama, with tools set like wooden signs around its edges. Single deliberate look. */
+:root {
+  --bark: #2b1e15;
+  --bark-raised: #3d2c1f;
+  --plank: #6b4a2f;
+  --sprout: #b6e06a;
+  --petal: #ffd9e8;
+  --paper: #f6efdc;
+  --muted: #cdbfa3;
+  --sky: #9ccdec;
+  --display: "Pixelify Sans", ui-monospace, Menlo, monospace;
+  --utility: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--sky); color: var(--paper); font-family: var(--utility); overflow: hidden; }
+.garden__canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.garden__canvas--dragging { cursor: grabbing; }
+.garden__canvas--aiming { cursor: crosshair; }
+.garden__ui {
+  position: fixed; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+}
+.garden__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.sign {
+  pointer-events: auto; background: var(--bark); padding: 12px 14px; min-width: 0;
+  box-shadow: 0 -4px 0 var(--bark-raised), 0 4px 0 #19100a, -4px 0 0 var(--bark-raised), 4px 0 0 #19100a;
+}
+.sign__title { margin: 0; font: 700 26px/1 var(--display); color: var(--sprout); letter-spacing: .02em; }
+.sign__hint { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 30ch; }
+.sign__stats { margin: 8px 0 0; font-size: 12px; color: var(--paper); font-variant-numeric: tabular-nums; }
+.clock { display: grid; gap: 8px; width: 220px; max-width: 100%; }
+.clock__row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.clock__label { font-size: 12px; color: var(--muted); }
+.clock__time { font: 700 22px/1 var(--display); color: var(--petal); font-variant-numeric: tabular-nums; }
+.clock__slider { width: 100%; accent-color: var(--sprout); margin: 0; }
+.clock__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  flex: 1 1 auto; font: 500 12px/1 var(--utility); color: var(--paper); background: var(--plank); border: 0; padding: 8px; cursor: pointer;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.3);
+}
+.chip:hover { filter: brightness(1.15); }
+.chip--on { background: var(--sprout); color: var(--bark); }
+.chip--warn { background: #b4472f; }
+.tools { align-self: center; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 100%; }
+.tool {
+  width: 88px; display: grid; justify-items: center; gap: 4px; padding: 7px 2px 6px; border: 0; cursor: pointer; background: var(--bark-raised);
+  color: var(--paper); font: 500 11px/1.1 var(--utility); box-shadow: inset 0 -4px 0 rgba(0,0,0,.35);
+}
+.tool:hover { background: var(--plank); }
+.tool--active { background: var(--sprout); color: var(--bark); }
+.tool--active:hover { background: var(--sprout); }
+.tool__icon { width: 28px; height: 28px; image-rendering: pixelated; }
+.tool__key { opacity: .65; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); transform: translateX(-50%); max-width: calc(100% - 32px);
+  background: var(--bark); color: var(--paper); font-size: 13px; padding: 8px 12px; pointer-events: none; opacity: 0; transition: opacity .2s; text-align: center;
+}
+.toast--visible { opacity: 1; }
+.garden__fallback { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; background: var(--bark); font-size: 15px; line-height: 1.5; }
+:focus-visible { outline: 3px solid var(--petal); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .sign__hint { display: none; }
+  .sign__title { font-size: 20px; }
+  .clock { width: 170px; }
+  .tool { width: calc(33.33% - 4px); max-width: 100px; }
+  .toast { bottom: calc(env(safe-area-inset-bottom, 0px) + 170px); }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+.probe-bg{background:url(./dot.png)}
+/* </style> <!-- $& */ .probe-q::before{content:"</style> é 日本"}
