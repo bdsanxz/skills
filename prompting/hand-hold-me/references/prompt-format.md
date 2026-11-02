@@ -4,7 +4,6 @@
 
 | Phase | Steps cover |
 | --- | --- |
-| Planning and scope | One prompt that writes `PROJECT_PLAN.md`: the goal, who it is for, the features the user asked for, and anything the user said can wait. |
 | Setup | Creating the project so it opens and runs, then saving a first version the user can return to. Each is its own step. If a tool the project needs is missing from the user's computer, the coding agent stops and names it in its report. The guide then helps the user install it. |
 | Core features | One flow or feature part per step, the most essential first, each usable when its step ends. Something a feature needs in order to work, such as sign-in, gets its own steps before that feature. |
 | Polish | Making one existing screen or flow clearer and easier to use per step, such as its wording, layout, and error messages. No new features. |
@@ -25,7 +24,7 @@ Never put these in a prompt:
 
 Name the tech stack as a constraint and background context: the language, framework, UI library, styling approach, database, and key tools, such as "This project uses React, TypeScript, and Tailwind." Include only what you found in the project or the user explicitly chose, so the coding agent builds with the right tools and introduces no alternatives. Naming the stack never says how to use it.
 
-The stack is the only technical specific a prompt may hold, with two exceptions that do not say how to build anything: an error message the user reported, quoted exactly as evidence, and `PROJECT_PLAN.md`, the plan file, which any prompt may name because the user reads it.
+The stack is the only technical specific a prompt may hold, with one exception that does not say how to build anything: an error message the user reported, quoted exactly as evidence.
 
 Other facts from the codebase tell you what exists. Describe them in the user's terms, by what the user sees and uses, and let the coding agent find where they live.
 
@@ -45,16 +44,14 @@ One prompt never covers a broad feature. Each covers one small, complete slice o
 - **Name the edges.** The prompt names the flow it covers, and `NOT YET` names what it does not cover, so the coding agent does not wander. `NOT YET` names the neighboring flows and roadmap items as plain facts. It never introduces a feature the user did not ask for.
 - **Leave the app working.** When a prompt ends, everything the user can reach works, with no half-finished flow, so they can check the result before moving on. If a slice would leave a button that leads nowhere, leave the button out until the step that makes it work.
 
-## The step message
+## The instructions file
 
-Write the labels in the user's language. When the previous step worked, the opening line names what the user now has. After a failure, it says in one short, calm sentence what is still missing.
+`instructions.md` holds every step in order, each written like this. Write the labels in the user's language.
 
 ````markdown
-[The opening line. After a bare "done", name what the step was meant to produce.]
+## Step [N] of [M]: [step title]
 
-**Step [N] of [M]: [step title]**
-
-[One or two plain sentences: what this prompt does and why it comes next.]
+[One or two plain sentences: what this prompt does and why it comes at this point.]
 
 ```text
 [The prompt]
@@ -63,11 +60,11 @@ Write the labels in the user's language. When the previous step worked, the open
 **What to expect:** [What the coding agent will do and reply, in one or two sentences.]
 
 **How to check:** [The things the user can do and see themselves, matching the prompt's checks.]
-
-Tell me the result, any error, or "done" if every check worked.
 ````
 
 Every prompt goes in its own fenced `text` block, so it copies whole in one click. If the prompt itself contains a fence, make the outer fence longer than the inner one.
+
+A fix prompt or a diagnosis goes directly under its step, with the same parts, under the heading `### Fix [n]` or `### Diagnosis [n]`. In the chat, open it with one short, calm sentence on what is still missing, and end it by asking for the result, any error, or "done" if every check worked.
 
 ## Writing the prompt
 
@@ -86,16 +83,16 @@ HOW I KNOW IT WORKS:
 
 NOT YET: [The neighboring flows and other work this leaves alone.]
 
-Do only this. Keep [what already works] as it is, and when you finish, everything I can reach still works, with nothing half-finished. Add nothing I did not describe, publish or delete nothing I did not ask for, and never write passwords or keys into code or your report. If something cannot be done, tell me why in plain words and never fake a result. Then reply briefly in [my language]: report each check as PASSED, FAILED, or NOT VERIFIED (PASSED only if you tried it and saw it work), tell me how to see the result, and copy any error message exactly.
+Do only this. Keep [what already works] as it is, and when you finish, everything I can reach still works, with nothing half-finished. Add nothing I did not describe, publish or delete nothing I did not ask for, and never write passwords or keys into code or your report. If the project does not match what I said exists, stop and tell me what differs before you change anything. If something cannot be done, tell me why in plain words and never fake a result. Then reply briefly in [my language]: report each check as PASSED, FAILED, or NOT VERIFIED (PASSED only if you tried it and saw it work), tell me how to see the result, and copy any error message exactly.
 ```
 
 Every prompt must still carry:
 
 - **The project and the stack.** If the project exists, you cannot read it, and the user does not know its stack, write "Use what the project already uses." If you cannot establish the current state, ask the coding agent to look at the project first. If nothing exists, say so.
 - **The one flow, the checks, and `NOT YET`.** Give one to five checks. If nothing neighbors the flow, write "Nothing else in this step."
-- **What must not change, and how to report.** Keep the limits and the report request in the closing, in whatever words fit.
+- **What must not change, and how to report.** Keep the limits, the instruction to stop if the project does not match, and the report request in the closing, in whatever words fit.
 
-For a step with no user flow, such as the plan, saving a version, or a test run, the same shape applies: `WHAT I DO AND SEE` says what the user gets and sees. A test step says to report what fails and to fix nothing.
+For a step with no user flow, such as saving a version or a test run, the same shape applies: `WHAT I DO AND SEE` says what the user gets and sees. A test step says to report what fails and to fix nothing.
 
 ## Fix prompts
 
@@ -112,15 +109,15 @@ ANYTHING ELSE SHOWN: [the exact error text, or "none"]
 Find out why, and tell me in plain words. Fix only that, and leave everything I can reach working. These must still work: [all the step's other checks, in their original words]. Then reply briefly in [my language]: report each of these checks as PASSED, FAILED, or NOT VERIFIED (PASSED only if you tried it and saw it work), and copy any error message exactly.
 ```
 
-A diagnosis prompt adds `WHAT EARLIER FIXES TRIED:` and replaces the closing paragraph with: "Find out why this happens and explain it in plain words, with the file or setting it comes from and what shows it. Change no files." Its step message ends by asking the user to paste that explanation back, not by asking for "done".
+A diagnosis prompt adds `WHAT EARLIER FIXES TRIED:` and replaces the closing paragraph with: "Find out why this happens and explain it in plain words, with the file or setting it comes from and what shows it. Change no files." Its chat message ends by asking the user to paste that explanation back, not by asking for "done".
 
-## Before you send a prompt
+## Before you finish a prompt
 
 Reread the prompt as a coding agent in a brand-new session that has seen nothing else:
 
-- Is every statement about the tech stack and the current state from the conversation, the codebase, or a report? Replace any guess with the real fact, or leave it out so the coding agent finds it in the project.
+- Is every statement about the tech stack and the current state from the conversation, the codebase, a report, or what the earlier prompts in the sequence build? Replace any guess with the real fact, or leave it out so the coding agent finds it in the project.
 - Does it rely on another prompt, this conversation, or the user's memory? Remove every phrase such as "as before", "the previous step", or "the next step", and state the fact itself.
-- Does it cover more than one feature, flow, or outcome? Split it, update the roadmap, and check coverage again. Recording a change in `PROJECT_PLAN.md` does not count as a second outcome, and neither does listing the features in the plan itself.
+- Does it cover more than one feature, flow, or outcome? Split it, update the roadmap, and check coverage again.
 - Does it name the one flow it covers and what is not yet covered, without pointing at another prompt? Does it leave everything the user can reach working?
 - Does it ask for anything the user did not ask for and the step does not need? Remove it.
 - Does it say how to build anything? Rewrite that line as what the user wants and sees, as "Keep prompts high level" says. Is the stack stated only as a constraint, and is any file path, code location, or command left in? Remove it.
@@ -131,12 +128,10 @@ Reread the prompt as a coding agent in a brand-new session that has seen nothing
 
 ## Worked example
 
-The user is a beginner building a recipe tracker. They reported that the first version is saved in git, and the guide read the project's files. The guide replies:
+The user is a beginner building a recipe tracker. The earlier steps create a page that opens with a heading and save its first version. The guide writes this entry in `instructions.md`:
 
 ````markdown
-Your project now runs, and its first version is safely saved.
-
-**Step 4 of 10: Add a recipe**
+## Step 3 of 9: Add a recipe
 
 This step lets you add your first recipe and keep it. It comes first among the features because everything else in the app needs saved recipes.
 
@@ -155,12 +150,10 @@ HOW I KNOW IT WORKS:
 
 NOT YET: Finding a saved recipe by searching.
 
-Do only this. Keep the heading and the way I start the app as they are, and leave `PROJECT_PLAN.md` alone. When you finish, everything I can reach still works, with nothing half-finished. Add nothing I did not describe, publish or delete nothing, and never write passwords or keys into code or your report. If something cannot be done, tell me why in plain words and never fake a result. Then reply briefly in English: report each check as PASSED, FAILED, or NOT VERIFIED (PASSED only if you tried it and saw it work), tell me how to see the result, and copy any error message exactly.
+Do only this. Keep the heading and the way I start the app as they are. When you finish, everything I can reach still works, with nothing half-finished. Add nothing I did not describe, publish or delete nothing, and never write passwords or keys into code or your report. If the project does not match what I said exists, stop and tell me what differs before you change anything. If something cannot be done, tell me why in plain words and never fake a result. Then reply briefly in English: report each check as PASSED, FAILED, or NOT VERIFIED (PASSED only if you tried it and saw it work), tell me how to see the result, and copy any error message exactly.
 ```
 
 **What to expect:** The agent adds the form and the list, then replies with a short report and how to open the result.
 
 **How to check:** Open the app and save a recipe. Reload the page and see that it is still there. Then press Save with an empty name and see the message.
-
-Tell me the result, any error, or "done" if every check worked.
 ````
