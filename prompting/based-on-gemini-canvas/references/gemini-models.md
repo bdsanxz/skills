@@ -18,10 +18,11 @@ Contents
 
 ## Evidence levels
 
-Three kinds of evidence appear below. A lower kind never stands in for a higher one.
+Four kinds of evidence appear below. A lower kind never stands in for a higher one.
 
 | Kind | What it says |
 | --- | --- |
+| **Tested in Canvas, 2026-11-02, by the project owner** | Every model named in this reference was tried in Canvas. These five run there and are marked **Valid in Canvas** below: `gemini-2.5-flash-image-preview`, `gemini-2.5-flash-image`, `gemini-3.1-flash-image`, `gemini-3.1-flash-image-preview` and `gemini-2.5-flash-preview-tts`. |
 | **Official (Google)** | Canvas apps add "Gemini-powered features ... like text and image generation" through **Add Gemini features**. The viewer signs in and is 18 or over. Google publishes **no list of models a Canvas app may call**, and describes no API behind it. |
 | **Community reports, Oct 2025 to May 2026** | The code carries `const apiKey = "";` and Canvas supplies the key. The key is reported as model-scoped: other models fail with 403 `PERMISSION_DENIED` ("Method doesn't allow unregistered callers") or 401. Image generation reportedly broke and recovered several times (Jan, Feb, May 2026). No Google staff confirmation, nothing newer than May 2026, and no report at all on speech or video. |
 | **Working app (2026), reported by the project owner** | One app calls `generateContent` and `predict` with an empty key and walks the chains under "Models that answer under the host key". The owner reports that it works in Canvas. This is the strongest evidence here for what the host's key accepts. |
@@ -41,14 +42,14 @@ Choice follows the job. This table serves a viewer's own key, and for judging wh
 | Hard reasoning, as an explicit choice | `gemini-3.1-pro-preview` | Text and images in; text out. Preview, no shutdown date. | Appears as an explicit choice in Settings. Automatic selection avoids it, because previews can retire. |
 | Transcript with word timestamps and speakers | `gemini-3.5-transcribe` | Speech in; text out, with word timestamps, speaker diarization, utterance-based language detection and vocabulary biasing. Stable, no shutdown date. Its request format is unconfirmed in this reference. | Chosen where timing matters. A text-model transcript path stays as fallback, and Canvas acceptance is unconfirmed. |
 | Image generation and editing, default | `gemini-nano-banana-2.1` | Text and images in; images out. Quality, typography and multi-turn consistency. Stable, no shutdown date. | Google's recommended image model. |
-| Production-scale image generation | `gemini-3.1-flash-image` (Nano Banana 2) | Text and images in; images out. Speed for production-scale visual creation. Stable, no shutdown date. | Chosen for fast production output. Google recommends moving new work to `gemini-nano-banana-2.1`. |
+| Production-scale image generation | `gemini-3.1-flash-image` (Nano Banana 2) | Text and images in; images out. Speed for production-scale visual creation. Stable, no shutdown date. | Chosen for fast production output. Google recommends moving new work to `gemini-nano-banana-2.1`. **Valid in Canvas** (tested 2026-11-02). |
 | Many quick images, interactive use | `gemini-3.1-flash-lite-image` (Nano Banana 2 Lite) | Text and images in; images out. Lowest latency and cost. Stable, no shutdown date. | Chosen for bulk and interactive use. |
 | Highest-quality images, contextual, text-heavy | `gemini-3-pro-image` (Nano Banana Pro) | Text and images in; images out. Studio-quality 4K visuals, complex layouts, precise text rendering. Stable, no shutdown date. | Chosen for hero assets, not bulk. |
-| Fast creative image workflows, dated | `gemini-2.5-flash-image` (Nano Banana) | Text and images in; images out. Stable, shutdown 2027-03-15, replacement `gemini-3.1-flash-lite-image`. | Still served, with restricted access for new projects on the public API (not deprecated). New work prefers the 3.1 image line. |
+| Fast creative image workflows, dated | `gemini-2.5-flash-image` (Nano Banana) | Text and images in; images out. Stable, shutdown 2027-03-15, replacement `gemini-3.1-flash-lite-image`. | Still served, with restricted access for new projects on the public API (not deprecated). New work prefers the 3.1 image line. **Valid in Canvas** (tested 2026-11-02). |
 | Image generation, dated | `imagen-4.0-generate-001`, `imagen-3.0-generate-002` | Text in; images out through the `predict` call. Both shut down on the public API (2026-08-17 and 2025-11-10); replacement `gemini-nano-banana-2.1`. | Retired on the public API. Host-key chains still list them (see below), where the host's allow-list governs instead. |
 | Speech, narration, characters | `gemini-3.8-flash-tts` | Text in; audio out. Studio-grade voice fidelity, expressive delivery, voice design and replication, across 130 languages. Stable, no shutdown date. | The default voice model. |
 | Speech at volume | `gemini-3.8-flash-lite-tts` | Text in; audio out. Fast and cheap across 101 languages, with voice replication. Stable, no shutdown date. | Chosen for high-volume production and real-time cascades. |
-| Speech, dated previews | `gemini-2.5-flash-preview-tts`, `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts` | Text in; audio out. All three carry shutdown 2026-11-17; replacements `gemini-3.8-flash-tts` or `gemini-3.8-flash-lite-tts`. | Retiring. New work uses the 3.8 TTS line. |
+| Speech, dated previews | `gemini-2.5-flash-preview-tts`, `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts` | Text in; audio out. All three carry shutdown 2026-11-17; replacements `gemini-3.8-flash-tts` or `gemini-3.8-flash-lite-tts`. | Retiring. New work uses the 3.8 TTS line. `gemini-2.5-flash-preview-tts`: **Valid in Canvas** (tested 2026-11-02). |
 | Generated video clips | `gemini-omni-1.1-flash` (Gemini Omni Flash) | Text and images in; video with native audio out. Fast generation, editing, keyframe interpolation and extension. Stable, no shutdown date. | Chosen for generated clips. All Veo models are shut down. No Canvas evidence at all exists for it, and browser-rendered video, which needs no model and no quota, is preferred wherever it suffices. |
 | Generated video, dated (Veo family) | `veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview`, `veo-3.1-lite-generate-preview`, `veo-3.0-generate-001`, `veo-3.0-fast-generate-001`, `veo-2.0-generate-001` | Text and images in; video out. Shutdown 2026-10-22 for the 3.1 previews and 2026-06-30 for the 3.0 and 2.0 models; replacement `gemini-omni-1.1-flash`. | Retired. |
 | Generated music | `lyria-3.5` | Text in; music out. Full-length songs with structural coherence. Stable, no shutdown date. | The default music model. No Canvas evidence exists for it. |
@@ -78,7 +79,7 @@ Every model below also appears in `assets/gemini-models.json`. Models with a shu
 | `gemini-2.5-flash-lite-preview-09-2025` | text-volume | preview, shut down | 2026-03-31 | `gemini-3.1-flash-lite` | Retired. |
 | `gemini-2.0-flash` | text | stable, shut down | 2026-06-01 | `gemini-3.6-flash` | Retired. |
 | `gemini-2.0-flash-lite` | text-volume | stable, shut down | 2026-06-01 | `gemini-3.1-flash-lite` | Retired. |
-| `gemini-3.1-flash-image-preview` | image | preview, shut down | 2026-06-25 | `gemini-nano-banana-2.1` | Retired. |
+| `gemini-3.1-flash-image-preview` | image | preview, shut down | 2026-06-25 | `gemini-nano-banana-2.1` | Retired on the public API. **Valid in Canvas** (tested 2026-11-02). |
 | `gemini-3-pro-image-preview` | image-quality | preview, shut down | 2026-06-25 | `gemini-3-pro-image` | Retired. |
 | `gemini-2.0-flash-preview-image-generation` | image | preview, shut down | 2025-11-14 | `gemini-nano-banana-2.1` | Retired. |
 | `imagen-4.0-generate-001` | image | stable, shut down | 2026-08-17 | `gemini-nano-banana-2.1` | Retired on the public API. In the host-key image chain. |
@@ -106,28 +107,28 @@ Google limits access to the 2.5 models to users who have actively used them in t
 
 The project owner reports that a reference app, which tries exactly these models, works in the Canvas environment. This list comes first under the host's key, in this order, even where Google's public pages call a model retired or do not list it: the host's key has its own allow-list, so public status does not decide what it accepts. A fallback chain shows the set that was tried, never which entry answered for a given account, so the model test still reports what happens for each viewer.
 
-| Job | Order | Model | Call | Status on Google's public pages |
-| --- | --- | --- | --- | --- |
-| Text | 1 | `gemini-3-flash-preview` | `generateContent` | Preview, no shutdown date |
-| Text | 2 | `gemini-3-flash` | `generateContent` | Not listed |
-| Text | 3 | `gemini-2.5-flash-preview-09-2025` | `generateContent` | Retired 2026-02-17 |
-| Text | 4 | `gemini-3.8-flash` | `generateContent` | Stable |
-| Text | 5 | `gemini-3.6-flash` | `generateContent` | Stable |
-| Text | 6 | `gemini-3.5-flash` | `generateContent` | Alias of `gemini-3.6-flash` |
-| Text | 7 | `gemini-flash-latest` | `generateContent` | Not listed |
-| Text | 8 | `gemini-2.5-flash` | `generateContent` | Stable |
-| Text | 9 | `gemini-3.5-flash-lite` | `generateContent` | Stable |
-| Text | 10 | `gemini-3-flash-lite` | `generateContent` | Not listed |
-| Text | 11 | `gemini-flash-lite-latest` | `generateContent` | Not listed |
-| Text, picked by hand only | - | `gemini-3.1-pro-preview` | `generateContent` | Preview, no shutdown date |
-| Image | 1 | `imagen-4.0-generate-001` | `predict` | Retired 2026-08-17 |
-| Image | 2 | `gemini-2.5-flash-image-preview` | `generateContent` | Retired 2026-01-15 |
-| Image | 3 | `gemini-2.5-flash-image` | `generateContent` | Stable, earliest shutdown 2027-03-15 |
-| Image | 4 | `imagen-3.0-generate-002` | `predict` | Retired 2025-11-10 |
-| Speech | 1 | `gemini-2.5-flash-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 |
-| Speech | 2 | `gemini-3.1-flash-tts-preview` | `generateContent` | Earliest shutdown 2026-11-17 |
-| Speech | 3 | `gemini-3.8-flash-tts` | `generateContent` | Stable |
-| Speech | 4 | `gemini-2.5-pro-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 |
+| Job | Order | Model | Call | Status on Google's public pages | Tested in Canvas |
+| --- | --- | --- | --- | --- | --- |
+| Text | 1 | `gemini-3-flash-preview` | `generateContent` | Preview, no shutdown date | — |
+| Text | 2 | `gemini-3-flash` | `generateContent` | Not listed | — |
+| Text | 3 | `gemini-2.5-flash-preview-09-2025` | `generateContent` | Retired 2026-02-17 | — |
+| Text | 4 | `gemini-3.8-flash` | `generateContent` | Stable | — |
+| Text | 5 | `gemini-3.6-flash` | `generateContent` | Stable | — |
+| Text | 6 | `gemini-3.5-flash` | `generateContent` | Alias of `gemini-3.6-flash` | — |
+| Text | 7 | `gemini-flash-latest` | `generateContent` | Not listed | — |
+| Text | 8 | `gemini-2.5-flash` | `generateContent` | Stable | — |
+| Text | 9 | `gemini-3.5-flash-lite` | `generateContent` | Stable | — |
+| Text | 10 | `gemini-3-flash-lite` | `generateContent` | Not listed | — |
+| Text | 11 | `gemini-flash-lite-latest` | `generateContent` | Not listed | — |
+| Text, picked by hand only | - | `gemini-3.1-pro-preview` | `generateContent` | Preview, no shutdown date | — |
+| Image | 1 | `imagen-4.0-generate-001` | `predict` | Retired 2026-08-17 | — |
+| Image | 2 | `gemini-2.5-flash-image-preview` | `generateContent` | Retired 2026-01-15 | **Valid** (2026-11-02) |
+| Image | 3 | `gemini-2.5-flash-image` | `generateContent` | Stable, earliest shutdown 2027-03-15 | **Valid** (2026-11-02) |
+| Image | 4 | `imagen-3.0-generate-002` | `predict` | Retired 2025-11-10 | — |
+| Speech | 1 | `gemini-2.5-flash-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 | **Valid** (2026-11-02) |
+| Speech | 2 | `gemini-3.1-flash-tts-preview` | `generateContent` | Earliest shutdown 2026-11-17 | — |
+| Speech | 3 | `gemini-3.8-flash-tts` | `generateContent` | Stable | — |
+| Speech | 4 | `gemini-2.5-pro-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 | — |
 
 The reference app's model picker describes its automatic mode as working for all accounts, and describes `gemini-3.8-flash` and `gemini-3.1-pro-preview` as needing an account plan that supports them. The automatic chain therefore stays the default, with the hand-picked models offered in Settings.
 

@@ -1,5 +1,6 @@
 {
   "checkedOn": "2026-11-02",
+  "validInCanvasTestedOn": "2026-11-02",
   "models": [
     { "id": "gemini-4-argon", "job": "text-reasoning", "status": "stable" },
     { "id": "gemini-3.8-flash", "job": "text", "status": "stable" },
@@ -29,11 +30,11 @@
     { "id": "gemini-nano-banana-2.1", "job": "image", "status": "stable" },
     { "id": "gemini-3.1-flash-lite-image", "job": "image-volume", "status": "stable" },
     { "id": "gemini-3-pro-image", "job": "image-quality", "status": "stable" },
-    { "id": "gemini-3.1-flash-image", "job": "image", "status": "stable", "replacement": "gemini-nano-banana-2.1", "note": "Google recommends moving to the replacement." },
-    { "id": "gemini-2.5-flash-image", "job": "image", "status": "stable", "shutdown": "2027-03-15", "replacement": "gemini-3.1-flash-lite-image", "note": "Restricted to past users on the public API; not deprecated." },
-    { "id": "gemini-3.1-flash-image-preview", "job": "image", "status": "preview", "shutdown": "2026-06-25", "replacement": "gemini-nano-banana-2.1" },
+    { "id": "gemini-3.1-flash-image", "job": "image", "status": "stable", "replacement": "gemini-nano-banana-2.1", "note": "Google recommends moving to the replacement.", "validInCanvas": true },
+    { "id": "gemini-2.5-flash-image", "job": "image", "status": "stable", "shutdown": "2027-03-15", "replacement": "gemini-3.1-flash-lite-image", "note": "Restricted to past users on the public API; not deprecated.", "validInCanvas": true },
+    { "id": "gemini-3.1-flash-image-preview", "job": "image", "status": "preview", "shutdown": "2026-06-25", "replacement": "gemini-nano-banana-2.1", "validInCanvas": true },
     { "id": "gemini-3-pro-image-preview", "job": "image-quality", "status": "preview", "shutdown": "2026-06-25", "replacement": "gemini-3-pro-image" },
-    { "id": "gemini-2.5-flash-image-preview", "job": "image", "status": "preview", "shutdown": "2026-01-15", "replacement": "gemini-nano-banana-2.1", "canvasLegacy": true },
+    { "id": "gemini-2.5-flash-image-preview", "job": "image", "status": "preview", "shutdown": "2026-01-15", "replacement": "gemini-nano-banana-2.1", "canvasLegacy": true, "validInCanvas": true },
     { "id": "gemini-2.0-flash-preview-image-generation", "job": "image", "status": "preview", "shutdown": "2025-11-14", "replacement": "gemini-nano-banana-2.1" },
     { "id": "imagen-4.0-generate-001", "job": "image", "status": "stable", "shutdown": "2026-08-17", "replacement": "gemini-nano-banana-2.1", "canvasLegacy": true },
     { "id": "imagen-4.0-ultra-generate-001", "job": "image-quality", "status": "stable", "shutdown": "2026-08-17", "replacement": "gemini-nano-banana-2.1" },
@@ -43,7 +44,7 @@
     { "id": "gemini-3.8-flash-tts", "job": "speech", "status": "stable" },
     { "id": "gemini-3.8-flash-lite-tts", "job": "speech-volume", "status": "stable" },
     { "id": "gemini-3.1-flash-tts-preview", "job": "speech", "status": "preview", "shutdown": "2026-11-17", "replacement": "gemini-3.8-flash-tts", "canvasLegacy": true },
-    { "id": "gemini-2.5-flash-preview-tts", "job": "speech", "status": "preview", "shutdown": "2026-11-17", "replacement": "gemini-3.8-flash-tts", "canvasLegacy": true },
+    { "id": "gemini-2.5-flash-preview-tts", "job": "speech", "status": "preview", "shutdown": "2026-11-17", "replacement": "gemini-3.8-flash-tts", "canvasLegacy": true, "validInCanvas": true },
     { "id": "gemini-2.5-pro-preview-tts", "job": "speech", "status": "preview", "shutdown": "2026-11-17", "replacement": "gemini-3.8-flash-tts", "canvasLegacy": true },
 
     { "id": "gemini-3.5-transcribe", "job": "transcription", "status": "stable" },
