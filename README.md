@@ -62,6 +62,7 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 | --- | --- |
 | [`build-vite-inline`](frontend/build-vite-inline/SKILL.md) | Builds any Vite web project into one self-contained HTML file, encoded behind a small loader and optionally obfuscated, compatible with Google Gemini Canvas and any static host, and checks or decodes the result. |
 | [`pixel-perfect`](frontend/pixel-perfect/SKILL.md) | Implements UI design images as real, reusable code on web, desktop or mobile, and proves the match with measured values and a per-pixel diff. |
+| [`reactjs-to-solidjs`](frontend/reactjs-to-solidjs/SKILL.md) | Ports React code to idiomatic SolidJS, or writes and reviews Solid code, using React-to-Solid equivalents taken from the official Solid docs. Each mapping shows the React version, the correct Solid version and the React habit to avoid, with a review checklist for the bugs those habits cause. |
 
 ### Product
 
