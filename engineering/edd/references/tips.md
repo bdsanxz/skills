@@ -16,19 +16,19 @@ Every tip here comes from a real run: a mistake an agent made while working this
 - **A script edited while it ran.** A long evidence script was patched during its run, and it then had to be checked whether the shell had read half of the old text and half of the new. Leave a running script alone; run the changed one in a new work folder.
 - **Only the tests were run between tickets.** Formatting and lint failures in newer test files surfaced at the final gate run, on top of everything else waiting there. Run every gate after each criterion, not the tests alone.
 
-## Phase 1: criteria
+## Criteria
 
 - **Stand-ins found at the end.** Four kinds of criteria could not be checked as written on that machine: "with the network disconnected", "the user's own browser", "a display with another scale factor", "opened in a standard player". They were checked by stand-ins, marked as done, and mentioned only in the closing summary. The close-out was rejected and reopened. The agent then did one of them for real after all, and the user accepted two and chose to check the last one personally. Look for these while reading the criteria, and ask before building.
 - **Criteria paraphrased in a second place.** A progress checklist held each criterion in shortened form. When the user approved new wording for five criteria, the tickets changed and the checklist kept the old text until the final audit. Keep the criterion word for word in the ledger, and read it again at its source before closing.
 - **A criterion that the measurements contradicted.** One criterion required the product to match a reference, and two earlier criteria fixed rules under which it could not. The agent measured both sides, put the numbers and three choices to the user (change our rules, approve the gap, decide later), and built nothing until the answer came. Do the same: a contradiction between criteria is the user's decision.
 
-## Phase 2: build
+## Build
 
 - **A defect parked behind an ignored test.** A subagent found that an error message did not name the file it was about, wrote the test, marked it ignored, and reported its work as passing. The suite was green. Search every test run for skipped and ignored tests, and treat each as a failure until it runs or the user has accepted it.
 - **A timing test tuned on an idle machine.** A test sized its long run from two short calibration runs. Alone it passed; in the full gate run, with the other tests loading the machine, it failed and blocked a push. Run a timing-sensitive test under the load the gate gives it, and let it measure again when its first estimate was off.
-- **Green here, red on CI.** The tests ran against one build of the browser locally and another on CI. Three passed locally and failed there, and a hang at small sizes showed only with that build. Each round trip cost a CI run. Learn in Phase 0 what the deciding environment uses, and run the suite in that variant before claiming a pass.
+- **Green here, red on CI.** The tests ran against one build of the browser locally and another on CI. Three passed locally and failed there, and a hang at small sizes showed only with that build. Each round trip cost a CI run. Learn during set-up what the deciding environment uses, and run the suite in that variant before claiming a pass.
 
-## Phase 3: gathering evidence
+## Gather evidence
 
 - **A check weaker than the claim.** The criterion said no process started by the run was left. The check counted processes by the main program's name, so helper processes were never counted, and "0 left" would have been printed with helpers still alive. It was caught by reading the transcript against the criterion's words. Ask of every check whether it would have come out the same with the feature broken, and fix the test along with the script.
 - **Decoding offered as playing.** For "the video plays in a standard player" the first evidence was a decode of the file and frames cut from it, then a player whose state a script read. Neither is a person's view of a player playing. It was redone with the video played on screen and screenshots taken during playback. For a criterion about something seen, the evidence is a picture of that thing.
@@ -40,13 +40,13 @@ Every tip here comes from a real run: a mistake an agent made while working this
 - **The first transcript accepted because it looked right.** The agent's better findings (the weak process check, an exit code that did not fit, a duplicated picture) all came from reading whole transcripts line by line and opening every picture. Searching for the expected line would have found the expected line.
 - **Forbidden content almost copied.** The project did not allow log lines in evidence. Evidence about the log had to state conclusions and counts instead. Read the project's rules on records before writing the first transcript.
 
-## Phase 4: recording
+## Record
 
 - **Quotes written from memory.** Rows drafted from the transcripts quoted values that were close to the files and not in them: a shortened hash, a reworded phrase. A script that searched each quote in its file found them. Copy quotes from the file, and let `ledger check` confirm them.
 - **A quote check that also searched the scripts.** The home-made checker looked for each quote in the scripts as well as in the transcripts, so a label that a script prints as fixed text would have counted as found. Name scripts in `made_by`, where quotes are not searched, and let observation lines carry computed values.
 - **Rows drafted without the file open.** Two rows drafted by subagents had to be corrected once they were read against their evidence. Write `shows` with the file in front of you, and say what it does not show.
 
-## Phase 5: closing
+## Close
 
 - **Evidence that outlived a change.** After the user approved new rules for one feature, the evidence of the two tickets about it was redone. One other ticket's evidence, and one test, still assumed the old rules, and were found only by a search during the final gate run. After any change in behavior, run every evidence script again; `ledger check` names what is older than the code.
 - **A gate result older than the code.** The record cited "386 passed" from a run made before a later change to a test. Take the test log from a run on the final code, after the last edit.

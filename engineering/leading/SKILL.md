@@ -17,7 +17,7 @@ You lead one worker agent through a list of instructions the user has provided. 
 5. Never weaken a check to reach a pass. A check you could not perform is `NOT VERIFIED`, and it holds the step back until the user accepts it.
 6. Never put passwords, keys or tokens in a message, a report or a progress entry. Do not run anything that publishes, deletes data or spends money in order to verify a step. Ask the user if a check needs it.
 
-## Phase 1: Set up
+## Set up
 
 1. Read the instructions file or the conversation that holds the instructions. Split them into ordered steps, keeping each instruction's text exact. If the source is a log that also holds repeats, fixes or diagnoses from an earlier run, take only the original instruction of each step, and show the user the list if that is not clear. If the order or the boundaries are unclear, ask the user one short question at a time. Never edit the source.
 2. Give the run a short hyphenated `<slug>` from what is being built. Your run directory is `_swe/leading/<slug>/` in the folder you are working in, with `reports/`, `sent/` and `snapshots/` inside it. If it already exists, go to "Resume".
@@ -30,61 +30,61 @@ You lead one worker agent through a list of instructions the user has provided. 
    - Note your own address: `$HC_TERMINAL_ID`, or your row in `hcx ls`.
 6. Write `progress.md` in the run directory: the source of the instructions, the worker, your address, the project's commands, how you take snapshots, and each step with its title and status (`to do`, `current`, `passed`, or `accepted by user`). Update it at every change in this workflow.
 
-## Phase 2: Send one step
+## Send one step
 
-1. Mark the step `current`. Under it in `progress.md`, write the checks:
+7. Mark the step `current`. Under it in `progress.md`, write the checks:
    - **Code checks:** what the instruction requires to exist or change, plus the project's own test, type and build commands that apply.
    - **UI checks:** what a person must see and be able to do. If the instruction has its own checks, such as a "how I know it works" list, copy them word for word. A step with no effect on any screen says `UI: none` and why.
    - **Must not change:** what the instruction says to leave alone, and everything already passed.
-2. Record the starting point:
+8. Record the starting point:
    - In a git repository, write down `git rev-parse HEAD` and save `git status --short`. Elsewhere, create the empty file `sent/<step>.start`, so you can later find files newer than it.
    - If the step has UI checks and the app already runs, take a snapshot of each affected screen as `snapshots/<step>-before-<screen>.png`.
-3. Write the message to `sent/<step>-<attempt>.md`: the instruction word for word, then this closing, with the paths and address filled in:
+9. Write the message to `sent/<step>-<attempt>.md`: the instruction word for word, then this closing, with the paths and address filled in:
 
    ```text
    When you finish or get stuck, write your report to <absolute report path>: what you changed, each check you tried with what you saw, and any error copied exactly. Then run: hcx send --no-footer <your address> "Step <step> report: <absolute report path>"
    ```
 
    The report path is `reports/<step>-<attempt>.md` in the run directory. `<attempt>` starts at 1.
-4. Send it: `hcx send --no-footer <worker> "$(cat <message file>)"`. Read the printed result. If it says the message was not delivered or the delivery is unconfirmed, read the worker's screen before you send again, so nothing is sent twice.
-5. Wait for the worker: end your turn when its report arrives as a new turn in your runtime, or run `hcx wait <worker>`. Do not check on it in a tight loop.
-6. When you are running again, go to Phase 3 once the report file exists. Otherwise, read the screen with `hcx read <worker>` and act on what it shows:
+10. Send it: `hcx send --no-footer <worker> "$(cat <message file>)"`. Read the printed result. If it says the message was not delivered or the delivery is unconfirmed, read the worker's screen before you send again, so nothing is sent twice.
+11. Wait for the worker: end your turn when its report arrives as a new turn in your runtime, or run `hcx wait <worker>`. Do not check on it in a tight loop.
+12. When you are running again, go to "Verify" once the report file exists. Otherwise, read the screen with `hcx read <worker>` and act on what it shows:
    - **It is still working.** Keep waiting.
    - **It asks a question.** Answer only from the instructions and the project. If they do not answer it, ask the user and pass on the answer.
    - **It stopped without a report.** Ask for the report once.
-   - **It is gone or stuck.** Tell the user. With their go-ahead, start a new worker as in Phase 1, tell it what already exists, and send the step again.
+   - **It is gone or stuck.** Tell the user. With their go-ahead, start a new worker as in item 5, tell it what already exists, and send the step again.
 
-## Phase 3: Verify
+## Verify
 
 Do this only while the worker is idle (`hcx get <worker>`), so the code does not change under you. Read the report from its file, then check everything yourself. Write what you ran and saw under the step in `progress.md`.
 
 **By code:**
 
-1. See what actually changed: `git status --short` and `git diff <start commit>`, including new files and any commits the worker made. Without git, find the files newer than `sent/<step>.start`.
-2. Read the changed code against each code check. Confirm that the required behavior is really built, not stubbed, hardcoded or left as a TODO, and that no test was removed or weakened to get a pass.
-3. Run the applicable test, type and build commands yourself, and keep the output as printed. If a command writes tracked files, restore nothing: report it to the user as a problem with the check, and use a copy of the project from then on.
-4. Compare the change with the instruction. Anything outside it, or anything on the "must not change" list that changed, is a failure.
+13. See what actually changed: `git status --short` and `git diff <start commit>`, including new files and any commits the worker made. Without git, find the files newer than `sent/<step>.start`.
+14. Read the changed code against each code check. Confirm that the required behavior is really built, not stubbed, hardcoded or left as a TODO, and that no test was removed or weakened to get a pass.
+15. Run the applicable test, type and build commands yourself, and keep the output as printed. If a command writes tracked files, restore nothing: report it to the user as a problem with the check, and use a copy of the project from then on.
+16. Compare the change with the instruction. Anything outside it, or anything on the "must not change" list that changed, is a failure.
 
 **By UI snapshot:**
 
-1. Start the app the way its user starts it, or use the one already running, confirming it serves the current code. If you started it, stop it when you finish.
-2. For each UI check, do what the check says through the real interface, then take a snapshot as `snapshots/<step>-<attempt>-<check>.png`. Include the error and empty states the check names.
-3. Open each snapshot and look at it. A file that exists proves nothing. Judge it against the check's words and the matching `before` snapshot: right content, nothing broken or overlapping, nothing that used to be there gone. A blank or half-loaded picture is not a pass, so take it again.
-4. Read the browser's console and failed requests where your tool shows them.
-5. Walk one path through a flow that passed in an earlier step that this change could have broken.
+17. Start the app the way its user starts it, or use the one already running, confirming it serves the current code. If you started it, stop it when you finish.
+18. For each UI check, do what the check says through the real interface, then take a snapshot as `snapshots/<step>-<attempt>-<check>.png`. Include the error and empty states the check names.
+19. Open each snapshot and look at it. A file that exists proves nothing. Judge it against the check's words and the matching `before` snapshot: right content, nothing broken or overlapping, nothing that used to be there gone. A blank or half-loaded picture is not a pass, so take it again.
+20. Read the browser's console and failed requests where your tool shows them.
+21. Walk one path through a flow that passed in an earlier step that this change could have broken.
 
 **Verdict:** each check is `PASSED`, `FAILED` or `NOT VERIFIED`, based only on what you saw. The worker's report only tells you where to look.
 
-## Phase 4: Decide
+## Decide
 
-1. **Every check passed.** Mark the step `passed`, and go to Phase 2 for the next step. After the last step, go to "Finish".
-2. **A check failed, or the worker changed something it should not have.** Go to "Correct the worker".
-3. **A check is `NOT VERIFIED`.** Try another way to perform it. If none exists, tell the user what you could not check and why, and wait. If they accept it, mark the step `accepted by user` with their words.
-4. **The worker says the instruction cannot be done, or it conflicts with an earlier step.** Check whether that is true, then ask the user. Never skip or change the instruction on your own.
+- **Every check passed.** Mark the step `passed`, and go to "Send one step" for the next step. After the last step, go to "Finish".
+- **A check failed, or the worker changed something it should not have.** Go to "Correct the worker".
+- **A check is `NOT VERIFIED`.** Try another way to perform it. If none exists, tell the user what you could not check and why, and wait. If they accept it, mark the step `accepted by user` with their words.
+- **The worker says the instruction cannot be done, or it conflicts with an earlier step.** Check whether that is true, then ask the user. Never skip or change the instruction on your own.
 
 ## Correct the worker
 
-1. Send the correction to the same worker, so it keeps what it knows, with attempt number +1. Write it to `sent/<step>-<attempt>.md`, and send it as in Phase 2:
+1. Send the correction to the same worker, so it keeps what it knows, with attempt number +1. Write it to `sent/<step>-<attempt>.md`, and send it as in items 9 and 10:
 
    ```text
    Step <step> is not finished. Fix only what is below, and keep everything else as it is.
@@ -95,8 +95,8 @@ Do this only while the worker is idle (`hcx get <worker>`), so the code does not
    THESE MUST STILL WORK: <the step's other checks>
    ```
 
-   End it with the same closing as in Phase 2, with the new report path. Say what is wrong and what you observed, not how to code the fix.
-2. Verify again from the start of Phase 3, every check, not only the one that failed.
+   End it with the same closing as in item 9, with the new report path. Say what is wrong and what you observed, not how to code the fix.
+2. Verify again from the start of "Verify", every check, not only the one that failed.
 3. After three failed corrections on the same step, stop. Send the user the check, what each attempt tried, the paths of the latest snapshot and report, and your view of the cause, and wait for their decision.
 
 ## Finish
@@ -110,5 +110,5 @@ Do this only while the worker is idle (`hcx get <worker>`), so the code does not
 After a compaction or in a new session, trust the files, not your memory:
 
 1. Read `progress.md`, the source of the instructions, and the latest files in `sent/` and `reports/` for the `current` step.
-2. Read the worker's screen with `hcx read <worker>`. If its address no longer answers, find it with `hcx ls`, or handle it as "gone or stuck" in Phase 2.
-3. If the latest message has a report, go to Phase 3 and verify it from the start, since you cannot rely on an earlier check that is not written down. If it has no report, continue at Phase 2, step 6. If no message was sent for the `current` step, go to Phase 2, step 2.
+2. Read the worker's screen with `hcx read <worker>`. If its address no longer answers, find it with `hcx ls`, or handle it as "gone or stuck" in item 12.
+3. If the latest message has a report, go to "Verify" and verify it from the start, since you cannot rely on an earlier check that is not written down. If it has no report, continue at item 12. If no message was sent for the `current` step, go to item 8.

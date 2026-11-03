@@ -11,18 +11,21 @@ Every tip here is a mistake an agent actually made while using this skill, with 
 - **Captures scored unread.** On a web run, a basic static server (`python -m http.server`) dropped image requests under load, and eight rounds were scored on captures with missing images before anyone looked. Read the first screenshot of every harness and page, capture twice and `pp diff` the two before trusting a setup, and never score a screenshot that breaks the capture contract.
 - **The same thirteen arguments retyped every round.** Put a round's `--run`, `--scale` and `--item` list in a file and pass `@file`.
 - **Errors thrown away.** A probe was called with a flag it does not have, as `pp measure edges ... --brief 2>/dev/null | head || true`. The command failed, printed nothing, and the run went on without the reading. Never send a tool's errors to `/dev/null` and never add `|| true`: an empty answer is a failed command. Each probe has its own flags; `pp measure <probe> --help` lists them.
+- **Capture denied by the operating system.** A worker ran in a terminal process without macOS Screen Recording permission. It rendered every design first, then found that each `screencapture` failed (`could not create image from window`, `could not create image from display`), and the whole run stopped with nothing scored. Prove the capture during set-up, with one full-screen shot and then a window shot, before any other work; a denial is the user's to fix, so report it at once.
 
-## Phase 1: inventory
+## Inventory
 
+- **A design rendered at an assumed scale.** HTML designs were rendered at scale 2, then all re-rendered at scale 1 once the displays turned out to be 1x. When you produce the design images yourself, measure the capture machine's display scale first (on macOS, `NSScreen.backingScaleFactor`) and render at that.
+- **Design fonts not installed.** The designs loaded web fonts that the machine did not have; the toolkit fell back to another font without any error, and a hero rebuilt at measured sizes scored 1.2 instead of 11.6, because more text was now drawn in the wrong font. Check during the inventory that every design font resolves on the capture machine (`fc-match <family>` names that family, or the platform's font list holds it), render a sample of each in the target UI, and put the missing ones in the inventory question.
 - **Page sections taken for components.** The first inventory listed twelve full-width bands (header, hero, each shelf, footer) as "components". The buttons, cards, dots, arrows and headings inside them never got a reference or a loop of their own, and their errors stayed hidden inside the bands. If a thing appears more than once, or could, it is a component; a band that arranges components is a section.
-- **Source quality not checked.** Thirteen iterations were spent on a design that was a rescaled screenshot before anyone established that its text could not match. Read `source.quality` from `pp measure info` first, and put the consequence to the user in the Phase 1 question.
+- **Source quality not checked.** Thirteen iterations were spent on a design that was a rescaled screenshot before anyone established that its text could not match. Read `source.quality` from `pp measure info` first, and put the consequence to the user in the inventory question.
 - **A substitute font accepted too early.** The run went ahead with a look-alike font; the real files turned out to be available as soon as the user was asked where the live site serves them from. Ask for the font files, or their URLs, before proposing a substitute.
 - **Family and weight guessed at a glance.** Body links were set in Regular where the design had Light, a paragraph in Medium where it had Regular, a heading in the body font where it had the display font. Each took several rounds to find. Zoom the design's text beside renders of the candidates (`compare --pair`, `measure zoom`) and choose by letter shapes and stroke thickness, for every text style, before tuning any size.
-- **Cut-off images shipped as slivers.** The last item of two carousels was clipped by its container in the design, and each was cropped and shipped as it appeared: image files 137 px and 79 px wide. Sliding the carousel would show half a picture. The user caught it, after the page was built, and every reference and asset containing those items had to be cut again. Complete cut-off images with `pp measure substitute` in Phase 1, before anything is cropped.
+- **Cut-off images shipped as slivers.** The last item of two carousels was clipped by its container in the design, and each was cropped and shipped as it appeared: image files 137 px and 79 px wide. Sliding the carousel would show half a picture. The user caught it, after the page was built, and every reference and asset containing those items had to be cut again. Complete cut-off images with `pp measure substitute` during the inventory, before anything is cropped.
 - **A substitute that brought its surroundings along.** The first image chosen to stand in for a cut-off phone had a corner of a blue decoration showing behind it, and that speck was pasted into the slot. Choose a source whose box holds only the image, on the same backdrop as the slot, and read the `--preview` sheet before going on.
 - **Coordinates read off a picture.** A design over 2000 px on a side is shown shrunk, so a position read by eye is off by the shrink factor. What you see says what is there; a probe says where.
 
-## Phase 2: measuring
+## Measure
 
 - **One variant measured, its numbers used for all.** Card images were assumed square and equal; each row's images had their own height, and the bottom rows of some had been cropped away. Two sets of pagination dots built at different sizes were one component. Measure every variant.
 - **Reference rectangles taken from the render.** A script read each element's box from the rendered page and cropped the design there, again after every code change. The reference then moved with the code and its size always "matched". A reference rectangle is measured on the design, once.
@@ -33,7 +36,7 @@ Every tip here is a mistake an agent actually made while using this skill, with 
 - **A gradient measured with text on it.** The text bent the fit. Pass each color that is not part of the fill as `--ignore`.
 - **A band on a gradient backdrop read as one item.** With a low `--tolerance` the backdrop's own variation counted as content and the whole region came back as a single box. Pass the local backdrop as `--bg` and raise `--tolerance` until the band splits into its items; once it does, the boxes no longer depend on the tolerance.
 
-## Phase 3: building components
+## Build each component
 
 - **The whole page drafted first.** One 400-line page was written, then tuned for dozens of rounds. Mismatch from the code and mismatch from the source could not be told apart until the work was redone bottom up. Build and finish components first.
 - **Calibration skipped.** The ceiling was discovered at page level, late. The first component with text shows it in a round or two.
@@ -49,7 +52,7 @@ Every tip here is a mistake an agent actually made while using this skill, with 
 - **"Close enough for now."** A badge's curve, a play icon, arrow shadows and a traced shape were left with known gaps while work moved on, and stayed that way for many rounds. Finish a component before leaving it.
 - **Tuning past the stop rule.** Two text bars stopped improving at their third round and were re-run nine more times. Run `pp scores` after every failed round, and end the loop of any item it lists under `stop_now`.
 
-## Phase 4: sections and pages
+## Compose sections, then pages
 
 - **Decorations anchored to the full width.** Carousel arrows, and later a footer's background shape, were positioned against a full-width ancestor. Both matched at the design width and drifted away from their content on the user's wider screen. Anchor them to the centred content they belong to. This mistake was made twice in one run.
 - **Images sized by a density hint alone.** On a web run, images were given `srcset="... 2x"` and no stated size. At the design's 2x density they were exact; on a normal screen they rendered at double size, and the user found the footer broken. Every raster gets an explicit width and height in the layout.
@@ -58,7 +61,8 @@ Every tip here is a mistake an agent actually made while using this skill, with 
 - **A fix made at the wrong level.** Offsets found in a page round were applied inside components, which then had to be undone. A page round settles only what lies between sections.
 - **A fixed-width page.** The container was pinned to the design's width in the first draft and was still pinned five rounds later. Use a maximum width and fluid children from the start; retrofitting it means re-running everything.
 
-## Phase 5: reporting
+## Self-check and report
 
+- **Baselines reported as done.** A worker scored one page round per screen (10 to 25%), rebuilt nothing, marked every item of its own to-do list done and reported back. A run ends only when every item passes, is listed under `stop_now`, or is shown to be at the ceiling; anything else is reported as stopped, with what is left.
 - **Scores from broken captures reported as progress.** They had to be withdrawn. Evidence is only what `check` scored from a screenshot that meets the capture contract.
 - **A report that grew by appending.** Each round added a "Round N" narrative while the tables above went stale. Regenerate the Scores table from `pp scores --markdown` and rewrite the sections that changed.

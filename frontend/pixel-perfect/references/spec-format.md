@@ -6,7 +6,7 @@ All coordinates are image pixels of the named design image. Lengths meant for co
 
 ## Run directory layout
 
-Each run has its own directory, named in Phase 0, so several designs can be worked on in one project without their files mixing. `pp check`, `pp compare` and `pp scores` reach it with `--run <name>`.
+Each run has its own directory, named during set-up, so several designs can be worked on in one project without their files mixing. `pp check`, `pp compare` and `pp scores` reach it with `--run <name>`.
 
 ```
 _swe/pixel-perfect/<name>/
@@ -73,7 +73,7 @@ pages[1]{name,images,sections,status,best_score,iterations}:
 
 - `platform` is what the UI runs on (`web`, `egui desktop app`, `iOS app`), and `capture` the steps that produce a screenshot meeting the capture contract, written so that a resumed run can repeat them.
 - `kind` of an image is `page`, `breakpoint` (another width or window size of a page) or `state`. `width_pt` is the width of its screen or window in points.
-- `path` of an image is the file every probe and check uses: the `.subs` copy when Phase 1 made one, otherwise the original. `substitutions` lists every swap in it, images and text alike, as `pp measure substitute` prints them; leave the table out when there are none.
+- `path` of an image is the file every probe and check uses: the `.subs` copy when the inventory made one, otherwise the original. `substitutions` lists every swap in it, images and text alike, as `pp measure substitute` prints them; leave the table out when there are none.
 - `blanks` lists the code-built UI removed from blanked crops, as `pp measure crops --blank` prints them; leave the table out when there are none.
 - `source_quality` of an image is `source.quality` from `pp measure info`. A `soft` image is one the user has been told about.
 - `soft_sources` records what the user decided about images whose source quality is `soft`. Leave it out when every source is sharp.

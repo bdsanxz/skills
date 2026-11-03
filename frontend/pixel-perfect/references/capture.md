@@ -25,6 +25,8 @@ Use the project's own means first: a preview tool, snapshot tests, or a UI-test 
 | Desktop app | The toolkit's own screenshot or offscreen render at the design scale (in egui, with `pixels_per_point` set to the design scale); failing that, the operating system's capture of that one window, without its shadow |
 | Mobile app | The simulator's or emulator's screenshot command, on a device whose pixel density is the design scale |
 
+On macOS, the window capture is `screencapture -l <window id> -o -x <file>` (`-o` leaves out the shadow). Read the window id from `CGWindowListCopyWindowInfo` (for example in a short Swift script), matching the app's owner name and the window's bounds. It needs Screen Recording permission for the process the terminal runs in; without it every capture fails with `could not create image from window` or `could not create image from display`.
+
 Reach a state (hover, focus, pressed, an open menu) through real input, using whatever drives the platform: browser automation, taps in a simulator, the framework's UI-test driver. Each state is its own screenshot.
 
 Save screenshots in the run directory's `shots/`. Record the capture steps that work in the inventory, and capture the same way every round.
@@ -39,7 +41,7 @@ pp check --run <name> --shot <screenshot.png> --scale <design scale> \
 
 - `--scale` is the design scale. It turns the lengths in the results into points; it never resizes anything.
 - `--item name/variant=x,y,w,h` cuts that box, in screenshot pixels, out of the screenshot and scores it against `components/<name>/ref/<variant>.png`. The variant is `default` when left out. `--section name=x,y,w,h` does the same for a section, against `sections/<name>/ref/default.png`. List everything that one screenshot shows in one call.
-- `--page name/image=design.png` scores the whole screenshot against a design image. When Phase 1 made a `.subs` copy of the design, give that file; `check` refuses the original.
+- `--page name/image=design.png` scores the whole screenshot against a design image. When the inventory made a `.subs` copy of the design, give that file; `check` refuses the original.
 - Keep a round's list in a file and pass it as `@file`: the file holds the arguments as you would type them, on as many lines as you like, `#` starting a comment. Write it once per harness or page and reuse it every round. `--run` and `--scale` can go in it too.
 - A round gets one iteration number for all its items: the first that none of them has used. `check` never overwrites an iteration. A round that needs more than one screenshot (a state, a harness too large for one window) is one call per screenshot, each with the same `--iter <n>`.
 - `check --sheet` also writes `sheets/iter-NN.png`: every small item's reference beside its render on one image. Read it after the first round on a harness.

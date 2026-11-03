@@ -7,9 +7,9 @@ description: Build any Vite web project into one self-contained HTML file with a
 
 Turn the user's Vite project into `dist/index.html`: one file that holds the whole app and runs on its own, opened from disk, served by any static host, or pasted into Gemini Canvas. Only production builds change, so the development server stays readable.
 
-`<skill>` below means this skill's directory. Run every script by its absolute path, from the project directory. If the user only wants to check or decode an existing file, go to Phase 4.
+`<skill>` below means this skill's directory. Run every script by its absolute path, from the project directory. If the user only wants to check or decode an existing file, go to step 9.
 
-## Phase 1: Choose the layers
+## Choose the layers
 
 1. Find the project: `vite.config.*`, `index.html`, and the installed Vite version. Vite 6, 7, and 8 are supported. If there is no Vite project, create one with the user's framework, or plain JavaScript if they named none. On an older Vite, tell the user it is untested and upgrade only if they agree.
    Note from the request where the file will run. If the user names Gemini Canvas, the Canvas-specific steps below apply; otherwise skip them.
@@ -27,11 +27,11 @@ Turn the user's Vite project into `dist/index.html`: one file that holds the who
    - To hide the decode method, add `vite-plugin-inline-obfuscate.mjs`, factory `inlineObfuscate()`. The payload stays byte-for-byte and the file grows by a few hundred bytes.
    - To hide the app's own code, add `vite-plugin-inline-obfuscate-app.mjs`, factory `inlineObfuscateApp()`. Builds take longer, the file grows, and fragile apps can break. Inline scripts must share state through `window.*`, not bare globals.
 
-## Phase 2: Install the plugins
+## Install the plugins
 
-1. Copy the chosen plugin files from `<skill>/scripts/` into the project root. `inline-check.mjs` stays in the skill.
-2. If an obfuscation layer was chosen, run `npm install -D javascript-obfuscator`. The encode plugins need no dependency.
-3. Import each plugin as a default import in `vite.config`, creating `vite.config.js` if the project has none. List them after the app's own plugins, in this order:
+4. Copy the chosen plugin files from `<skill>/scripts/` into the project root. `inline-check.mjs` stays in the skill.
+5. If an obfuscation layer was chosen, run `npm install -D javascript-obfuscator`. The encode plugins need no dependency.
+6. Import each plugin as a default import in `vite.config`, creating `vite.config.js` if the project has none. List them after the app's own plugins, in this order:
 
    ```js
    import inlineHexBase64 from './vite-plugin-inline-hex-base64.mjs';
@@ -41,10 +41,10 @@ Turn the user's Vite project into `dist/index.html`: one file that holds the who
 
    Leave out the layers you did not choose. The plugins set the single-file build options themselves, so do not add a single-file plugin or set those options by hand.
 
-## Phase 3: Build
+## Build
 
-1. Run the project's production build, or `npx vite build` if it has none.
-2. If the build stops, do what its message says, then rebuild. If the message is not enough, read the trace at `<cacheDir>/<plugin-name>-trace.jsonl`, which is `node_modules/.vite/` by default. It names the failed stage, with file names and sizes only.
+7. Run the project's production build, or `npx vite build` if it has none.
+8. If the build stops, do what its message says, then rebuild. If the message is not enough, read the trace at `<cacheDir>/<plugin-name>-trace.jsonl`, which is `node_modules/.vite/` by default. It names the failed stage, with file names and sizes only.
 
    | The build refuses | Fix |
    | --- | --- |
@@ -58,19 +58,19 @@ Turn the user's Vite project into `dist/index.html`: one file that holds the who
 
    Pictures by remote URL, and very large runtime data such as model or wasm files, may stay on the web. Never put a secret in the app.
 
-## Phase 4: Verify the file
+## Verify the file
 
-1. Run `node <skill>/scripts/inline-check.mjs dist/index.html --check`. Exit 0 prints the layers and sizes. Exit 1 means the file skipped the plugins: fix the config and rebuild, never patch the file. Exit 2 is a usage error and says what to do.
-2. To inspect the contents, run `node <skill>/scripts/inline-check.mjs dist/index.html --decode <readable.html>`, with the output outside `dist/`. If the project has a source linter, run it on this decoded file, because on the built file it sees only the loader.
-3. Serve the file with `npx vite preview` and exercise the app's main path with a browser tool. Without one, confirm the first render with headless Chrome or Edge using `--dump-dom --virtual-time-budget=5000`, and report the interactions as not verified instead of writing a browser driver. If an obfuscation layer breaks the app, remove that layer, rebuild, and tell the user.
-4. For Gemini Canvas only: compare the file size with 800 KB, the largest Canvas app known; Canvas's own limit is unknown. Over that, make the app smaller and rebuild, or warn the user if it cannot shrink. Other hosts need no size check.
+9. Run `node <skill>/scripts/inline-check.mjs dist/index.html --check`. Exit 0 prints the layers and sizes. Exit 1 means the file skipped the plugins: fix the config and rebuild, never patch the file. Exit 2 is a usage error and says what to do.
+10. To inspect the contents, run `node <skill>/scripts/inline-check.mjs dist/index.html --decode <readable.html>`, with the output outside `dist/`. If the project has a source linter, run it on this decoded file, because on the built file it sees only the loader.
+11. Serve the file with `npx vite preview` and exercise the app's main path with a browser tool. Without one, confirm the first render with headless Chrome or Edge using `--dump-dom --virtual-time-budget=5000`, and report the interactions as not verified instead of writing a browser driver. If an obfuscation layer breaks the app, remove that layer, rebuild, and tell the user.
+12. For Gemini Canvas only: compare the file size with 800 KB, the largest Canvas app known; Canvas's own limit is unknown. Over that, make the app smaller and rebuild, or warn the user if it cannot shrink. Other hosts need no size check.
 
-## Phase 5: Hand over
+## Hand over
 
 Tell the user:
 
 - the absolute path of `dist/index.html`, its size, and the layers it holds;
-- what you verified in Phase 4, and what you did not;
+- what you verified in steps 9 to 12, and what you did not;
 - to change the source and rebuild for every change, because editing the output by hand does not last;
 - that encoding and obfuscation are not protection: anyone can decode the file and read the running code.
 
