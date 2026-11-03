@@ -1,4 +1,4 @@
-# Third-party material bundled with web-to-egui
+# Third-party material bundled with egui-knowledges
 
 ## Fonts (`dev/frameforge-egui/assets/fonts/`)
 
