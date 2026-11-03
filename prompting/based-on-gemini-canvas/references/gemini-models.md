@@ -1,12 +1,13 @@
 # Gemini models for Canvas apps
 
-Model facts checked on 2026-11-02 against Google's models, deprecations, and rate-limits pages, and Canvas facts against the Gemini Apps Canvas help pages. Model facts change: a shutdown date is the earliest a model may retire, never a promise of availability until then.
+Model facts checked on 2026-11-02 against Google's models, deprecations, and rate-limits pages, and Canvas facts against the Gemini Apps Canvas help pages. The model test in Canvas ran on 2026-11-03. Model facts change: a shutdown date is the earliest a model may retire, never a promise of availability until then.
 
 Contents
 
 - [Evidence levels](#evidence-levels)
 - [Choosing a model](#choosing-a-model)
 - [Dated, aliased and further models](#dated-aliased-and-further-models)
+- [Model test in Canvas](#model-test-in-canvas)
 - [Models that answer under the host key](#models-that-answer-under-the-host-key)
 - [How apps order their attempts](#how-apps-order-their-attempts)
 - [API surfaces and request shapes](#api-surfaces-and-request-shapes)
@@ -22,10 +23,11 @@ Four kinds of evidence appear below. A lower kind never stands in for a higher o
 
 | Kind | What it says |
 | --- | --- |
-| **Tested in Canvas, 2026-11-02, by the project owner** | Every model named in this reference was tried in Canvas. These five run there and are marked **Valid in Canvas** below: `gemini-2.5-flash-image-preview`, `gemini-2.5-flash-image`, `gemini-3.1-flash-image`, `gemini-3.1-flash-image-preview` and `gemini-2.5-flash-preview-tts`. |
+| **Tested in Canvas, 2026-11-03, by the project owner** | An app's model test sent one small request to each of the 64 models in this reference, under the host's empty key. Nine returned a usable result: five text models and four image models. Each is marked **Valid** below. Full results are under "Model test in Canvas". |
 | **Official (Google)** | Canvas apps add "Gemini-powered features ... like text and image generation" through **Add Gemini features**. The viewer signs in and is 18 or over. Google publishes **no list of models a Canvas app may call**, and describes no API behind it. |
 | **Community reports, Oct 2025 to May 2026** | The code carries `const apiKey = "";` and Canvas supplies the key. The key is reported as model-scoped: other models fail with 403 `PERMISSION_DENIED` ("Method doesn't allow unregistered callers") or 401. Image generation reportedly broke and recovered several times (Jan, Feb, May 2026). No Google staff confirmation, nothing newer than May 2026, and no report at all on speech or video. |
-| **Working app (2026), reported by the project owner** | One app calls `generateContent` and `predict` with an empty key and walks the chains under "Models that answer under the host key". The owner reports that it works in Canvas. This is the strongest evidence here for what the host's key accepts. |
+| **Plan coverage, reported by the project owner** | The host key covers models by the viewer's Gemini plan. A 403 `PERMISSION_DENIED` ("Method doesn't allow unregistered callers") means the model is not covered on the current account's plan; the model can work for an account on a higher plan. |
+| **Working app (2026), reported by the project owner** | One app calls `generateContent` and `predict` with an empty key and walks the chains under "Models that answer under the host key". The owner reports that it works in Canvas. The model test above is newer and more exact, and wins where the two differ. |
 
 Access can differ by account, so each generated app confirms at runtime which models answer for its viewer, and shows what it found.
 
@@ -42,14 +44,14 @@ Choice follows the job. This table serves a viewer's own key, and for judging wh
 | Hard reasoning, as an explicit choice | `gemini-3.1-pro-preview` | Text and images in; text out. Preview, no shutdown date. | Appears as an explicit choice in Settings. Automatic selection avoids it, because previews can retire. |
 | Transcript with word timestamps and speakers | `gemini-3.5-transcribe` | Speech in; text out, with word timestamps, speaker diarization, utterance-based language detection and vocabulary biasing. Stable, no shutdown date. Its request format is unconfirmed in this reference. | Chosen where timing matters. A text-model transcript path stays as fallback, and Canvas acceptance is unconfirmed. |
 | Image generation and editing, default | `gemini-nano-banana-2.1` | Text and images in; images out. Quality, typography and multi-turn consistency. Stable, no shutdown date. | Google's recommended image model. |
-| Production-scale image generation | `gemini-3.1-flash-image` (Nano Banana 2) | Text and images in; images out. Speed for production-scale visual creation. Stable, no shutdown date. | Chosen for fast production output. Google recommends moving new work to `gemini-nano-banana-2.1`. **Valid in Canvas** (tested 2026-11-02). |
+| Production-scale image generation | `gemini-3.1-flash-image` (Nano Banana 2) | Text and images in; images out. Speed for production-scale visual creation. Stable, no shutdown date. | Chosen for fast production output. Google recommends moving new work to `gemini-nano-banana-2.1`. **Valid in Canvas** (tested 2026-11-03). |
 | Many quick images, interactive use | `gemini-3.1-flash-lite-image` (Nano Banana 2 Lite) | Text and images in; images out. Lowest latency and cost. Stable, no shutdown date. | Chosen for bulk and interactive use. |
 | Highest-quality images, contextual, text-heavy | `gemini-3-pro-image` (Nano Banana Pro) | Text and images in; images out. Studio-quality 4K visuals, complex layouts, precise text rendering. Stable, no shutdown date. | Chosen for hero assets, not bulk. |
-| Fast creative image workflows, dated | `gemini-2.5-flash-image` (Nano Banana) | Text and images in; images out. Stable, shutdown 2027-03-15, replacement `gemini-3.1-flash-lite-image`. | Still served, with restricted access for new projects on the public API (not deprecated). New work prefers the 3.1 image line. **Valid in Canvas** (tested 2026-11-02). |
+| Fast creative image workflows, dated | `gemini-2.5-flash-image` (Nano Banana) | Text and images in; images out. Stable, shutdown 2027-03-15, replacement `gemini-3.1-flash-lite-image`. | Still served, with restricted access for new projects on the public API (not deprecated). New work prefers the 3.1 image line. **Valid in Canvas** (tested 2026-11-03). |
 | Image generation, dated | `imagen-4.0-generate-001`, `imagen-3.0-generate-002` | Text in; images out through the `predict` call. Both shut down on the public API (2026-08-17 and 2025-11-10); replacement `gemini-nano-banana-2.1`. | Retired on the public API. Host-key chains still list them (see below), where the host's allow-list governs instead. |
 | Speech, narration, characters | `gemini-3.8-flash-tts` | Text in; audio out. Studio-grade voice fidelity, expressive delivery, voice design and replication, across 130 languages. Stable, no shutdown date. | The default voice model. |
 | Speech at volume | `gemini-3.8-flash-lite-tts` | Text in; audio out. Fast and cheap across 101 languages, with voice replication. Stable, no shutdown date. | Chosen for high-volume production and real-time cascades. |
-| Speech, dated previews | `gemini-2.5-flash-preview-tts`, `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts` | Text in; audio out. All three carry shutdown 2026-11-17; replacements `gemini-3.8-flash-tts` or `gemini-3.8-flash-lite-tts`. | Retiring. New work uses the 3.8 TTS line. `gemini-2.5-flash-preview-tts`: **Valid in Canvas** (tested 2026-11-02). |
+| Speech, dated previews | `gemini-2.5-flash-preview-tts`, `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts` | Text in; audio out. All three carry shutdown 2026-11-17; replacements `gemini-3.8-flash-tts` or `gemini-3.8-flash-lite-tts`. | Retiring. New work uses the 3.8 TTS line. `gemini-2.5-flash-preview-tts` ran in Canvas on 2026-11-02 but was refused with a 401 on 2026-11-03 (see "Model test in Canvas"). |
 | Generated video clips | `gemini-omni-1.1-flash` (Gemini Omni Flash) | Text and images in; video with native audio out. Fast generation, editing, keyframe interpolation and extension. Stable, no shutdown date. | Chosen for generated clips. All Veo models are shut down. No Canvas evidence at all exists for it, and browser-rendered video, which needs no model and no quota, is preferred wherever it suffices. |
 | Generated video, dated (Veo family) | `veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview`, `veo-3.1-lite-generate-preview`, `veo-3.0-generate-001`, `veo-3.0-fast-generate-001`, `veo-2.0-generate-001` | Text and images in; video out. Shutdown 2026-10-22 for the 3.1 previews and 2026-06-30 for the 3.0 and 2.0 models; replacement `gemini-omni-1.1-flash`. | Retired. |
 | Generated music | `lyria-3.5` | Text in; music out. Full-length songs with structural coherence. Stable, no shutdown date. | The default music model. No Canvas evidence exists for it. |
@@ -72,14 +74,14 @@ Every model below also appears in `assets/gemini-models.json`. Models with a shu
 | `gemini-3.1-flash-lite` | text-volume | stable | 2027-05-07 | `gemini-3.5-flash-lite` | Avoided for long-lived work. |
 | `gemini-3.1-flash-lite-preview` | text-volume | preview, shut down | 2026-05-25 | `gemini-3.1-flash-lite` | Retired. |
 | `gemini-2.5-pro` | text-reasoning | stable | — | — | Restricted to past users on the public API; not deprecated. |
-| `gemini-2.5-flash` | text | stable | — | — | Restricted to past users on the public API; not deprecated. In the host-key text chain. |
+| `gemini-2.5-flash` | text | stable | — | — | Restricted to past users on the public API; not deprecated. In the host-key text chain. **Valid in Canvas** (tested 2026-11-03). |
 | `gemini-2.5-flash-lite` | text-volume | stable | — | — | Restricted to past users on the public API; not deprecated. |
-| `gemini-2.5-flash-preview-05-20` | text | preview, shut down | 2025-11-18 | `gemini-3.6-flash` | Retired. |
-| `gemini-2.5-flash-preview-09-25` | text | preview, shut down | 2026-02-17 | `gemini-3.6-flash` | Google's spelling; Canvas apps use `-09-2025`, which carries the same date. |
+| `gemini-2.5-flash-preview-05-20` | text | preview, shut down | 2025-11-18 | `gemini-3.6-flash` | Retired on the public API. **Valid in Canvas** (tested 2026-11-03). |
+| `gemini-2.5-flash-preview-09-25` | text | preview, shut down | 2026-02-17 | `gemini-3.6-flash` | Google's spelling, a 403 in Canvas; Canvas apps use `-09-2025`, which carries the same date and is **Valid in Canvas** (tested 2026-11-03). |
 | `gemini-2.5-flash-lite-preview-09-2025` | text-volume | preview, shut down | 2026-03-31 | `gemini-3.1-flash-lite` | Retired. |
-| `gemini-2.0-flash` | text | stable, shut down | 2026-06-01 | `gemini-3.6-flash` | Retired. |
+| `gemini-2.0-flash` | text | stable, shut down | 2026-06-01 | `gemini-3.6-flash` | Retired on the public API. **Valid in Canvas** (tested 2026-11-03). |
 | `gemini-2.0-flash-lite` | text-volume | stable, shut down | 2026-06-01 | `gemini-3.1-flash-lite` | Retired. |
-| `gemini-3.1-flash-image-preview` | image | preview, shut down | 2026-06-25 | `gemini-nano-banana-2.1` | Retired on the public API. **Valid in Canvas** (tested 2026-11-02). |
+| `gemini-3.1-flash-image-preview` | image | preview, shut down | 2026-06-25 | `gemini-nano-banana-2.1` | Retired on the public API. **Valid in Canvas** (tested 2026-11-03). |
 | `gemini-3-pro-image-preview` | image-quality | preview, shut down | 2026-06-25 | `gemini-3-pro-image` | Retired. |
 | `gemini-2.0-flash-preview-image-generation` | image | preview, shut down | 2025-11-14 | `gemini-nano-banana-2.1` | Retired. |
 | `imagen-4.0-generate-001` | image | stable, shut down | 2026-08-17 | `gemini-nano-banana-2.1` | Retired on the public API. In the host-key image chain. |
@@ -103,34 +105,56 @@ Every model below also appears in `assets/gemini-models.json`. Models with a shu
 
 Google limits access to the 2.5 models to users who have actively used them in the past. The 2.5 text models are not deprecated and stay served until further notice; `gemini-2.5-flash-image` is not deprecated either but carries an earliest shutdown of 2027-03-15. New projects use 3.5 Flash-Lite or 3.8 Flash (Official, models page).
 
+## Model test in Canvas
+
+On 2026-11-03 the project owner ran an app's model test in Canvas under the host's empty key. It sent one small request to each model in this reference. `assets/gemini-models.json` holds each model's result under `canvasTest`. One run on one account shows what the key accepted for that account's plan that day, not what it accepts for other plans or later.
+
+| Result | HTTP | Time | Models |
+| --- | --- | --- | --- |
+| **Working**: text came back (`finishReason: STOP`) | 200 | 1.1 to 1.4 s | `gemini-3-flash-preview`, `gemini-2.5-flash-preview-09-2025`, `gemini-2.5-flash`, `gemini-2.5-flash-preview-05-20`, `gemini-2.0-flash` |
+| **Working**: an image came back (`finishReason: STOP`, `image/jpeg`) | 200 | 7.5 to 10 s | `gemini-2.5-flash-image-preview`, `gemini-2.5-flash-image`, `gemini-3.1-flash-image`, `gemini-3.1-flash-image-preview` |
+| **Refused, 401** `Something went wrong` | 401 | 0.1 to 0.85 s | `imagen-4.0-generate-001` and `imagen-3.0-generate-002` (both through `predict`), `gemini-3-pro-image`, `gemini-2.5-flash-preview-tts` (it ran on 2026-11-02) |
+| **Not covered by this account's plan, 403** `PERMISSION_DENIED` "Method doesn't allow unregistered callers" | 403 | under 0.11 s | All other 50 models, including every current stable text, speech, live, video, music and embedding model, `gemini-nano-banana-2.1` and `gemini-4-argon` |
+
+What the results mean for an app under the host's key:
+
+- **On this plan, text works on older and preview models only.** The five working text models include three that Google's public pages call retired (`gemini-2.5-flash-preview-09-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.0-flash`), which confirms that the host key keeps its own allow-list. Every current stable text model was not covered by this account's plan.
+- **Images work.** Four image models returned an image. They take 8 to 10 seconds, so an image request's timeout and progress feedback allow for that.
+- **Speech has no working model on this plan.** The one speech model that ran on 2026-11-02 was refused with a 401 a day later, and the other speech models are not covered by this plan. Speech features keep a fallback without AI, such as the browser's own speech synthesis where it suits.
+- **A 403 is about the plan, not the model.** A model that is not covered for one viewer can answer for a viewer on a higher plan, so apps keep such models in their chains instead of dropping them, and the model test reports per viewer what their plan covers. The 403 arrives in under 0.11 s, so walking past it costs little.
+- **A 401 is a refusal.** Under the host's key, a 401 means the host refused the call. It moves on like a 403, and it is not a problem with a viewer's key.
+- **No evidence yet for higher plans:** every video, music, live, transcription and embedding model, and every current stable model, returned a 403 on this plan. Whether each one works on a higher plan is untested.
+
 ## Models that answer under the host key
 
-The project owner reports that a reference app, which tries exactly these models, works in the Canvas environment. This list comes first under the host's key, in this order, even where Google's public pages call a model retired or do not list it: the host's key has its own allow-list, so public status does not decide what it accepts. A fallback chain shows the set that was tried, never which entry answered for a given account, so the model test still reports what happens for each viewer.
+The project owner reports that a reference app, which tries exactly these models, works in the Canvas environment. The last column gives each model's result in the model test of 2026-11-03. This list comes first under the host's key, in this order, even where Google's public pages call a model retired or do not list it: the host's key has its own allow-list, so public status does not decide what it accepts. A fallback chain shows the set that was tried, never which entry answered for a given account, so the model test still reports what happens for each viewer.
 
-| Job | Order | Model | Call | Status on Google's public pages | Tested in Canvas |
+| Job | Order | Model | Call | Status on Google's public pages | Model test, 2026-11-03 |
 | --- | --- | --- | --- | --- | --- |
-| Text | 1 | `gemini-3-flash-preview` | `generateContent` | Preview, no shutdown date | — |
-| Text | 2 | `gemini-3-flash` | `generateContent` | Not listed | — |
-| Text | 3 | `gemini-2.5-flash-preview-09-2025` | `generateContent` | Retired 2026-02-17 | — |
-| Text | 4 | `gemini-3.8-flash` | `generateContent` | Stable | — |
-| Text | 5 | `gemini-3.6-flash` | `generateContent` | Stable | — |
-| Text | 6 | `gemini-3.5-flash` | `generateContent` | Alias of `gemini-3.6-flash` | — |
-| Text | 7 | `gemini-flash-latest` | `generateContent` | Not listed | — |
-| Text | 8 | `gemini-2.5-flash` | `generateContent` | Stable | — |
-| Text | 9 | `gemini-3.5-flash-lite` | `generateContent` | Stable | — |
-| Text | 10 | `gemini-3-flash-lite` | `generateContent` | Not listed | — |
-| Text | 11 | `gemini-flash-lite-latest` | `generateContent` | Not listed | — |
-| Text, picked by hand only | - | `gemini-3.1-pro-preview` | `generateContent` | Preview, no shutdown date | — |
-| Image | 1 | `imagen-4.0-generate-001` | `predict` | Retired 2026-08-17 | — |
-| Image | 2 | `gemini-2.5-flash-image-preview` | `generateContent` | Retired 2026-01-15 | **Valid** (2026-11-02) |
-| Image | 3 | `gemini-2.5-flash-image` | `generateContent` | Stable, earliest shutdown 2027-03-15 | **Valid** (2026-11-02) |
-| Image | 4 | `imagen-3.0-generate-002` | `predict` | Retired 2025-11-10 | — |
-| Speech | 1 | `gemini-2.5-flash-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 | **Valid** (2026-11-02) |
-| Speech | 2 | `gemini-3.1-flash-tts-preview` | `generateContent` | Earliest shutdown 2026-11-17 | — |
-| Speech | 3 | `gemini-3.8-flash-tts` | `generateContent` | Stable | — |
-| Speech | 4 | `gemini-2.5-pro-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 | — |
+| Text | 1 | `gemini-3-flash-preview` | `generateContent` | Preview, no shutdown date | **Valid** |
+| Text | 2 | `gemini-3-flash` | `generateContent` | Not listed | 403, not covered by this plan |
+| Text | 3 | `gemini-2.5-flash-preview-09-2025` | `generateContent` | Retired 2026-02-17 | **Valid** |
+| Text | 4 | `gemini-3.8-flash` | `generateContent` | Stable | 403, not covered by this plan |
+| Text | 5 | `gemini-3.6-flash` | `generateContent` | Stable | 403, not covered by this plan |
+| Text | 6 | `gemini-3.5-flash` | `generateContent` | Alias of `gemini-3.6-flash` | 403, not covered by this plan |
+| Text | 7 | `gemini-flash-latest` | `generateContent` | Not listed | 403, not covered by this plan |
+| Text | 8 | `gemini-2.5-flash` | `generateContent` | Stable | **Valid** |
+| Text | 9 | `gemini-3.5-flash-lite` | `generateContent` | Stable | 403, not covered by this plan |
+| Text | 10 | `gemini-3-flash-lite` | `generateContent` | Not listed | 403, not covered by this plan |
+| Text | 11 | `gemini-flash-lite-latest` | `generateContent` | Not listed | 403, not covered by this plan |
+| Text, picked by hand only | - | `gemini-3.1-pro-preview` | `generateContent` | Preview, no shutdown date | 403, not covered by this plan |
+| Image | 1 | `imagen-4.0-generate-001` | `predict` | Retired 2026-08-17 | Refused, 401 |
+| Image | 2 | `gemini-2.5-flash-image-preview` | `generateContent` | Retired 2026-01-15 | **Valid** |
+| Image | 3 | `gemini-2.5-flash-image` | `generateContent` | Stable, earliest shutdown 2027-03-15 | **Valid** |
+| Image | 4 | `imagen-3.0-generate-002` | `predict` | Retired 2025-11-10 | Refused, 401 |
+| Speech | 1 | `gemini-2.5-flash-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 | Refused, 401 (valid on 2026-11-02) |
+| Speech | 2 | `gemini-3.1-flash-tts-preview` | `generateContent` | Earliest shutdown 2026-11-17 | 403, not covered by this plan |
+| Speech | 3 | `gemini-3.8-flash-tts` | `generateContent` | Stable | 403, not covered by this plan |
+| Speech | 4 | `gemini-2.5-pro-preview-tts` | `generateContent` | Earliest shutdown 2026-11-17 | 403, not covered by this plan |
 
-The reference app's model picker describes its automatic mode as working for all accounts, and describes `gemini-3.8-flash` and `gemini-3.1-pro-preview` as needing an account plan that supports them. The automatic chain therefore stays the default, with the hand-picked models offered in Settings.
+The reference app's model picker describes its automatic mode as working for all accounts, and describes `gemini-3.8-flash` and `gemini-3.1-pro-preview` as needing an account plan that supports them, which matches the 403 these two returned on the tested plan. The automatic chain therefore stays the default, with the hand-picked models offered in Settings.
+
+`gemini-2.5-flash-preview-05-20` and `gemini-2.0-flash` also returned text in the model test, and `gemini-3.1-flash-image` and `gemini-3.1-flash-image-preview` returned images, but none of the four is in the chains. An app may add them at the end of the text or image chain, as models the author chose.
 
 ## How apps order their attempts
 
@@ -190,19 +214,19 @@ No published quota exists for the host key inside Canvas. Apps therefore surface
 
 Observed behaviour of the reference app when models refuse, fail, or reply badly. Problem reports describe what the viewer saw; the mapping below is how those symptoms are judged.
 
-- **Moving on:** a 403 under the host's key, a 404, and other refusals move to the next model at once. A 401 or a message about the API key, with a viewer's key, stops and asks the viewer to check that key. A 402 or a message about billing or credits stops, says the usage limit is reached, and offers continuing without AI.
+- **Moving on:** a 403 under the host's key (the model is not covered by the viewer's plan), a 401 under the host's key, a 404, and other refusals move to the next model at once. A 401 or a message about the API key, with a viewer's key, stops and asks the viewer to check that key. A 402 or a message about billing or credits stops, says the usage limit is reached, and offers continuing without AI.
 - **Waiting:** a 429 or a 5xx retries after 1.5 seconds. Text retries once; image and speech retry up to twice with the wait doubling. Then the app moves on. A 504 on text moves on at once. A network failure retries after about 0.8 seconds, and on text it then stops and names the connection.
 - **Adapting to a 400 on text:** where the message mentions thinking, the app steps down from `minimal` to `low`, then drops `thinkingConfig`. Where it mentions `maxOutputTokens`, it drops that. Where the schema uses `maxItems`, it retries once without it. Each change is remembered for that model during the session. A 400 about too many states, the schema, or a constraint stops and reports the request as too complex.
-- **Bad replies:** an empty reply or broken JSON retries once. A reply cut off at `MAX_TOKENS` may lend its complete part, but only where the job accepts a partial result, and the app validates it first. The on-screen error stays one sentence, and the model test and the console show the `finishReason` or `blockReason`.
+- **Bad replies:** an empty reply or broken JSON retries once. A reply cut off at `MAX_TOKENS` with no text counts as empty. One with text may lend its complete part, but only where the job accepts a partial result, and the app validates it first. The on-screen error stays one sentence, and the model test and the console show the `finishReason` or `blockReason`.
 - **After a model already answered:** once a model has answered in this session, a timeout, busy signal, empty reply, or broken reply reports the error instead of walking the rest of the chain.
-- **Nothing answering at all:** where the host's key is refused by every model and none has answered, the app says AI needs the app to be opened through its Canvas link, and offers continuing without AI.
+- **Nothing answering at all:** where the host's key is refused by every model and none has answered, the app says AI needs the app to be opened through its Canvas link, or a Gemini plan that covers these models, and offers continuing without AI.
 - **Whole-chain failure:** where a whole chain fails, that feature names itself as unavailable with Retry, and everything else keeps working.
 
 ## Availability, keys and the model test
 
 - **Availability:** in an iframe with no key, the app reports AI as host-provided. With a key, it is the viewer's. Outside a host and with no key, AI is unavailable, and the app says so.
 - **Key handling:** with no key, the request URL ends in `?key=` and no key header is sent. With a key, the key travels in the `x-goog-api-key` header. A key is never written into the code, because a shared app exposes its code, and the single file yields it without effort. It stays in the viewer's own `localStorage`, or in memory for the session where storage is denied.
-- **Model test:** a Settings control sends the smallest request to each chain entry and shows each model as working or with its exact status and message. Results are never guessed.
+- **Model test:** a Settings control sends the smallest request to each chain entry and shows each model as working or with its exact status and message. Results are never guessed. The request leaves room for an answer: on a thinking model, a tiny output allowance ends at `MAX_TOKENS` with no text and reads as a failure. The test tells "accepted, empty reply" (200), "not covered by your plan" (403) and "refused" (401) apart, because a 200 proves the key accepts the model even when the reply is empty.
 
 ## Known behaviour seen by users
 
