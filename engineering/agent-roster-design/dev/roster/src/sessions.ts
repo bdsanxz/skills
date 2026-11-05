@@ -119,7 +119,7 @@ function agyConversations(): { id: string; dir: string; lastInput: number }[] {
   if (!fs.existsSync(db)) return [];
   let conn: Database;
   try {
-    conn = new Database(`file:${db}?mode=ro`, { readonly: true });
+    conn = new Database(db, { readonly: true });
   } catch {
     return [];
   }
@@ -235,7 +235,7 @@ function museSessions(): { id: string; dir: string }[] {
   if (!fs.existsSync(db)) return [];
   let conn: Database;
   try {
-    conn = new Database(`file:${db}?mode=ro`, { readonly: true });
+    conn = new Database(db, { readonly: true });
   } catch {
     return [];
   }

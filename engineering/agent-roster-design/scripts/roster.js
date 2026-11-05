@@ -1829,7 +1829,7 @@ function agyConversations() {
     return [];
   let conn;
   try {
-    conn = new Database(`file:${db}?mode=ro`, { readonly: true });
+    conn = new Database(db, { readonly: true });
   } catch {
     return [];
   }
@@ -1931,7 +1931,7 @@ function museSessions() {
     return [];
   let conn;
   try {
-    conn = new Database(`file:${db}?mode=ro`, { readonly: true });
+    conn = new Database(db, { readonly: true });
   } catch {
     return [];
   }
