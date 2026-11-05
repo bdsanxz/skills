@@ -32,21 +32,38 @@ function gradientAngle(handles: Pt[] | undefined, size: Size): number | null {
   return Math.round(((Math.atan2((b.y - a.y) * size.h, (b.x - a.x) * size.w) * 180) / Math.PI + 90 + 360) % 360);
 }
 
-// CSS runs a linear gradient along a line through the box centre whose length makes the corners
-// hit 0% and 100%; Figma runs it from handle 0 to handle 1. Project both handles onto the CSS
-// line so every stop lands where Figma draws it.
+// Figma maps the box onto gradient space with an affine transform: handle 0 is where the gradient
+// starts, handle 1 where it ends, and handle 2 sets the direction of the lines of equal colour
+// (they run parallel to handle 0 → handle 2). Those lines are not always perpendicular to
+// handle 0 → handle 1: a gradient drawn on a non-square box, or skewed in the editor, slants them.
+// CSS draws a linear gradient perpendicular to its angle along a line through the box centre whose
+// length makes the corners hit 0% and 100%, so the angle comes from the equal-colour lines and every
+// stop is projected onto that line.
 function linearGradient(p: any, size: Size, op: number): string | null {
   const h = p.gradientHandlePositions as Pt[] | undefined;
-  const angle = gradientAngle(h, size);
-  if (!h || angle === null) return null;
+  if (!h || h.length < 2) return null;
+  const px = (q: Pt) => ({ x: q.x * size.w, y: q.y * size.h });
+  const p0 = px(h[0]!);
+  const p1 = px(h[1]!);
+  const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
+  if (Math.hypot(v1.x, v1.y) < 1e-9) return null;
+  let n = v1;
+  if (h[2]) {
+    const p2 = px(h[2]);
+    const v2 = { x: p2.x - p0.x, y: p2.y - p0.y };
+    const perp = { x: -v2.y, y: v2.x };
+    const along = perp.x * v1.x + perp.y * v1.y;
+    if (Math.hypot(v2.x, v2.y) > 1e-9 && Math.abs(along) > 1e-9) n = along > 0 ? perp : { x: -perp.x, y: -perp.y };
+  }
+  // CSS angle: 0deg points up, clockwise.
+  const angle = Math.round(((Math.atan2(n.y, n.x) * 180) / Math.PI + 90 + 360) % 360) % 360;
   const rad = (angle * Math.PI) / 180;
   const dir = { x: Math.sin(rad), y: -Math.cos(rad) };
   const L = Math.abs(size.w * dir.x) + Math.abs(size.h * dir.y);
-  const along = (q: Pt) => ((q.x - 0.5) * size.w * dir.x + (q.y - 0.5) * size.h * dir.y + L / 2) / L;
-  const a = along(h[0]!);
-  const b = along(h[1]!);
+  const start = ((p0.x - size.w / 2) * dir.x + (p0.y - size.h / 2) * dir.y + L / 2) / L;
+  const span = (v1.x * dir.x + v1.y * dir.y) / L;
   const stops = (p.gradientStops ?? [])
-    .map((s: any) => `${color(s.color, op)} ${r2((a + s.position * (b - a)) * 100)}%`)
+    .map((s: any) => `${color(s.color, op)} ${r2((start + s.position * span) * 100)}%`)
     .join(", ");
   return `linear-gradient(${angle}deg, ${stops})`;
 }
@@ -141,12 +158,20 @@ export function layoutDrift(n: any): string | null {
     const pads = row ? (n.paddingLeft ?? 0) + (n.paddingRight ?? 0) : (n.paddingTop ?? 0) + (n.paddingBottom ?? 0);
     const need = pads + kids.reduce((t: number, c: any) => t + len(c.absoluteBoundingBox), 0) + gap * (kids.length - 1);
     const has = len(n.absoluteBoundingBox);
-    if (Math.abs(need - has) > 1) return `hugs ${r2(has)} but its items need ${r2(need)}`;
+    if (Math.abs(need - has) > 1) return `hugs ${r2(has)} but its stored items add up to ${r2(need)}`;
+  }
+  // A child set to fill takes the frame's inner size; a stored box that differs is stale.
+  const cross = (b: any) => (row ? b.height : b.width);
+  const inner = cross(n.absoluteBoundingBox) - (row ? (n.paddingTop ?? 0) + (n.paddingBottom ?? 0) : (n.paddingLeft ?? 0) + (n.paddingRight ?? 0));
+  for (const c of kids) {
+    const fills = (row ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL" || c.layoutAlign === "STRETCH";
+    const got = cross(c.absoluteBoundingBox);
+    if (fills && Math.abs(got - inner) > 1) return `${JSON.stringify(c.name)} fills ${r2(inner)} but is stored ${r2(got)} ${row ? "high" : "wide"}`;
   }
   return null;
 }
 
-function textInfo(n: any): string[] {
+export function textInfo(n: any): string[] {
   const s = n.style ?? {};
   const parts = [`"${String(n.characters ?? "").replace(/[\n\u2028\u2029]/g, "\\n").slice(0, 300)}"`];
   const lh = s.lineHeightPx ? `/${r2(s.lineHeightPx)}` : "";
@@ -157,6 +182,9 @@ function textInfo(n: any): string[] {
   if (s.textCase && s.textCase !== "ORIGINAL") parts.push(`case ${s.textCase.toLowerCase()}`);
   if (s.textDecoration && s.textDecoration !== "NONE") parts.push(s.textDecoration.toLowerCase());
   if (s.textAutoResize) parts.push(`resize ${s.textAutoResize.toLowerCase()}`);
+  // A fixed-height text box may be taller than its lines; then the vertical alignment places them.
+  const fixedHeight = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
+  if (fixedHeight && s.textAlignVertical && s.textAlignVertical !== "TOP") parts.push(`valign ${s.textAlignVertical.toLowerCase()}`);
   const runs = textRuns(n);
   if (runs) parts.push(runs);
   return parts;

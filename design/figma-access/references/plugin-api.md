@@ -7,10 +7,8 @@
 - `return` the value you want back. Without `return` the result is `undefined` and the `warning` under `resultAnalysis` says so.
 - Return plain JSON: ids, names, numbers, arrays of small objects. Never return a node; map it to `{ id, name, type }`.
 - Use `await` freely. The default time limit is 5 s; pass `--timeout 30s` (up to `300s`) for big loops, font loading or whole-file scans.
-- A timed-out script keeps running inside Figma, which cannot stop it. Check `figma-access logs` and the file before you run it again, or you may do the work twice.
 - Each run is isolated: variables do not survive between runs. Pass state forward through ids you returned.
 - `console.log` output is kept by the daemon; read it with `figma-access logs --since 1m`.
-- Write longer scripts to a file and run `figma-access exec -f script.js`; quoting is then never a problem.
 
 ## Rules the API enforces
 
@@ -32,10 +30,9 @@
 
 ## Placement and housekeeping
 
-- Look before you build: screenshot the page, or list the top-level frames with their bounds, and place new work in clear space, never on top of existing content.
+- Place new work in clear space, never on top of existing content: screenshot the page, or list the top-level frames with their bounds, first.
 - Put new work inside a named Section or Frame, not loose on the canvas: `const s = figma.createSection(); s.name = "Buttons"; s.x = x; s.y = y;`.
-- Reuse what exists: find an existing page by name before creating one, and an existing component or style before creating a duplicate.
-- When a step fails half way, remove what it left behind (`node.remove()`) before you retry: empty frames, helper layers, blank pages.
+- Partial work from a failed step (empty frames, helper layers, blank pages) goes with `node.remove()`.
 - Backgrounds behind content: `parent.insertChild(0, bg)`.
 
 ## Recipes

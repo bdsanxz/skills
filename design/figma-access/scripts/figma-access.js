@@ -2669,13 +2669,17 @@ FIGMA_TOKEN_KEY, FIGMA_ACCESS_TOKEN or FIGMA_TOKEN)
   image-fills <url|key> Download the original images used as fills, named by imageRef.
   api <path>            Any GET endpoint, e.g. /v1/files/<key>/styles.
 
+Check an implementation (needs Chrome, Chromium or Edge)
+  compare <ref.png> <page>
+                        Capture a page and measure it against a render, per section.
+
 Exit codes: 0 ok, 1 Figma reported a failure, 2 bad arguments, 3 daemon, plugin or token not available.
 Output is KDL on stdout (https://kdl.dev), and the data files the CLI saves (node, api -o) are
 KDL: one node per line, an object's plain fields as key=value on its line, nested objects and
 arrays as indented blocks, array items as nodes named "-". Exceptions: \`spec\` prints its own
 one-line-per-node text outline (with -o it writes that text and prints a KDL summary),
 \`daemon log\` prints the daemon's log lines as they are, and render, screenshot and image-fills
-save image files and print a KDL summary of them. Every command has --help.`,
+save image files and print a KDL summary of them, as does compare. Every command has --help.`,
   setup: `Usage: figma-access setup
 
 Copies the Desktop Bridge plugin (manifest.json, code.js, ui.html, icon.png) to ${PLUGIN_DIR}
@@ -2779,7 +2783,8 @@ Prints the visible tree under each node, one line per node, with what code needs
 type, name, id, box [x,y wxh] relative to the node (or to --origin), render[x,y wxh] when the
 area visible on the canvas differs (shadows grow it, masks and clipping parents shrink it),
 opacity, blend, clip,
-component id, text with font family weight size/line-height, letter spacing, alignment and case,
+component id, text with font family weight size/line-height, letter spacing, alignment and case
+(valign center|bottom when a fixed-height box is taller than its lines),
 fills as CSS colors or gradients, top layer first as in a CSS background list (image fills as
 image(<imageRef>, <scaleMode>)), borders,
 radii, shadows and blurs, and auto layout as flex direction, gap, padding, justify and align.
@@ -2789,9 +2794,9 @@ Hidden layers are skipped. A subtree made only of vectors is one line marked
 svg or png": export those with \`render\` instead of rebuilding them; export[x,y wxh] then
 gives the area the exported file covers, where it differs from the box (clipping by parents
 does not shrink an export, so place the file there and clip it in code).
-An auto layout frame whose stored boxes break its own gap, padding or hug rules is marked
-"LAYOUT DRIFT": its boxes are stale (often a hidden child still counted), so measure that
-part on the render.
+An auto layout frame whose stored boxes break its own gap, padding, hug or fill rules is marked
+"LAYOUT DRIFT": its boxes, or a child's, are stale (often a hidden child still counted), so lay it out
+from its direction, gap, padding and sizing, not its boxes, and check it against the render.
 
   --depth <n>       Stop after n levels (default: all).
   --origin <x,y>    Measure boxes from this canvas point instead of the node's corner,
@@ -2819,6 +2824,29 @@ Downloads every image used as an image fill in the file, at its original resolut
 entries in \`spec\` name the ones the visible design uses.
 
   -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/image-fills/).`,
+  compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
+                          [--crop x,y,w,h] [--width n] [--shift n] [--threshold n] [--wide n] [--wait ms] [-o dir]
+
+Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
+then prints, for the whole page and each section, the share of differing pixels (a channel off by
+more than --threshold, default 24) and the mean channel difference (0-255; use it for gradients
+and tints, which a threshold misses). For each section it also tries the capture shifted up to
+--shift pixels (default 3) each way: when a shift explains the difference, the section is right
+and something before it has the wrong size. Writes the capture and diff.png (the reference faded,
+differing pixels red) to the output directory; open diff.png to see where the pixels differ.
+
+  <reference.png>       The design render, e.g. from \`render\` at scale 1.
+  <page>                An HTML file or URL to capture, or a PNG you captured yourself.
+  --sections <spec>     Named areas in page pixels, separated by ";": name=x,y,w,h, or
+                        name=top-bottom for a full-width band ("nav=0-48;cards=399,289,602,496").
+                        Default: full-width bands of --band pixels (default 100).
+  --crop x,y,w,h        Use only this part of the reference, e.g. to leave out browser chrome.
+  --width <px>          The page width in CSS pixels when the reference is not at scale 1
+                        (a 2880 px wide render of a 1440 frame: --width 1440).
+  --wide <px>           Also capture at this wider window and report whether the content stays
+                        centred or sticks to the left.
+  --wait <ms>           Time the page gets to load fonts and images (default 8000).
+  -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
   api: `Usage: figma-access api <path> [-o file.kdl]
 
 GETs any Figma REST endpoint and prints the response as KDL, or writes it to the file.
@@ -3765,16 +3793,30 @@ function gradientAngle(handles, size) {
 }
 function linearGradient(p, size, op) {
   const h = p.gradientHandlePositions;
-  const angle = gradientAngle(h, size);
-  if (!h || angle === null)
+  if (!h || h.length < 2)
     return null;
+  const px = (q) => ({ x: q.x * size.w, y: q.y * size.h });
+  const p0 = px(h[0]);
+  const p1 = px(h[1]);
+  const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
+  if (Math.hypot(v1.x, v1.y) < 0.000000001)
+    return null;
+  let n = v1;
+  if (h[2]) {
+    const p2 = px(h[2]);
+    const v2 = { x: p2.x - p0.x, y: p2.y - p0.y };
+    const perp = { x: -v2.y, y: v2.x };
+    const along = perp.x * v1.x + perp.y * v1.y;
+    if (Math.hypot(v2.x, v2.y) > 0.000000001 && Math.abs(along) > 0.000000001)
+      n = along > 0 ? perp : { x: -perp.x, y: -perp.y };
+  }
+  const angle = Math.round((Math.atan2(n.y, n.x) * 180 / Math.PI + 90 + 360) % 360) % 360;
   const rad = angle * Math.PI / 180;
   const dir = { x: Math.sin(rad), y: -Math.cos(rad) };
   const L = Math.abs(size.w * dir.x) + Math.abs(size.h * dir.y);
-  const along = (q) => ((q.x - 0.5) * size.w * dir.x + (q.y - 0.5) * size.h * dir.y + L / 2) / L;
-  const a = along(h[0]);
-  const b = along(h[1]);
-  const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${r2((a + s.position * (b - a)) * 100)}%`).join(", ");
+  const start = ((p0.x - size.w / 2) * dir.x + (p0.y - size.h / 2) * dir.y + L / 2) / L;
+  const span = (v1.x * dir.x + v1.y * dir.y) / L;
+  const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${r2((start + s.position * span) * 100)}%`).join(", ");
   return `linear-gradient(${angle}deg, ${stops})`;
 }
 function gradientShape(handles, size) {
@@ -3871,7 +3913,15 @@ function layoutDrift(n) {
     const need = pads + kids.reduce((t, c) => t + len(c.absoluteBoundingBox), 0) + gap * (kids.length - 1);
     const has = len(n.absoluteBoundingBox);
     if (Math.abs(need - has) > 1)
-      return `hugs ${r2(has)} but its items need ${r2(need)}`;
+      return `hugs ${r2(has)} but its stored items add up to ${r2(need)}`;
+  }
+  const cross = (b) => row ? b.height : b.width;
+  const inner = cross(n.absoluteBoundingBox) - (row ? (n.paddingTop ?? 0) + (n.paddingBottom ?? 0) : (n.paddingLeft ?? 0) + (n.paddingRight ?? 0));
+  for (const c of kids) {
+    const fills = (row ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL" || c.layoutAlign === "STRETCH";
+    const got = cross(c.absoluteBoundingBox);
+    if (fills && Math.abs(got - inner) > 1)
+      return `${JSON.stringify(c.name)} fills ${r2(inner)} but is stored ${r2(got)} ${row ? "high" : "wide"}`;
   }
   return null;
 }
@@ -3892,6 +3942,9 @@ function textInfo(n) {
     parts.push(s.textDecoration.toLowerCase());
   if (s.textAutoResize)
     parts.push(`resize ${s.textAutoResize.toLowerCase()}`);
+  const fixedHeight = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
+  if (fixedHeight && s.textAlignVertical && s.textAlignVertical !== "TOP")
+    parts.push(`valign ${s.textAlignVertical.toLowerCase()}`);
   const runs = textRuns(n);
   if (runs)
     parts.push(runs);
@@ -4138,6 +4191,395 @@ function exportBounds(n) {
   return r ? withEffects(n, r) : null;
 }
 
+// src/compare.ts
+import { existsSync as existsSync4, mkdirSync as mkdirSync6, mkdtempSync, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync6 } from "fs";
+import { tmpdir } from "os";
+import { join as join4, resolve as resolve5 } from "path";
+import { pathToFileURL } from "url";
+
+// src/png.ts
+import { deflateSync, inflateSync } from "zlib";
+var SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+var CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+function decodePng(buf) {
+  if (buf.length < 8 || !buf.subarray(0, 8).equals(SIGNATURE))
+    throw new Error("not a PNG file");
+  let width = 0, height = 0, depth = 0, color = 0, interlace = 0;
+  let palette, alpha;
+  const idat = [];
+  for (let p = 8;p + 8 <= buf.length; ) {
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString("latin1", p + 4, p + 8);
+    const body = buf.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") {
+      width = body.readUInt32BE(0);
+      height = body.readUInt32BE(4);
+      depth = body[8];
+      color = body[9];
+      interlace = body[12];
+    } else if (type === "PLTE")
+      palette = body;
+    else if (type === "tRNS")
+      alpha = body;
+    else if (type === "IDAT")
+      idat.push(body);
+    else if (type === "IEND")
+      break;
+    p += 12 + len;
+  }
+  const ch = CHANNELS[color];
+  if (depth !== 8 || ch === undefined || interlace !== 0) {
+    throw new Error(`unsupported PNG (bit depth ${depth}, color type ${color}, interlace ${interlace}); only 8-bit non-interlaced PNGs are read`);
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * ch;
+  const px = new Uint8Array(stride * height);
+  for (let y = 0;y < height; y++) {
+    const f = raw[y * (stride + 1)];
+    const src = y * (stride + 1) + 1;
+    const row = y * stride;
+    for (let x = 0;x < stride; x++) {
+      const a = x >= ch ? px[row + x - ch] : 0;
+      const b = y > 0 ? px[row - stride + x] : 0;
+      const c = x >= ch && y > 0 ? px[row - stride + x - ch] : 0;
+      let v = raw[src + x];
+      if (f === 1)
+        v += a;
+      else if (f === 2)
+        v += b;
+      else if (f === 3)
+        v += a + b >> 1;
+      else if (f === 4) {
+        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      px[row + x] = v & 255;
+    }
+  }
+  const data = new Uint8Array(width * height * 4);
+  for (let i = 0, j = 0;i < width * height; i++, j += 4) {
+    const s = i * ch;
+    if (color === 3) {
+      const k = px[s];
+      data[j] = palette[k * 3];
+      data[j + 1] = palette[k * 3 + 1];
+      data[j + 2] = palette[k * 3 + 2];
+      data[j + 3] = alpha && k < alpha.length ? alpha[k] : 255;
+    } else if (ch <= 2) {
+      data[j] = data[j + 1] = data[j + 2] = px[s];
+      data[j + 3] = ch === 2 ? px[s + 1] : 255;
+    } else {
+      data[j] = px[s];
+      data[j + 1] = px[s + 1];
+      data[j + 2] = px[s + 2];
+      data[j + 3] = ch === 4 ? px[s + 3] : 255;
+    }
+  }
+  return { width, height, data };
+}
+var CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0;n < 256; n++) {
+    let c = n;
+    for (let k = 0;k < 8; k++)
+      c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 4294967295;
+  for (const b of buf)
+    c = CRC_TABLE[(c ^ b) & 255] ^ c >>> 8;
+  return (c ^ 4294967295) >>> 0;
+}
+function chunk(type, body) {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(body.length, 0);
+  head.write(type, 4, "latin1");
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
+  return Buffer.concat([head, body, crc]);
+}
+function encodePng(img) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(img.width, 0);
+  ihdr.writeUInt32BE(img.height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  const stride = img.width * 4;
+  const raw = Buffer.alloc((stride + 1) * img.height);
+  for (let y = 0;y < img.height; y++)
+    raw.set(img.data.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+  return Buffer.concat([SIGNATURE, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+// src/compare.ts
+var CHROME_PATHS = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+];
+var CHROME_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "microsoft-edge"];
+function findChrome() {
+  const env = process.env.CHROME_PATH;
+  if (env && existsSync4(env))
+    return env;
+  for (const p of CHROME_PATHS)
+    if (existsSync4(p))
+      return p;
+  for (const n of CHROME_NAMES) {
+    const p = Bun.which(n);
+    if (p)
+      return p;
+  }
+  fail(EXIT_UNAVAILABLE, "No Chrome, Chromium or Edge found to capture the page.", {
+    hint: "Install one, or set CHROME_PATH to its executable. Or capture the page yourself and pass the PNG instead of the page."
+  });
+}
+async function capture(page, width, height, scale, waitMs, path) {
+  const url = /^(https?|file):/.test(page) ? page : pathToFileURL(resolve5(page)).href;
+  if (url.startsWith("file:") && !existsSync4(new URL(url)))
+    fail(EXIT_USAGE, `No such page: ${page}`);
+  const profile = mkdtempSync(join4(tmpdir(), "figma-access-chrome-"));
+  try {
+    const p = Bun.spawn([
+      findChrome(),
+      "--headless=new",
+      "--hide-scrollbars",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-default-browser-check",
+      `--user-data-dir=${profile}`,
+      `--force-device-scale-factor=${scale}`,
+      `--window-size=${width},${height}`,
+      `--virtual-time-budget=${waitMs}`,
+      `--screenshot=${path}`,
+      url
+    ], { stdout: "ignore", stderr: "pipe" });
+    const timer = setTimeout(() => p.kill(), waitMs + 60000);
+    const err = await new Response(p.stderr).text();
+    await p.exited;
+    clearTimeout(timer);
+    if (!existsSync4(path))
+      fail(EXIT_FAILED, `Chrome did not write a screenshot of ${url}.`, { chrome: err.trim().split(`
+`).slice(-3) });
+  } finally {
+    rmSync3(profile, { recursive: true, force: true });
+  }
+  return decodePng(readFileSync4(path));
+}
+function readPng(path, what) {
+  if (!existsSync4(path))
+    fail(EXIT_USAGE, `No such ${what}: ${path}`);
+  try {
+    return decodePng(readFileSync4(path));
+  } catch (e) {
+    fail(EXIT_USAGE, `Cannot read the ${what} ${path}: ${e.message}`);
+  }
+}
+function crop(img, r) {
+  if (r.x < 0 || r.y < 0 || r.x + r.w > img.width || r.y + r.h > img.height) {
+    fail(EXIT_USAGE, `Crop ${r.x},${r.y},${r.w},${r.h} falls outside the ${img.width}x${img.height} image.`);
+  }
+  const data = new Uint8Array(r.w * r.h * 4);
+  for (let y = 0;y < r.h; y++)
+    data.set(img.data.subarray(((r.y + y) * img.width + r.x) * 4, ((r.y + y) * img.width + r.x + r.w) * 4), y * r.w * 4);
+  return { width: r.w, height: r.h, data };
+}
+function flatten(img) {
+  const rgb = new Uint8Array(img.width * img.height * 3);
+  for (let i = 0, j = 0;j < rgb.length; i += 4, j += 3) {
+    const a = img.data[i + 3] / 255;
+    for (let k = 0;k < 3; k++)
+      rgb[j + k] = Math.round(img.data[i + k] * a + 255 * (1 - a));
+  }
+  return rgb;
+}
+function parseNumbers(text, n, what) {
+  const v = text.split(",").map((s) => Number(s.trim()));
+  if (v.length !== n || v.some((x) => !Number.isFinite(x)))
+    fail(EXIT_USAGE, `Cannot read ${what} "${text}".`);
+  return v;
+}
+function parseSections(text, width) {
+  return text.split(";").map((s) => s.trim()).filter(Boolean).map((s) => {
+    const m = /^([^=]+)=(.+)$/.exec(s);
+    if (!m)
+      fail(EXIT_USAGE, `Cannot read section "${s}". Write name=x,y,w,h or name=top-bottom.`);
+    const band = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(m[2].trim());
+    if (band)
+      return { name: m[1].trim(), x: 0, y: Number(band[1]), w: width, h: Number(band[2]) - Number(band[1]) };
+    const [x, y, w, h] = parseNumbers(m[2], 4, `section "${s}"`);
+    return { name: m[1].trim(), x, y, w, h };
+  });
+}
+var r22 = (n) => Math.round(n * 100) / 100;
+function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
+  let n = 0, diff = 0, sum = 0;
+  for (let y = r.y;y < r.y + r.h; y++) {
+    const cy = y + dy;
+    if (cy < 0 || cy >= H)
+      continue;
+    for (let x = r.x;x < r.x + r.w; x++) {
+      const cx = x + dx;
+      if (cx < 0 || cx >= W)
+        continue;
+      const i = (y * W + x) * 3, j = (cy * W + cx) * 3;
+      const a = Math.abs(ref[i] - cap[j]), b = Math.abs(ref[i + 1] - cap[j + 1]), c = Math.abs(ref[i + 2] - cap[j + 2]);
+      n++;
+      sum += a + b + c;
+      if (Math.max(a, b, c) > threshold) {
+        diff++;
+        if (mask)
+          mask[y * W + x] = 1;
+      }
+    }
+  }
+  return { differing: n ? 100 * diff / n : 0, mean: n ? sum / (3 * n) : 0 };
+}
+async function compare(argv) {
+  const { flags, positionals } = parseArgs(argv, {
+    value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out"],
+    bool: ["help"],
+    alias: { h: "help", o: "out" }
+  });
+  if (flags.help || positionals.length < 2)
+    showHelp("compare");
+  const [refPath, page] = positionals;
+  let ref = readPng(resolve5(refPath), "reference image");
+  if (flags.crop) {
+    const [x, y, w, h] = parseNumbers(str(flags.crop), 4, "--crop");
+    ref = crop(ref, { x, y, w, h });
+  }
+  const cssWidth = Number(str(flags.width) ?? ref.width);
+  const scale = ref.width / cssWidth;
+  if (!(cssWidth > 0) || !(scale > 0))
+    fail(EXIT_USAGE, "--width must be a positive number of CSS pixels.");
+  const cssHeight = Math.round(ref.height / scale);
+  const threshold = Number(str(flags.threshold) ?? 24);
+  const maxShift = Number(str(flags.shift) ?? 3);
+  const waitMs = Number(str(flags.wait) ?? 8000);
+  const dir = resolve5(str(flags.out) ?? join4(process.cwd(), "_swe", "figma-access", "compare"));
+  mkdirSync6(dir, { recursive: true });
+  let cap;
+  let capPath;
+  if (/\.png$/i.test(page) && !/^https?:/.test(page)) {
+    capPath = resolve5(page);
+    cap = readPng(capPath, "capture");
+  } else {
+    capPath = join4(dir, `capture-${cssWidth}.png`);
+    rmSync3(capPath, { force: true });
+    cap = await capture(page, cssWidth, cssHeight, scale, waitMs, capPath);
+  }
+  if (cap.width < ref.width || cap.height < ref.height) {
+    fail(EXIT_FAILED, `The capture is ${cap.width}x${cap.height}, smaller than the reference ${ref.width}x${ref.height}.`, {
+      hint: "Capture at the reference's size, or pass --width when the reference was rendered at another scale."
+    });
+  }
+  cap = crop(cap, { x: 0, y: 0, w: ref.width, h: ref.height });
+  const W = ref.width, H = ref.height;
+  const refRgb = flatten(ref), capRgb = flatten(cap);
+  const sections = flags.sections ? parseSections(str(flags.sections), cssWidth) : (() => {
+    const band = Number(str(flags.band) ?? 100);
+    const list = [];
+    for (let y = 0;y < cssHeight; y += band)
+      list.push({ name: `${y}-${Math.min(y + band, cssHeight)}`, x: 0, y, w: cssWidth, h: Math.min(band, cssHeight - y) });
+    return list;
+  })();
+  const mask = new Uint8Array(W * H);
+  const whole = measure(refRgb, capRgb, W, H, { x: 0, y: 0, w: W, h: H }, 0, 0, threshold, mask);
+  const results = sections.map((s) => {
+    const r = { x: Math.round(s.x * scale), y: Math.round(s.y * scale), w: Math.round(s.w * scale), h: Math.round(s.h * scale) };
+    if (r.w <= 0 || r.h <= 0 || r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) {
+      fail(EXIT_USAGE, `Section "${s.name}" (${s.x},${s.y},${s.w},${s.h}) falls outside the ${cssWidth}x${cssHeight} page.`);
+    }
+    const base = measure(refRgb, capRgb, W, H, r, 0, 0, threshold);
+    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r22(base.differing), mean: r22(base.mean) };
+    let best = { dx: 0, dy: 0, differing: base.differing };
+    const step = Math.max(1, Math.round(scale));
+    for (let dy = -maxShift * step;dy <= maxShift * step; dy += step) {
+      for (let dx = -maxShift * step;dx <= maxShift * step; dx += step) {
+        if (!dx && !dy)
+          continue;
+        const m = measure(refRgb, capRgb, W, H, r, dx, dy, threshold);
+        if (m.differing < best.differing)
+          best = { dx, dy, differing: m.differing };
+      }
+    }
+    if (best.differing < base.differing * 0.5 && base.differing > 0.5) {
+      const dxCss = r22(best.dx / scale), dyCss = r22(best.dy / scale);
+      entry.shift = { dx: dxCss, dy: dyCss, differing: r22(best.differing) };
+      entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
+    }
+    return entry;
+  });
+  const diffImg = { width: W, height: H, data: new Uint8Array(W * H * 4) };
+  for (let i = 0;i < W * H; i++) {
+    const o = i * 4, s = i * 3;
+    if (mask[i])
+      diffImg.data.set([230, 0, 0, 255], o);
+    else
+      for (let k = 0;k < 3; k++)
+        diffImg.data[o + k] = 255 - Math.round((255 - refRgb[s + k]) * 0.3);
+    diffImg.data[o + 3] = 255;
+  }
+  const diffPath = join4(dir, "diff.png");
+  writeFileSync6(diffPath, encodePng(diffImg));
+  const report = {
+    ok: true,
+    reference: resolve5(refPath),
+    capture: capPath,
+    diff: diffPath,
+    page: [cssWidth, cssHeight],
+    scale: r22(scale),
+    threshold,
+    whole: { differing: r22(whole.differing), mean: r22(whole.mean) },
+    sections: results,
+    worst: [...results].sort((a, b) => b.differing - a.differing)[0]?.name
+  };
+  if (flags.wide) {
+    const wide = Number(str(flags.wide));
+    if (!(wide > cssWidth))
+      fail(EXIT_USAGE, `--wide must be wider than the page width ${cssWidth}.`);
+    if (/\.png$/i.test(page) && !/^https?:/.test(page))
+      fail(EXIT_USAGE, "--wide needs a page to capture, not a PNG.");
+    const widePath = join4(dir, `capture-${wide}.png`);
+    rmSync3(widePath, { force: true });
+    const wideImg = await capture(page, wide, cssHeight, scale, waitMs, widePath);
+    const at = (x) => flatten(crop(wideImg, { x, y: 0, w: W, h: H }));
+    const centred = measure(refRgb, at(Math.round((wide - cssWidth) / 2 * scale)), W, H, { x: 0, y: 0, w: W, h: H }, 0, 0, threshold);
+    const left = measure(refRgb, at(0), W, H, { x: 0, y: 0, w: W, h: H }, 0, 0, threshold);
+    const EDGE_THRESHOLD = 3;
+    const WW = wideImg.width;
+    const wideRgb = flatten(wideImg);
+    let edgeDiff = 0;
+    for (let y = 0;y < H; y++) {
+      for (const [rx, wx] of [[0, 0], [W - 1, WW - 1]]) {
+        const i = (y * W + rx) * 3, j = (y * WW + wx) * 3;
+        if (Math.max(Math.abs(refRgb[i] - wideRgb[j]), Math.abs(refRgb[i + 1] - wideRgb[j + 1]), Math.abs(refRgb[i + 2] - wideRgb[j + 2])) > EDGE_THRESHOLD)
+          edgeDiff++;
+      }
+    }
+    const edge = 100 * edgeDiff / (2 * H);
+    const w = {
+      width: wide,
+      capture: widePath,
+      centredDiffering: r22(centred.differing),
+      leftDiffering: r22(left.differing),
+      edgeDiffering: r22(edge)
+    };
+    const hints = [];
+    if (left.differing < centred.differing)
+      hints.push("The content stays at the left edge of a wider window. Centre the content column (margin: 0 auto) unless the user asked for a fixed width.");
+    if (edge > 2)
+      hints.push(`The window's edges differ from the design's edges in ${r22(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
+    w.hint = hints.length ? hints.join(" ") : "The content stays centred and the backgrounds reach the window's edges.";
+    report.wide = w;
+  }
+  out(report);
+}
+
 // src/main.ts
 var table = {
   setup,
@@ -4156,7 +4598,8 @@ var table = {
   spec,
   render,
   "image-fills": imageFills,
-  api
+  api,
+  compare
 };
 var [cmd, ...rest] = process.argv.slice(2);
 if (cmd === "__daemon") {

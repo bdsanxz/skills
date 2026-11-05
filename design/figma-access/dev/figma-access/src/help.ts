@@ -38,13 +38,17 @@ FIGMA_TOKEN_KEY, FIGMA_ACCESS_TOKEN or FIGMA_TOKEN)
   image-fills <url|key> Download the original images used as fills, named by imageRef.
   api <path>            Any GET endpoint, e.g. /v1/files/<key>/styles.
 
+Check an implementation (needs Chrome, Chromium or Edge)
+  compare <ref.png> <page>
+                        Capture a page and measure it against a render, per section.
+
 Exit codes: 0 ok, 1 Figma reported a failure, 2 bad arguments, 3 daemon, plugin or token not available.
 Output is KDL on stdout (https://kdl.dev), and the data files the CLI saves (node, api -o) are
 KDL: one node per line, an object's plain fields as key=value on its line, nested objects and
 arrays as indented blocks, array items as nodes named "-". Exceptions: \`spec\` prints its own
 one-line-per-node text outline (with -o it writes that text and prints a KDL summary),
 \`daemon log\` prints the daemon's log lines as they are, and render, screenshot and image-fills
-save image files and print a KDL summary of them. Every command has --help.`,
+save image files and print a KDL summary of them, as does compare. Every command has --help.`,
 
   setup: `Usage: figma-access setup
 
@@ -161,7 +165,8 @@ Prints the visible tree under each node, one line per node, with what code needs
 type, name, id, box [x,y wxh] relative to the node (or to --origin), render[x,y wxh] when the
 area visible on the canvas differs (shadows grow it, masks and clipping parents shrink it),
 opacity, blend, clip,
-component id, text with font family weight size/line-height, letter spacing, alignment and case,
+component id, text with font family weight size/line-height, letter spacing, alignment and case
+(valign center|bottom when a fixed-height box is taller than its lines),
 fills as CSS colors or gradients, top layer first as in a CSS background list (image fills as
 image(<imageRef>, <scaleMode>)), borders,
 radii, shadows and blurs, and auto layout as flex direction, gap, padding, justify and align.
@@ -171,9 +176,9 @@ Hidden layers are skipped. A subtree made only of vectors is one line marked
 svg or png": export those with \`render\` instead of rebuilding them; export[x,y wxh] then
 gives the area the exported file covers, where it differs from the box (clipping by parents
 does not shrink an export, so place the file there and clip it in code).
-An auto layout frame whose stored boxes break its own gap, padding or hug rules is marked
-"LAYOUT DRIFT": its boxes are stale (often a hidden child still counted), so measure that
-part on the render.
+An auto layout frame whose stored boxes break its own gap, padding, hug or fill rules is marked
+"LAYOUT DRIFT": its boxes, or a child's, are stale (often a hidden child still counted), so lay it out
+from its direction, gap, padding and sizing, not its boxes, and check it against the render.
 
   --depth <n>       Stop after n levels (default: all).
   --origin <x,y>    Measure boxes from this canvas point instead of the node's corner,
@@ -203,6 +208,30 @@ Downloads every image used as an image fill in the file, at its original resolut
 entries in \`spec\` name the ones the visible design uses.
 
   -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/image-fills/).`,
+
+  compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
+                          [--crop x,y,w,h] [--width n] [--shift n] [--threshold n] [--wide n] [--wait ms] [-o dir]
+
+Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
+then prints, for the whole page and each section, the share of differing pixels (a channel off by
+more than --threshold, default 24) and the mean channel difference (0-255; use it for gradients
+and tints, which a threshold misses). For each section it also tries the capture shifted up to
+--shift pixels (default 3) each way: when a shift explains the difference, the section is right
+and something before it has the wrong size. Writes the capture and diff.png (the reference faded,
+differing pixels red) to the output directory; open diff.png to see where the pixels differ.
+
+  <reference.png>       The design render, e.g. from \`render\` at scale 1.
+  <page>                An HTML file or URL to capture, or a PNG you captured yourself.
+  --sections <spec>     Named areas in page pixels, separated by ";": name=x,y,w,h, or
+                        name=top-bottom for a full-width band ("nav=0-48;cards=399,289,602,496").
+                        Default: full-width bands of --band pixels (default 100).
+  --crop x,y,w,h        Use only this part of the reference, e.g. to leave out browser chrome.
+  --width <px>          The page width in CSS pixels when the reference is not at scale 1
+                        (a 2880 px wide render of a 1440 frame: --width 1440).
+  --wide <px>           Also capture at this wider window and report whether the content stays
+                        centred or sticks to the left.
+  --wait <ms>           Time the page gets to load fonts and images (default 8000).
+  -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
 
   api: `Usage: figma-access api <path> [-o file.kdl]
 

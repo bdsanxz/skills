@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { color, exportBounds, layoutDrift, paint } from "../src/spec";
+import { color, exportBounds, layoutDrift, paint, textInfo } from "../src/spec";
 
 const box = (x: number, y: number, width: number, height: number) => ({ absoluteBoundingBox: { x, y, width, height } });
 
@@ -17,6 +17,17 @@ test("linear gradient maps Figma handles onto the CSS gradient line of a non-squ
   expect(paint(p, { w: 400, h: 100 })).toBe("linear-gradient(90deg, #FF0000 0%, #0000FF 100%)");
 });
 
+test("linear gradient follows a slanted handle 2: the equal-colour lines run along handle 0 → 2", () => {
+  // From a real banner overlay: handles 0 → 1 point straight down, but handle 2 slants the
+  // equal-colour lines, so the top-left corner is far darker than a plain 180deg gradient gives.
+  const p = {
+    type: "GRADIENT_LINEAR",
+    gradientHandlePositions: [{ x: 0.518156, y: 0.194444 }, { x: 0.518157, y: 0.852349 }, { x: 0.200031, y: 0.005542 }],
+    gradientStops: [{ color: { r: 0, g: 0, b: 0, a: 0.1 }, position: 0 }, { color: { r: 0.2, g: 0.2, b: 0.2, a: 1 }, position: 1 }],
+  };
+  expect(paint(p, { w: 358, h: 180 })).toBe("linear-gradient(197deg, rgba(0,0,0,0.1) 30.31%, #333333 71.22%)");
+});
+
 test("radial gradient carries its centre and radii in pixels", () => {
   const p = {
     type: "GRADIENT_RADIAL",
@@ -28,8 +39,15 @@ test("radial gradient carries its centre and radii in pixels", () => {
 
 test("layoutDrift flags a hug frame that still counts a hidden child", () => {
   const n = { layoutMode: "VERTICAL", itemSpacing: 16, layoutSizingVertical: "HUG", ...box(0, 0, 100, 88), children: [{ ...box(0, 0, 100, 48) }, { visible: false, ...box(0, 64, 100, 24) }] };
-  expect(layoutDrift(n)).toBe("hugs 88 but its items need 48");
+  expect(layoutDrift(n)).toBe("hugs 88 but its stored items add up to 48");
   expect(layoutDrift({ ...n, ...box(0, 0, 100, 48) })).toBeNull();
+});
+
+test("layoutDrift flags a fill child stored at another size than the frame gives it", () => {
+  const child = { name: "Inner", layoutSizingHorizontal: "FILL", layoutSizingVertical: "FILL", ...box(0, 0, 326, 48) };
+  const n = { layoutMode: "VERTICAL", paddingLeft: 0, paddingRight: 0, ...box(0, 0, 100, 48), children: [child] };
+  expect(layoutDrift(n)).toBe('"Inner" fills 100 but is stored 326 wide');
+  expect(layoutDrift({ ...n, children: [{ ...child, ...box(0, 0, 100, 48) }] })).toBeNull();
 });
 
 test("exportBounds grows by shadows and shrinks to masks", () => {
@@ -55,4 +73,11 @@ test("KDL output round-trips JSON values, including awkward keys and strings", a
   const data = { ok: true, key: "71z", empty: [], emptyObj: {}, one: ["x"], mixed: [1, { a: 1 }], none: null, text: "a b \"q\" \\ \t", true: "true", nodes: { "1:2": { document: { id: "1:2", "-": 3 } } }, nested: [[1, 2], []] };
   expect(decode(encode(data))).toEqual(data);
   expect(encode({ frames: [{ id: "1:2", name: "Card", type: "FRAME" }] })).toBe('(array)frames {\n  - id="1:2" name=Card type=FRAME\n}');
+});
+
+test("textInfo names the vertical alignment of a fixed-height text box", () => {
+  const base = { fontFamily: "Inter", fontWeight: 700, fontSize: 18, lineHeightPx: 24, textAlignVertical: "CENTER" };
+  expect(textInfo({ characters: "Title", style: base })).toContain("valign center");
+  expect(textInfo({ characters: "Title", style: { ...base, textAutoResize: "HEIGHT" } })).not.toContain("valign center");
+  expect(textInfo({ characters: "Title", style: { ...base, textAlignVertical: "TOP" } }).some((p) => p.startsWith("valign"))).toBe(false);
 });

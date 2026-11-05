@@ -11,6 +11,7 @@ import { EXIT_USAGE, VERSION } from "./config";
 import { runDaemon } from "./daemon";
 import * as restApi from "./rest";
 import { spec } from "./spec";
+import { compare } from "./compare";
 import { showHelp } from "./help";
 import { fail } from "./util";
 
@@ -32,6 +33,7 @@ const table: Record<string, (argv: string[]) => unknown> = {
   render: restApi.render,
   "image-fills": restApi.imageFills,
   api: restApi.api,
+  compare,
 };
 
 const [cmd, ...rest] = process.argv.slice(2);

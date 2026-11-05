@@ -1,0 +1,267 @@
+// compare: capture a page in headless Chrome and measure it against a design render, per section,
+// with the shift that explains each section's difference best. Works on any PNG reference.
+
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { EXIT_FAILED, EXIT_UNAVAILABLE, EXIT_USAGE } from "./config";
+import { showHelp } from "./help";
+import { decodePng, encodePng, type Image } from "./png";
+import { fail, out, parseArgs, str } from "./util";
+
+interface Rect { x: number; y: number; w: number; h: number }
+interface Section extends Rect { name: string }
+
+const CHROME_PATHS = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+];
+const CHROME_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "microsoft-edge"];
+
+function findChrome(): string {
+  const env = process.env.CHROME_PATH;
+  if (env && existsSync(env)) return env;
+  for (const p of CHROME_PATHS) if (existsSync(p)) return p;
+  for (const n of CHROME_NAMES) {
+    const p = Bun.which(n);
+    if (p) return p;
+  }
+  fail(EXIT_UNAVAILABLE, "No Chrome, Chromium or Edge found to capture the page.", {
+    hint: "Install one, or set CHROME_PATH to its executable. Or capture the page yourself and pass the PNG instead of the page.",
+  });
+}
+
+async function capture(page: string, width: number, height: number, scale: number, waitMs: number, path: string): Promise<Image> {
+  const url = /^(https?|file):/.test(page) ? page : pathToFileURL(resolve(page)).href;
+  if (url.startsWith("file:") && !existsSync(new URL(url))) fail(EXIT_USAGE, `No such page: ${page}`);
+  const profile = mkdtempSync(join(tmpdir(), "figma-access-chrome-"));
+  try {
+    const p = Bun.spawn(
+      [
+        findChrome(), "--headless=new", "--hide-scrollbars", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+        `--user-data-dir=${profile}`, `--force-device-scale-factor=${scale}`, `--window-size=${width},${height}`,
+        `--virtual-time-budget=${waitMs}`, `--screenshot=${path}`, url,
+      ],
+      { stdout: "ignore", stderr: "pipe" },
+    );
+    const timer = setTimeout(() => p.kill(), waitMs + 60000);
+    const err = await new Response(p.stderr).text();
+    await p.exited;
+    clearTimeout(timer);
+    if (!existsSync(path)) fail(EXIT_FAILED, `Chrome did not write a screenshot of ${url}.`, { chrome: err.trim().split("\n").slice(-3) });
+  } finally {
+    rmSync(profile, { recursive: true, force: true });
+  }
+  return decodePng(readFileSync(path));
+}
+
+function readPng(path: string, what: string): Image {
+  if (!existsSync(path)) fail(EXIT_USAGE, `No such ${what}: ${path}`);
+  try {
+    return decodePng(readFileSync(path));
+  } catch (e) {
+    fail(EXIT_USAGE, `Cannot read the ${what} ${path}: ${(e as Error).message}`);
+  }
+}
+
+function crop(img: Image, r: Rect): Image {
+  if (r.x < 0 || r.y < 0 || r.x + r.w > img.width || r.y + r.h > img.height) {
+    fail(EXIT_USAGE, `Crop ${r.x},${r.y},${r.w},${r.h} falls outside the ${img.width}x${img.height} image.`);
+  }
+  const data = new Uint8Array(r.w * r.h * 4);
+  for (let y = 0; y < r.h; y++) data.set(img.data.subarray(((r.y + y) * img.width + r.x) * 4, ((r.y + y) * img.width + r.x + r.w) * 4), y * r.w * 4);
+  return { width: r.w, height: r.h, data };
+}
+
+/** RGB over white, so transparent areas compare as the white page they sit on. */
+function flatten(img: Image): Uint8Array {
+  const rgb = new Uint8Array(img.width * img.height * 3);
+  for (let i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
+    const a = img.data[i + 3]! / 255;
+    for (let k = 0; k < 3; k++) rgb[j + k] = Math.round(img.data[i + k]! * a + 255 * (1 - a));
+  }
+  return rgb;
+}
+
+function parseNumbers(text: string, n: number, what: string): number[] {
+  const v = text.split(",").map((s) => Number(s.trim()));
+  if (v.length !== n || v.some((x) => !Number.isFinite(x))) fail(EXIT_USAGE, `Cannot read ${what} "${text}".`);
+  return v;
+}
+
+/** "name=x,y,w,h" or "name=y0-y1" (full width), separated by ";". */
+function parseSections(text: string, width: number): Section[] {
+  return text.split(";").map((s) => s.trim()).filter(Boolean).map((s) => {
+    const m = /^([^=]+)=(.+)$/.exec(s);
+    if (!m) fail(EXIT_USAGE, `Cannot read section "${s}". Write name=x,y,w,h or name=top-bottom.`);
+    const band = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(m[2]!.trim());
+    if (band) return { name: m[1]!.trim(), x: 0, y: Number(band[1]), w: width, h: Number(band[2]) - Number(band[1]) };
+    const [x, y, w, h] = parseNumbers(m[2]!, 4, `section "${s}"`) as [number, number, number, number];
+    return { name: m[1]!.trim(), x, y, w, h };
+  });
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Share of differing pixels (in %) and mean channel difference over a rect, with the capture shifted by dx,dy. */
+function measure(ref: Uint8Array, cap: Uint8Array, W: number, H: number, r: Rect, dx: number, dy: number, threshold: number, mask?: Uint8Array) {
+  let n = 0, diff = 0, sum = 0;
+  for (let y = r.y; y < r.y + r.h; y++) {
+    const cy = y + dy;
+    if (cy < 0 || cy >= H) continue;
+    for (let x = r.x; x < r.x + r.w; x++) {
+      const cx = x + dx;
+      if (cx < 0 || cx >= W) continue;
+      const i = (y * W + x) * 3, j = (cy * W + cx) * 3;
+      const a = Math.abs(ref[i]! - cap[j]!), b = Math.abs(ref[i + 1]! - cap[j + 1]!), c = Math.abs(ref[i + 2]! - cap[j + 2]!);
+      n++;
+      sum += a + b + c;
+      if (Math.max(a, b, c) > threshold) {
+        diff++;
+        if (mask) mask[y * W + x] = 1;
+      }
+    }
+  }
+  return { differing: n ? (100 * diff) / n : 0, mean: n ? sum / (3 * n) : 0 };
+}
+
+export async function compare(argv: string[]) {
+  const { flags, positionals } = parseArgs(argv, {
+    value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out"],
+    bool: ["help"],
+    alias: { h: "help", o: "out" },
+  });
+  if (flags.help || positionals.length < 2) showHelp("compare");
+  const [refPath, page] = positionals as [string, string];
+  let ref = readPng(resolve(refPath), "reference image");
+  if (flags.crop) {
+    const [x, y, w, h] = parseNumbers(str(flags.crop)!, 4, "--crop");
+    ref = crop(ref, { x: x!, y: y!, w: w!, h: h! });
+  }
+  const cssWidth = Number(str(flags.width) ?? ref.width);
+  const scale = ref.width / cssWidth;
+  if (!(cssWidth > 0) || !(scale > 0)) fail(EXIT_USAGE, "--width must be a positive number of CSS pixels.");
+  const cssHeight = Math.round(ref.height / scale);
+  const threshold = Number(str(flags.threshold) ?? 24);
+  const maxShift = Number(str(flags.shift) ?? 3);
+  const waitMs = Number(str(flags.wait) ?? 8000);
+  const dir = resolve(str(flags.out) ?? join(process.cwd(), "_swe", "figma-access", "compare"));
+  mkdirSync(dir, { recursive: true });
+
+  let cap: Image;
+  let capPath: string;
+  if (/\.png$/i.test(page) && !/^https?:/.test(page)) {
+    capPath = resolve(page);
+    cap = readPng(capPath, "capture");
+  } else {
+    capPath = join(dir, `capture-${cssWidth}.png`);
+    rmSync(capPath, { force: true });
+    cap = await capture(page, cssWidth, cssHeight, scale, waitMs, capPath);
+  }
+  if (cap.width < ref.width || cap.height < ref.height) {
+    fail(EXIT_FAILED, `The capture is ${cap.width}x${cap.height}, smaller than the reference ${ref.width}x${ref.height}.`, {
+      hint: "Capture at the reference's size, or pass --width when the reference was rendered at another scale.",
+    });
+  }
+  cap = crop(cap, { x: 0, y: 0, w: ref.width, h: ref.height });
+
+  const W = ref.width, H = ref.height;
+  const refRgb = flatten(ref), capRgb = flatten(cap);
+  const sections = flags.sections
+    ? parseSections(str(flags.sections)!, cssWidth)
+    : (() => {
+        const band = Number(str(flags.band) ?? 100);
+        const list: Section[] = [];
+        for (let y = 0; y < cssHeight; y += band) list.push({ name: `${y}-${Math.min(y + band, cssHeight)}`, x: 0, y, w: cssWidth, h: Math.min(band, cssHeight - y) });
+        return list;
+      })();
+
+  const mask = new Uint8Array(W * H);
+  const whole = measure(refRgb, capRgb, W, H, { x: 0, y: 0, w: W, h: H }, 0, 0, threshold, mask);
+  const results = sections.map((s) => {
+    const r = { x: Math.round(s.x * scale), y: Math.round(s.y * scale), w: Math.round(s.w * scale), h: Math.round(s.h * scale) };
+    if (r.w <= 0 || r.h <= 0 || r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) {
+      fail(EXIT_USAGE, `Section "${s.name}" (${s.x},${s.y},${s.w},${s.h}) falls outside the ${cssWidth}x${cssHeight} page.`);
+    }
+    const base = measure(refRgb, capRgb, W, H, r, 0, 0, threshold);
+    const entry: Record<string, unknown> = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r2(base.differing), mean: r2(base.mean) };
+    let best = { dx: 0, dy: 0, differing: base.differing };
+    const step = Math.max(1, Math.round(scale));
+    for (let dy = -maxShift * step; dy <= maxShift * step; dy += step) {
+      for (let dx = -maxShift * step; dx <= maxShift * step; dx += step) {
+        if (!dx && !dy) continue;
+        const m = measure(refRgb, capRgb, W, H, r, dx, dy, threshold);
+        if (m.differing < best.differing) best = { dx, dy, differing: m.differing };
+      }
+    }
+    if (best.differing < base.differing * 0.5 && base.differing > 0.5) {
+      // The capture's content sits at (x+dx, y+dy): it is dx right / dy down of where the design has it.
+      const dxCss = r2(best.dx / scale), dyCss = r2(best.dy / scale);
+      entry.shift = { dx: dxCss, dy: dyCss, differing: r2(best.differing) };
+      entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
+    }
+    return entry;
+  });
+
+  // Difference image: the reference faded, with differing pixels in red.
+  const diffImg: Image = { width: W, height: H, data: new Uint8Array(W * H * 4) };
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4, s = i * 3;
+    if (mask[i]) diffImg.data.set([230, 0, 0, 255], o);
+    else for (let k = 0; k < 3; k++) diffImg.data[o + k] = 255 - Math.round((255 - refRgb[s + k]!) * 0.3);
+    diffImg.data[o + 3] = 255;
+  }
+  const diffPath = join(dir, "diff.png");
+  writeFileSync(diffPath, encodePng(diffImg));
+
+  const report: Record<string, unknown> = {
+    ok: true,
+    reference: resolve(refPath),
+    capture: capPath,
+    diff: diffPath,
+    page: [cssWidth, cssHeight],
+    scale: r2(scale),
+    threshold,
+    whole: { differing: r2(whole.differing), mean: r2(whole.mean) },
+    sections: results,
+    worst: [...results].sort((a, b) => (b.differing as number) - (a.differing as number))[0]?.name,
+  };
+
+  if (flags.wide) {
+    const wide = Number(str(flags.wide));
+    if (!(wide > cssWidth)) fail(EXIT_USAGE, `--wide must be wider than the page width ${cssWidth}.`);
+    if (/\.png$/i.test(page) && !/^https?:/.test(page)) fail(EXIT_USAGE, "--wide needs a page to capture, not a PNG.");
+    const widePath = join(dir, `capture-${wide}.png`);
+    rmSync(widePath, { force: true });
+    const wideImg = await capture(page, wide, cssHeight, scale, waitMs, widePath);
+    const at = (x: number) => flatten(crop(wideImg, { x, y: 0, w: W, h: H }));
+    const centred = measure(refRgb, at(Math.round(((wide - cssWidth) / 2) * scale)), W, H, { x: 0, y: 0, w: W, h: H }, 0, 0, threshold);
+    const left = measure(refRgb, at(0), W, H, { x: 0, y: 0, w: W, h: H }, 0, 0, threshold);
+    // Full-width backgrounds reach the window's edges: the outermost columns of the wide capture
+    // should look like the design's outermost columns. They hold flat colour, so a tight threshold
+    // also catches near-white backgrounds that stop short.
+    const EDGE_THRESHOLD = 3;
+    const WW = wideImg.width;
+    const wideRgb = flatten(wideImg);
+    let edgeDiff = 0;
+    for (let y = 0; y < H; y++) {
+      for (const [rx, wx] of [[0, 0], [W - 1, WW - 1]] as const) {
+        const i = (y * W + rx) * 3, j = (y * WW + wx) * 3;
+        if (Math.max(Math.abs(refRgb[i]! - wideRgb[j]!), Math.abs(refRgb[i + 1]! - wideRgb[j + 1]!), Math.abs(refRgb[i + 2]! - wideRgb[j + 2]!)) > EDGE_THRESHOLD) edgeDiff++;
+      }
+    }
+    const edge = (100 * edgeDiff) / (2 * H);
+    const w: Record<string, unknown> = {
+      width: wide, capture: widePath,
+      centredDiffering: r2(centred.differing), leftDiffering: r2(left.differing), edgeDiffering: r2(edge),
+    };
+    const hints: string[] = [];
+    if (left.differing < centred.differing) hints.push("The content stays at the left edge of a wider window. Centre the content column (margin: 0 auto) unless the user asked for a fixed width.");
+    if (edge > 2) hints.push(`The window's edges differ from the design's edges in ${r2(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
+    w.hint = hints.length ? hints.join(" ") : "The content stays centred and the backgrounds reach the window's edges.";
+    report.wide = w;
+  }
+  out(report);
+}
