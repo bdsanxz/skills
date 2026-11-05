@@ -1,0 +1,90 @@
+// Desktop Bridge plugin methods: name -> [params summary, default timeout in ms].
+// EXECUTE_CODE has no fixed timeout: the relay waits for the code's own timeout plus a margin.
+
+export const METHODS: Record<string, [string, number | null]> = {
+  // Core
+  EXECUTE_CODE: ["code, timeout? (ms, default 5000)", null],
+  GET_FILE_INFO: ["-", 15000],
+  CAPTURE_SCREENSHOT: ["nodeId?, format? (PNG|JPG|SVG|PDF), scale?", 35000],
+  RELOAD_UI: ["-", 15000],
+  // Variables
+  GET_VARIABLES_DATA: ["- (cached variables and collections)", 15000],
+  REFRESH_VARIABLES: ["-", 30000],
+  CREATE_VARIABLE_COLLECTION: ["name, initialModeName?, additionalModes?[]", 20000],
+  CREATE_VARIABLE: ["name, collectionId, resolvedType (COLOR|FLOAT|STRING|BOOLEAN), valuesByMode?{modeId:value}, description?, scopes?[]", 20000],
+  UPDATE_VARIABLE: ["variableId, modeId, value", 20000],
+  RENAME_VARIABLE: ["variableId, newName", 20000],
+  SET_VARIABLE_DESCRIPTION: ["variableId, description", 20000],
+  DELETE_VARIABLE: ["variableId", 20000],
+  DELETE_VARIABLE_COLLECTION: ["collectionId", 20000],
+  ADD_MODE: ["collectionId, modeName", 20000],
+  RENAME_MODE: ["collectionId, modeId, newName", 20000],
+  // Components
+  GET_LOCAL_COMPONENTS: ["-", 60000],
+  GET_COMPONENT: ["nodeId", 20000],
+  DEEP_GET_COMPONENT: ["nodeId, depth?", 60000],
+  ANALYZE_COMPONENT_SET: ["nodeId", 60000],
+  INSTANTIATE_COMPONENT: ["componentKey | nodeId, parentId?, position?{x,y}, size?{width,height}, variant?{}, overrides?{}", 30000],
+  CREATE_COMPONENT_SET: ["name, componentIds?[] | baseComponentId + properties?{axis:[values]}, parentId?, position?", 125000],
+  SET_INSTANCE_PROPERTIES: ["nodeId, properties{name:value}", 20000],
+  ADD_COMPONENT_PROPERTY: ["nodeId, propertyName, propertyType (BOOLEAN|TEXT|INSTANCE_SWAP|VARIANT|SLOT), defaultValue, preferredValues?, description?", 20000],
+  EDIT_COMPONENT_PROPERTY: ["nodeId, propertyName, newValue{}", 20000],
+  DELETE_COMPONENT_PROPERTY: ["nodeId, propertyName", 20000],
+  SET_NODE_DESCRIPTION: ["nodeId, description, descriptionMarkdown?", 20000],
+  CREATE_SLOT: ["nodeId, name?, layoutMode?, width?, height?", 20000],
+  GET_SLOTS: ["nodeId", 20000],
+  APPEND_TO_SLOT: ["nodeId (slot), nodeType? + properties? | sourceNodeId + clone?, clearExisting?", 20000],
+  RESET_SLOT: ["nodeId", 20000],
+  // Nodes
+  CREATE_CHILD_NODE: ["parentId, nodeType (RECTANGLE|ELLIPSE|FRAME|TEXT|LINE|POLYGON|STAR|VECTOR), properties?{}", 20000],
+  RESIZE_NODE: ["nodeId, width, height, withConstraints?", 20000],
+  MOVE_NODE: ["nodeId, x, y", 20000],
+  SET_NODE_FILLS: ["nodeId, fills[] (Figma Paint objects)", 20000],
+  SET_NODE_STROKES: ["nodeId, strokes[], strokeWeight?", 20000],
+  SET_NODE_OPACITY: ["nodeId, opacity (0-1)", 20000],
+  SET_NODE_CORNER_RADIUS: ["nodeId, radius", 20000],
+  SET_IMAGE_FILL: ["nodeId | nodeIds[], imageData (base64), scaleMode? (FILL|FIT|CROP|TILE)", 65000],
+  SET_TEXT_CONTENT: ["nodeId, text, fontFamily?, fontStyle?, fontSize?", 20000],
+  CLONE_NODE: ["nodeId", 20000],
+  DELETE_NODE: ["nodeId", 20000],
+  RENAME_NODE: ["nodeId, newName", 20000],
+  // Annotations
+  GET_ANNOTATIONS: ["nodeId, includeChildren?, depth?", 15000],
+  SET_ANNOTATIONS: ["nodeId, annotations[], mode? (replace|append)", 15000],
+  GET_ANNOTATION_CATEGORIES: ["-", 10000],
+  // Audits
+  LINT_DESIGN: ["nodeId?, rules?[], maxDepth?, maxFindings?", 120000],
+  AUDIT_COMPONENT_ACCESSIBILITY: ["nodeId, targetSize?", 120000],
+  // FigJam
+  CREATE_STICKY: ["text, color?, x?, y?", 20000],
+  CREATE_STICKIES: ["stickies[]{text,color?,x?,y?}", 35000],
+  CREATE_CONNECTOR: ["startNodeId, endNodeId, label?, startMagnet?, endMagnet?", 20000],
+  CREATE_SECTION: ["name?, x?, y?, width?, height?, fillColor?", 20000],
+  CREATE_SHAPE_WITH_TEXT: ["text?, shapeType?, x?, y?, width?, height?, fillColor?, strokeColor?, strokeDashPattern?, fontSize?", 20000],
+  CREATE_TABLE: ["rows, columns, data?[][], x?, y?", 35000],
+  CREATE_CODE_BLOCK: ["code, language?, x?, y?", 20000],
+  GET_BOARD_CONTENTS: ["nodeTypes?[], maxNodes?", 35000],
+  GET_CONNECTIONS: ["-", 20000],
+  // Slides
+  LIST_SLIDES: ["-", 15000],
+  GET_SLIDE_CONTENT: ["slideId", 15000],
+  CREATE_SLIDE: ["row?, col?", 15000],
+  DELETE_SLIDE: ["slideId", 10000],
+  DUPLICATE_SLIDE: ["slideId", 10000],
+  GET_SLIDE_GRID: ["-", 15000],
+  REORDER_SLIDES: ["grid[][] (slide ids)", 20000],
+  SET_SLIDE_TRANSITION: ["slideId, style, duration?, curve?, timing?", 10000],
+  GET_SLIDE_TRANSITION: ["slideId", 10000],
+  SET_SLIDES_VIEW_MODE: ["mode (grid|single-slide)", 10000],
+  GET_FOCUSED_SLIDE: ["-", 10000],
+  FOCUS_SLIDE: ["slideId", 10000],
+  SKIP_SLIDE: ["slideId, skip (boolean)", 10000],
+  GET_TEXT_STYLES: ["-", 10000],
+  SET_SLIDE_BACKGROUND: ["slideId, color", 10000],
+  ADD_TEXT_TO_SLIDE: ["slideId, text, x?, y?, width?, fontFamily?, fontStyle?, fontSize?, color?, textAlign?, lineHeight?, letterSpacing?, textCase?", 15000],
+  ADD_SHAPE_TO_SLIDE: ["slideId, shapeType, x?, y?, width?, height?, color?", 10000],
+};
+
+export function defaultTimeout(method: string): number {
+  return METHODS[method]?.[1] ?? 30000;
+}

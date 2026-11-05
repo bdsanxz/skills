@@ -31,6 +31,7 @@ Update installed skills with `npx skills@latest update`. Remove one with `npx sk
 
 | Skill | What it does |
 | --- | --- |
+| [`figma-access`](design/figma-access/SKILL.md) | Reads and changes Figma designs from the shell, without an MCP server, through one bundled CLI that runs on Bun. From a Figma URL and a personal access token it reads any file through the REST API: frames, full node data with hidden layers pruned, a compact CSS-ready `spec` of a frame (boxes, export bounds, fonts, gradients, auto layout, stale layout flagged), exact renders and original image fills. With the bundled Desktop Bridge plugin running in Figma Desktop, it also runs Figma Plugin API code in the open file, takes screenshots and reads the selection, logs and changes. Output is KDL, one node per line, so `grep` works on it. |
 | [`font-design`](design/font-design/SKILL.md) | Designs a complete typeface from a text brief. It records every design decision, draws each glyph as code, and judges its work on rendered proof sheets, with an independent critic worker (the `font-design-critic` template) reviewing each round. It spaces and kerns the font, then delivers a Latin family (about 240 glyphs) as OTF, TTF and WOFF2 for each weight, plus a variable font, an HTML specimen and a QA report. |
 
 ### Engineering

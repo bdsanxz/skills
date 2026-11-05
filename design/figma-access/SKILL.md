@@ -1,0 +1,82 @@
+---
+name: figma-access
+description: |
+  Read and change Figma designs from the shell, without an MCP server, through the `figma-access` CLI. From a Figma URL and a personal access token it reads any file through the REST API (frames, exact node styles, rendered images, original image fills), with no Figma Desktop needed; with the Desktop Bridge plugin running in Figma Desktop it also runs Figma Plugin API code in the open file, exports screenshots, reads the selection, console logs and changes, and manages variables, components, FigJam boards and Slides. Use when the user shares a Figma link or asks to inspect, implement in code, export, create, edit, audit or screenshot something in Figma, to work with Figma variables, tokens or components, or names this skill.
+---
+
+# Figma access
+
+You work with Figma through one command-line tool. It prints KDL and saves its data files as `.kdl`: one node per line, with a node's plain fields as `key=value` on that line, so `grep`, `awk` and `sed` work on it directly. The exceptions are `spec`, which prints its own one-line-per-node text outline, `daemon log`, which prints the daemon's log lines as they are, and `render`, `screenshot` and `image-fills`, which save image files (their summary on stdout is still KDL). It has two ways in:
+
+- **REST** (`file`, `node`, `spec`, `render`, `image-fills`, `api`): reads any file from its URL with the user's token. Nothing has to be open. Reads are cached locally and retried on rate limits.
+- **Plugin** (`exec`, `screenshot`, `selection`, `logs`, `changes`, `call`): a background daemon talks to the Desktop Bridge plugin running in Figma Desktop. This is the only way to change a file. Your main tool here is `exec`, which runs Figma Plugin API JavaScript in the file.
+
+`references/tips.md` holds lessons from real runs, by situation. They are guidance, not rules: read the section for the situation you are in, and adapt it to your case.
+
+## Rules
+
+- **Never show the token.** Do not print, echo or log it; test it with `figma-access api /v1/me`.
+- **Look before and after you change anything.** Judge every visible result on an image, not on the code that made it.
+- **Change only what the user asked for.** Reading is always fine. Never delete or overwrite the user's existing work unless the request says so.
+- **A timeout is not a failure.** Figma cannot stop a running script; check `logs` and the file before running it again.
+
+## Workflow
+
+### 1. Set up
+
+1. `<skill>` is the directory of this `SKILL.md`. Run the tool as `bun <skill>/scripts/figma-access.js COMMAND ...`; this file writes it as `figma-access COMMAND ...`. It runs on Bun, not Node: always start it with `bun`, never `node`. Run the helper scripts you write along the way (measuring text, cropping or comparing images, batch jobs) with `bun` too, in JavaScript or TypeScript; Bun runs `.ts` directly and has `fetch`, `Bun.file` and `Bun.write` built in. If `bun` is missing, tell the user to install it from https://bun.sh and stop.
+2. Run `figma-access --help` once, and `figma-access <command> --help` before the first use of each command. Exit codes: 0 ok, 1 Figma reported a failure, 2 bad arguments, 3 daemon, plugin or token not available. "Reading the output" in `references/tips.md` explains the format and how to search it.
+3. Choose the path from the request, as "Choosing a path" in `references/tips.md` describes: a URL and a read-only job → REST; any change to the file → plugin; both may be used together.
+
+### 2a. Connect through REST
+
+1. Run `figma-access api /v1/me`. On "no token": find where the user set it and load it in the same command, as "Token" in `references/tips.md` describes. Ask the user for a token (Figma: Settings > Security > Personal access tokens, file content read) only when none is set anywhere.
+2. Run `figma-access file <url>` to see the pages and top-level frames. Pick the node to work on, following "Finding the right node" in `references/tips.md`.
+
+### 2b. Connect through the plugin
+
+1. Run `figma-access status`. It starts the daemon when needed.
+   - Files listed: go on.
+   - No files: run `figma-access files`, which waits for the plugin. If it exits with 3, run `figma-access setup` and give the user its `steps` in plain words: import the plugin once from the printed manifest path, then run **Plugins > Development > Figma Desktop Bridge** in the file and keep its window open. Ask the user to tell you when it is running, then run `figma-access files` again.
+2. More than one file connected: pass `--file <fileKey>` on every command after this.
+
+### 3. Understand the design
+
+1. Read the smallest view that answers the question, outline first and details only where you work:
+   - structure: `figma-access node <url|key> <id> --outline 2` (REST), or the page-outline recipe in `references/plugin-api.md` (plugin);
+   - everything code needs, one line per visible node: `figma-access spec <url|key> <id> -o <file>`; for a big frame, save it once with `node ... -o <file>` and pass `--from <file>` to every later `spec`, as "Rate limits and the cache" in `references/tips.md` describes;
+   - what the user means by "this" or "the selected": `figma-access selection`;
+   - how it looks: `figma-access render <key> <id>` (REST, exact size) or `figma-access screenshot <id>` (plugin), then open the image.
+2. Read the `reports` of `node`: fonts, image fills, and how many hidden layers were pruned. Read "Hidden layers" and "Reading a design image" in `references/tips.md`: when the file's values and the render disagree, the render is what the user sees.
+3. For components, variants, variables and styles, read their real structure before you change or copy them, and reuse what exists instead of creating duplicates.
+
+### 4. Do the job
+
+**Implement a design in code.** Follow "From design to code" in `references/tips.md`. Write the code where the user or their project says it belongs (the path they name, or the project's own structure); `_swe/figma-access/` holds only working artifacts such as renders, saved node files, specs, screenshots and scripts.
+
+1. Render the frame at scale 1 as the reference, and read it in parts when it is tall.
+2. Write the frame's `spec` to a file, with `--origin` at the corner where the page content starts, and take every value from it. Render what it marks `ICON` or `MASKED` as SVG, and as PNG at scale 2 when it holds photos or blurs, together with image frames that crop or stack images; use one `render` call per format and place each file at its `export` position (its box when none is printed). Where it marks `LAYOUT DRIFT`, measure that part on the render instead.
+3. List the fonts; ask the user, in one message, for the files of any family that is not public, and for anything else you cannot get from the file. Until they arrive, choose the stand-in by measured text width.
+4. Leave out device or browser chrome, build section by section, then capture the page at the design's width and compare it with the reference per section: measure the differing pixels, and look at the two side by side. Fix the section that differs most first. When the user asks for a pixel-perfect or 1:1 result and another skill for that is available, use it with these renders as the design images.
+
+**Change the file.** Through the plugin:
+
+1. Write the change as Plugin API code and run it with `figma-access exec`, following `references/plugin-api.md` for what the API enforces and for placement. Long code goes in a working file (for example under `_swe/figma-access/`) and runs with `exec -f`. Always `return` the ids you need next; add `--timeout 30s` or more for long work.
+2. For jobs a ready-made plugin routine covers (component sets, lint and accessibility audits, image fills, annotations, FigJam and Slides helpers), use `figma-access call <METHOD> '<json>'`; `figma-access methods <filter>` lists the params.
+3. Read the output every time: on `ok #false`, fix the cause and remove partial work before retrying; on a `warning` under `resultAnalysis`, check ids and names; for the script's own trace, `figma-access logs --since 2m`.
+4. Screenshot every node you created or changed (`--scale 2` for small ones) and check it against the request. Fix and screenshot again; after three rounds that still miss, tell the user what is left and why.
+
+"Working through the plugin" in `references/tips.md` covers what usually goes wrong here.
+
+### 5. Report
+
+Tell the user what you read or changed, with node names and ids, and the paths of the renders, screenshots and files you wrote. Name anything you did not do, every assumption you made (a substitute font, a skipped hidden layer, left-out chrome), and what was not verified.
+
+## Troubleshooting
+
+- **No token, although the user set one:** see "Token" in `references/tips.md`.
+- **"Rate limit exceeded" (429):** the CLI already waited and retried. Reuse a saved node file with `spec --from`, batch ids into one `render`, and wait a minute before the next large read.
+- **Exit 3, no file connected:** the plugin is not running in that file, or is still searching (it checks every few seconds). Ask the user to run it again. `figma-access daemon log` shows connections as they happen.
+- **Another tool uses the same plugin** (such as figma-console-mcp): both work side by side; `figma-access status` shows whether this daemon has the file.
+- **Stale behaviour after the skill was updated:** run `figma-access setup` again, ask the user to re-import the manifest in Figma, then run `figma-access daemon restart`.
+- **"Plugin disconnected before it answered":** the user closed the plugin or the file, or the plugin reloaded. Check the file before you repeat the change.
