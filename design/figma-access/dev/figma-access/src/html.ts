@@ -407,7 +407,10 @@ export function emitHtml(root: any, title: string): Emitted {
       const row = n.layoutMode === "HORIZONTAL";
       const between = n.primaryAxisAlignItems === "SPACE_BETWEEN";
       const gap = n.itemSpacing ?? 0;
-      props.push("display:flex", `flex-direction:${row ? "row" : "column"}`, `justify-content:${JUSTIFY[n.primaryAxisAlignItems ?? "MIN"] ?? "flex-start"}`, `align-items:${ALIGN[n.counterAxisAlignItems ?? "MIN"] ?? "flex-start"}`);
+      // Figma centres a lone child under space-between; CSS puts it at the start.
+      const flowing = kids.filter((k: any) => k.layoutPositioning !== "ABSOLUTE").length;
+      const justify = between && flowing === 1 ? "center" : JUSTIFY[n.primaryAxisAlignItems ?? "MIN"] ?? "flex-start";
+      props.push("display:flex", `flex-direction:${row ? "row" : "column"}`, `justify-content:${justify}`, `align-items:${ALIGN[n.counterAxisAlignItems ?? "MIN"] ?? "flex-start"}`);
       if (n.layoutWrap === "WRAP") {
         props.push("flex-wrap:wrap");
         if (n.counterAxisSpacing) props.push(`row-gap:${px(n.counterAxisSpacing)}`);

@@ -217,3 +217,20 @@ test("--apply-css writes the style offsets into the page and adds later runs to 
   expect(html.match(/figma-access-css/g)!.length).toBe(1);
   expect(html.indexOf("figma-access-css")).toBeLessThan(html.indexOf("</head>"));
 });
+
+test("a cropped reference is saved next to the capture, and sections at 5% or more are listed last", async () => {
+  const ref = join(DIR, "crop-ref.png"), cap = join(DIR, "crop-cap.png");
+  writeFileSync(ref, encodePng(page(120, 100, 30, 30, 20, 20)));
+  writeFileSync(cap, encodePng(page(100, 100, 20, 30, 20, 20)));
+  const { code, json } = await run([ref, cap, "--crop", "10,0,100,100", "--sections", "top=0-50;bottom=50-100"]);
+  expect(code).toBe(0);
+  expect(json.reference).toBe(join(DIR, "reference.png"));
+  expect(decodePng(readFileSync(join(DIR, "reference.png"))).width).toBe(100);
+  expect(json.todo).toBeUndefined();
+  expect(json.next).toContain("less than 5%");
+  const moved = join(DIR, "crop-cap2.png");
+  writeFileSync(moved, encodePng(page(100, 100, 60, 60, 30, 30)));
+  const off = await run([ref, moved, "--crop", "10,0,100,100", "--sections", "top=0-50;bottom=50-100"]);
+  expect(off.json.todo.length).toBeGreaterThan(0);
+  expect(Object.keys(off.json).pop()).toBe("next");
+});

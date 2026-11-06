@@ -287,7 +287,13 @@ fixing first.
                         again after it. Styles whose widthRatio is off by more than 5% are skipped:
                         their font does not match yet.
   --full                Print the full report instead of the summary.
-  -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
+  -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).
+
+When the reference is cropped (by --crop, or to the node's box with --nodes), the crop is saved as
+reference.png in the output directory: cut your own views from it, so they line up with the
+capture. On a page from \`spec --html\` with a stand-in font, a section at 5% or more also says how
+much of its difference lies over text in that font. The output ends with the sections still at 5%
+or more (todo) and what to do next.`,
 
   api: `Usage: figma-access api <path> [-o file.kdl]
 

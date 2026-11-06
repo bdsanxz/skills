@@ -215,7 +215,7 @@ export async function compare(argv: string[]) {
       r.h = Math.min(r.h, ref.height - r.y);
       ref = crop(ref, r);
       cropAt = { x: r.x, y: r.y };
-      autoCrop = `${r.x},${r.y},${r.w},${r.h}: the reference was cropped to the node's box, which its own shadow or blur had widened`;
+      autoCrop = `${r.x},${r.y},${r.w},${r.h}: the reference was cropped to the node's box, which its own shadow or blur had widened; crop your own views from the reference file below, which is that crop, so they line up with the capture`;
     }
   }
   const cssWidth = Number(str(flags.width) ?? ref.width);
@@ -247,6 +247,15 @@ export async function compare(argv: string[]) {
 
   const W = ref.width, H = ref.height;
   const refRgb = flatten(ref), capRgb = flatten(cap);
+  // Crops of the reference must line up with the capture: hand out the cropped reference itself.
+  let refOut = resolve(refPath);
+  if (cropAt.x || cropAt.y || autoCrop || flags.crop) {
+    refOut = join(dir, "reference.png");
+    writeFileSync(refOut, encodePng(ref));
+  }
+  // Text in a family the page draws with a stand-in: its pixels are the font's, not the layout's.
+  const standIns = localStandIns(page);
+  const fontMask = root && standIns.size ? textMask(root, standIns, cropAt, scale, W, H) : undefined;
   const sections = flags.sections
     ? parseSections(str(flags.sections)!, cssWidth)
     : root && !flags.band
@@ -282,6 +291,20 @@ export async function compare(argv: string[]) {
       entry.shift = { dx: dxCss, dy: dyCss, differing: r2(best.differing) };
       entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
     }
+    if (fontMask) {
+      let all = 0, font = 0;
+      for (let y = r.y; y < r.y + r.h; y++) {
+        for (let x = r.x; x < r.x + r.w; x++) {
+          const i = y * W + x;
+          if (mask[i]) { all++; if (fontMask[i]) font++; }
+        }
+      }
+      const share = all ? Math.round((100 * font) / all) : 0;
+      if (share >= 10 && base.differing >= 5) {
+        entry.standInFont = share;
+        entry.font = `${share}% of the differing pixels here lie over text in ${[...standIns.entries()].map(([f, st]) => `"${f}" (drawn in ${st})`).join(", ")}: that part goes away with the real font files, not with layout fixes.`;
+      }
+    }
     if (base.differing >= 5 && !entry.shift) {
       const a = meanColor(refRgb, W, r), b = meanColor(capRgb, W, r);
       if (Math.max(...a.map((v, k) => Math.abs(v - b[k]!))) >= 6) {
@@ -304,7 +327,7 @@ export async function compare(argv: string[]) {
 
   const report: Record<string, unknown> = {
     ok: true,
-    reference: resolve(refPath),
+    reference: refOut,
     capture: capPath,
     diff: diffPath,
     page: [cssWidth, cssHeight],
@@ -317,7 +340,7 @@ export async function compare(argv: string[]) {
   };
   const todo = results.filter((e) => (e.differing as number) >= 5).sort((a, b) => (b.differing as number) - (a.differing as number));
   if (todo.length) {
-    report.todo = todo.map((e) => `${e.name}: ${e.differing}%`);
+    report.todo = todo.map((e) => `${e.name}: ${e.differing}%${e.standInFont ? ` (${e.standInFont}% of it over stand-in font text)` : ""}`);
     report.next = `${todo.length} section(s) still differ by 5% or more. Crop the worst one from the capture and diff.png, fix it, and compare again; the page is not done until each is under 5% or you can name what is left and why.`;
   } else {
     report.next = "Every section differs by less than 5%. Check the capture by eye for anything the numbers miss.";
@@ -465,4 +488,34 @@ export function applyCss(file: string, styles: any[]) {
   if (skipped.length) result.skipped = `${skipped.join(", ")}: the text is much wider or narrower than the design's, so its font, weight or letter spacing does not match yet. Fix that, then compare again.`;
   result.next = changed.length ? "Compare again to measure the page with these offsets." : "No style had a fix to apply.";
   return result;
+}
+
+/** Families the page draws with a stand-in, from the comments \`spec --html\` writes: family → stand-in. */
+function localStandIns(page: string): Map<string, string> {
+  const found = new Map<string, string>();
+  const file = page.startsWith("file://") ? decodeURIComponent(new URL(page).pathname) : page;
+  if (/^https?:/.test(page) || !/\.html?$/i.test(file) || !existsSync(file)) return found;
+  for (const m of readFileSync(file, "utf8").matchAll(/<!-- "([^"]+)" is not on Google Fonts: "([^"]+)" stands in/g)) found.set(m[1]!, m[2]!);
+  return found;
+}
+
+/** Pixels covered by the design's texts in the given families, 2 px out, in reference pixels. */
+function textMask(root: any, families: Map<string, string>, cropAt: { x: number; y: number }, scale: number, W: number, H: number): Uint8Array {
+  const m = new Uint8Array(W * H);
+  const o = renderOrigin(root);
+  const walk = (n: any) => {
+    if (n.visible === false) return;
+    if (n.type === "TEXT" && n.absoluteBoundingBox) {
+      const fams = new Set<string>([n.style?.fontFamily, ...Object.values(n.styleOverrideTable ?? {}).map((t: any) => t.fontFamily)]);
+      if ([...fams].some((f) => f && families.has(f))) {
+        const b = n.absoluteBoundingBox;
+        const x0 = Math.max(0, Math.floor((b.x - o.x) * scale - cropAt.x - 2 * scale)), y0 = Math.max(0, Math.floor((b.y - o.y) * scale - cropAt.y - 2 * scale));
+        const x1 = Math.min(W, Math.ceil((b.x + b.width - o.x) * scale - cropAt.x + 2 * scale)), y1 = Math.min(H, Math.ceil((b.y + b.height - o.y) * scale - cropAt.y + 2 * scale));
+        for (let y = y0; y < y1; y++) m.fill(1, y * W + x0, y * W + Math.max(x0, x1));
+      }
+    }
+    for (const c of n.children ?? []) walk(c);
+  };
+  walk(root);
+  return m;
 }

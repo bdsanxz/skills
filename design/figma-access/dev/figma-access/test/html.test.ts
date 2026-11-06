@@ -198,3 +198,13 @@ test("a blurred icon is a PNG at scale 1, and a turned ellipse is placed at its 
   // 300 px of circle plus 100 px of blur on every side, centred on the stored box.
   expect(e.html).toContain('src="figma-asset:png:2:2" alt="" style="position:absolute;left:-37.87px;top:-37.87px;width:500px;height:500px');
 });
+
+test("space-between with one child centres it, as Figma does", () => {
+  const root = {
+    id: "1:1", name: "Row", type: "FRAME", ...box(0, 0, 400, 40), layoutMode: "HORIZONTAL", primaryAxisAlignItems: "SPACE_BETWEEN",
+    children: [text("2:1", "Title", 170, 10)],
+  };
+  expect(rule(emitHtml(root, "t").html, "row__row")).toContain("justify-content:center");
+  const two = { ...root, children: [text("2:1", "A", 0, 10), text("2:2", "B", 340, 10)] };
+  expect(rule(emitHtml(two, "t").html, "row__row")).toContain("justify-content:space-between");
+});
