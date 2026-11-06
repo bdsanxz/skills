@@ -108,7 +108,7 @@ function outDir(flag: string | undefined, fileKey: string, sub: string): string 
   return resolve(flag ?? join(process.cwd(), "_swe", "figma-access", fileKey, sub));
 }
 
-const safeId = (id: string) => id.replace(/[^A-Za-z0-9_-]/g, "-");
+export const safeId = (id: string) => id.replace(/[^A-Za-z0-9_-]/g, "-");
 
 function summarize(node: any, depth: number, max: number): any {
   const s: any = { id: node.id, name: node.name, type: node.type };
@@ -244,6 +244,70 @@ export async function node(argv: string[]) {
   out({ ok: true, fileKey: target.fileKey, path, keptHidden: !!flags["keep-hidden"], reports, nodes });
 }
 
+export interface Rendered {
+  id: string;
+  path?: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  note?: string;
+  error?: string;
+}
+
+/**
+ * Render nodes through the API and download the files, eight at a time, in the order asked.
+ * `name` gives each file's path; with `keep`, files that already exist are not fetched again.
+ */
+export async function renderNodes(
+  fileKey: string,
+  ids: string[],
+  opts: { format: string; scale: number; name: (id: string) => string; keep?: boolean },
+): Promise<Rendered[]> {
+  const files: Rendered[] = new Array(ids.length);
+  const todo: number[] = [];
+  ids.forEach((id, k) => {
+    const path = opts.name(id);
+    if (opts.keep && existsSync(path)) files[k] = { id, path };
+    else todo.push(k);
+  });
+  // The API renders a batch per call; long id lists go in chunks to keep the URL short.
+  const urls: Record<string, string | null> = {};
+  for (let i = 0; i < todo.length; i += 100) {
+    const chunk = todo.slice(i, i + 100).map((k) => ids[k]!);
+    const q = new URLSearchParams({ ids: chunk.join(","), format: opts.format, scale: String(opts.scale) });
+    if (opts.format === "svg") {
+      q.set("svg_outline_text", "false");
+      q.set("svg_include_id", "true");
+    }
+    Object.assign(urls, (await getJson(`/v1/images/${fileKey}?${q}`)).images ?? {});
+  }
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const k = todo[next++]!;
+      const id = ids[k]!;
+      const url = urls[id];
+      if (!url) {
+        files[k] = { id, error: "Figma could not render this node (missing, invisible or empty)." };
+      } else {
+        const path = opts.name(id);
+        const buf = await download(url, path);
+        const size = pngSize(buf);
+        const entry: Rendered = { id, path, bytes: buf.length, ...size };
+        if (size && Math.max(size.width, size.height) > 2000) {
+          entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
+        }
+        files[k] = entry;
+      }
+      done++;
+      if (todo.length > 4 && (done % 10 === 0 || done === todo.length)) process.stderr.write(`figma-access: downloaded ${done}/${todo.length}\n`);
+    }
+  };
+  if (todo.length > 4) process.stderr.write(`figma-access: Figma rendered ${todo.length} nodes; downloading\n`);
+  await Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker));
+  return files;
+}
+
 export async function render(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, { value: ["scale", "format", "out"], bool: ["help"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0]) showHelp("render");
@@ -255,60 +319,52 @@ export async function render(argv: string[]) {
   if (!["png", "jpg", "svg", "pdf"].includes(format)) fail(EXIT_USAGE, "--format must be png, jpg, svg or pdf.");
   const scale = Number(str(flags.scale) ?? 1);
   if (!(scale >= 0.01 && scale <= 4)) fail(EXIT_USAGE, "--scale must be between 0.01 and 4.");
-  const q = new URLSearchParams({ ids: ids.join(","), format, scale: String(scale) });
-  if (format === "svg") {
-    q.set("svg_outline_text", "false");
-    q.set("svg_include_id", "true");
-  }
-  const body = await getJson(`/v1/images/${target.fileKey}?${q}`);
-  const dir = outDir(str(flags.out), target.fileKey, "renders");
-  // Download eight at a time, in the order asked; report progress on stderr for long batches.
-  const files: Record<string, unknown>[] = new Array(ids.length);
-  let next = 0, done = 0;
+  // -o names a directory, or the file itself when one node is rendered.
+  const o = str(flags.out);
+  const asFile = !!o && /\.(png|jpe?g|svg|pdf)$/i.test(o);
+  if (asFile && ids.length > 1) fail(EXIT_USAGE, "-o names a file, but several nodes are rendered: give a directory instead.");
+  const dir = outDir(asFile ? undefined : o, target.fileKey, "renders");
+  const name = (id: string) => (asFile ? resolve(o!) : join(dir, `${safeId(id)}@${scale}x.${format}`));
+  const files = await renderNodes(target.fileKey, ids, { format, scale, name });
+  out({ ok: files.every((f) => !f.error), fileKey: target.fileKey, scale, format, files });
+}
+
+/** Download the original images of the given fills (or of every fill when none is named). */
+export async function downloadFills(fileKey: string, refs: string[] | null, dir: string, keep = false): Promise<Record<string, string>> {
+  const body = await getJson(`/v1/files/${fileKey}/images`);
+  const images: Record<string, string> = body.meta?.images ?? {};
+  const want = refs ?? Object.keys(images);
+  const paths: Record<string, string> = {};
+  let next = 0;
   const worker = async () => {
-    while (next < ids.length) {
-      const k = next++;
-      const id = ids[k]!;
-      const url = body.images?.[id];
-      if (!url) {
-        files[k] = { id, error: "Figma could not render this node (missing, invisible or empty)." };
-      } else {
-        const path = join(dir, `${safeId(id)}@${scale}x.${format}`);
-        const buf = await download(url, path);
-        const size = pngSize(buf);
-        const entry: Record<string, unknown> = { id, path, bytes: buf.length, ...size };
-        if (size && Math.max(size.width, size.height) > 2000) {
-          entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
-        }
-        files[k] = entry;
+    while (next < want.length) {
+      const ref = want[next++]!;
+      const url = images[ref];
+      if (!url) continue;
+      const old = keep ? ["png", "jpg", "gif", "svg", "bin"].map((e) => join(dir, `${ref}.${e}`)).find((f) => existsSync(f)) : undefined;
+      if (old) {
+        paths[ref] = old;
+        continue;
       }
-      done++;
-      if (ids.length > 4 && (done % 10 === 0 || done === ids.length)) process.stderr.write(`figma-access: downloaded ${done}/${ids.length}\n`);
+      const res = await fetch(url, { signal: AbortSignal.timeout(120000) });
+      const type = res.headers.get("content-type") ?? "";
+      const ext = type.includes("png") ? "png" : type.includes("jpeg") ? "jpg" : type.includes("gif") ? "gif" : type.includes("svg") ? "svg" : "bin";
+      const path = join(dir, `${ref}.${ext}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path, Buffer.from(await res.arrayBuffer()));
+      paths[ref] = path;
     }
   };
-  if (ids.length > 4) process.stderr.write(`figma-access: Figma rendered ${ids.length} nodes; downloading\n`);
-  await Promise.all(Array.from({ length: Math.min(8, ids.length) }, worker));
-  out({ ok: files.every((f) => !("error" in f)), fileKey: target.fileKey, scale, format, files });
+  await Promise.all(Array.from({ length: Math.min(8, want.length) }, worker));
+  return paths;
 }
 
 export async function imageFills(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, { value: ["out"], bool: ["help"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0]) showHelp("image-fills");
   const { fileKey } = parseTarget(positionals[0]!);
-  const body = await getJson(`/v1/files/${fileKey}/images`);
-  const images: Record<string, string> = body.meta?.images ?? {};
   const dir = outDir(str(flags.out), fileKey, "image-fills");
-  const files = [];
-  for (const [ref, url] of Object.entries(images)) {
-    if (!url) continue;
-    const res = await fetch(url, { signal: AbortSignal.timeout(120000) });
-    const type = res.headers.get("content-type") ?? "";
-    const ext = type.includes("png") ? "png" : type.includes("jpeg") ? "jpg" : type.includes("gif") ? "gif" : type.includes("svg") ? "svg" : "bin";
-    const buf = Buffer.from(await res.arrayBuffer());
-    const path = join(dir, `${ref}.${ext}`);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(path, buf);
-    files.push({ imageRef: ref, path, bytes: buf.length });
-  }
+  const paths = await downloadFills(fileKey, null, dir);
+  const files = Object.entries(paths).map(([imageRef, path]) => ({ imageRef, path }));
   out({ ok: true, fileKey, dir, count: files.length, files });
 }

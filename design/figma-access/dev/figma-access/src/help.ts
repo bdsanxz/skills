@@ -32,7 +32,7 @@ Read a file through the Figma REST API (no Figma Desktop or plugin needed; token
 FIGMA_TOKEN_KEY, FIGMA_ACCESS_TOKEN or FIGMA_TOKEN)
   file <url|key>        File name, pages and top-level frames with their boxes.
   node <url|key> [ids]  Full node data (exact styles, layout, text) to a .kdl file, plus an outline.
-  spec <url|key> [ids]  Compact CSS-ready outline of the visible tree, one line per node.
+  spec <url|key> [ids]  Compact CSS-ready outline of the visible tree, one line per node; --html writes a starting page.
   render <url|key> [ids]
                         Render nodes to PNG, JPG, SVG or PDF files.
   image-fills <url|key> Download the original images used as fills, named by imageRef.
@@ -160,39 +160,64 @@ visible node types, how many hidden nodes were pruned) and an outline down to --
   -o, --out <path> Output file (default: _swe/figma-access/<fileKey>/nodes/<ids>.kdl).`,
 
   spec: `Usage: figma-access spec <url|fileKey> [nodeId ...] [--depth n] [--origin x,y] [--from file] [--refresh] [-o file.txt]
+       figma-access spec <url|fileKey> [nodeId] [--from file] [--refresh] --html <dir>
 
-Prints the visible tree under each node, one line per node, with what code needs:
-type, name, id, box [x,y wxh] relative to the node (or to --origin), render[x,y wxh] when the
-area visible on the canvas differs (shadows grow it, masks and clipping parents shrink it),
-opacity, blend, clip,
-component id, text with font family weight size/line-height, letter spacing, alignment and case
-(valign center|bottom when a fixed-height box is taller than its lines),
-fills as CSS colors or gradients, top layer first as in a CSS background list (image fills as
-image(<imageRef>, <scaleMode>); a radial gradient with a tilted ellipse ends in "ROTATED <angle>deg"
-and must be drawn on its own rotated layer), borders,
-radii, shadows and blurs, and auto layout as flex direction, gap, padding, justify and align.
-Text with mixed styles lists its runs: runs[ "13 ": base | "GB": font ... ].
-Hidden layers are skipped. A subtree made only of vectors is one line marked
-"ICON → render as svg", and a node holding a mask is one line marked "MASKED → render as
-svg or png": export those with \`render\` instead of rebuilding them; export[x,y wxh] then
-gives the area the exported file covers, where it differs from the box (clipping by parents
-does not shrink an export, so place the file there and clip it in code).
-An auto layout frame whose stored boxes break its own gap, padding, hug or fill rules is marked
-"LAYOUT DRIFT": its boxes, or a child's, are stale (often a hidden child still counted), so lay it out
-from its direction, gap, padding and sizing, not its boxes, and check it against the render.
+Node ids may be written 1:2 or 1-2 (as in URLs); a URL with node-id needs no id after it.
+
+Prints the visible tree under each node, one line per node, indented two spaces per level.
+Hidden layers are skipped. Each line holds, in this order, the fields that apply:
+
+  TYPE "name" id [x,y wxh]   Layout box, relative to the node (or to --origin).
+  render[x,y wxh]          What is visible on the canvas, where it differs from the box
+                           (shadows grow it, masks and clipping parents shrink it).
+  rot <deg>deg             Rotation, clockwise as in CSS.
+  opacity <n>, blend <mode>, MASK (this layer masks the ones above it), clip (overflow: hidden),
+  component <id>           The component an instance comes from.
+  "text"                   Text, with line breaks as \\n; then:
+    font <family> <weight> <size>/<line-height>, italic, ls <letter-spacing px>,
+    text-center|text-right|text-justified, case upper|lower|title, underline|strikethrough,
+    resize width_and_height (one line, hugs its text) | height (fixed width, wraps) | none (fixed box),
+    valign center|bottom (lines placed in a fixed box taller than them),
+    runs[ "part": base | "part": font <family> <weight> <size>/<lh> color <c> ... ] for mixed styles.
+  bg <layers> | color <layers>   Fills, top layer first as in a CSS background list: CSS colors and
+                           gradients, image(<imageRef>, FILL|FIT|CROP|TILE|STRETCH). A radial gradient
+                           with a tilted ellipse ends in "ROTATED <deg>deg": draw it on its own rotated layer.
+  border <w | top right bottom left> inside|center|outside <paint> [dashed]
+  radius <r | tl tr br bl>
+  shadow(x y blur spread color), inset-shadow(...), blur(r), backdrop-blur(r)
+                           Blur radii are Figma's: CSS blur() takes half.
+  flex-row|flex-col [wrap], gap <n>, pad <top right bottom left>, justify center|max|space_between,
+  align center|max|baseline   Auto layout (missing justify or align means start).
+  size <horizontal>/<vertical>   fill (takes the free space), hug (fits its content) or fixed.
+  absolute                 Placed at its box inside an auto layout parent, outside the flow.
+  LAYOUT DRIFT (...)       The stored boxes break the frame's own rules (often a hidden child is still
+                           counted): lay it out from its rules, not its boxes, and check the render.
+  export[x,y wxh]          The area an exported file covers, where it differs from the box (clipping
+                           by parents does not shrink an export: place the file there, clip it in code).
+  ICON → render as svg     A subtree of vectors only; MASKED → render as svg or png: a node holding a
+                           mask. Export those with \`render\` instead of rebuilding them.
+
+With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/assets/. Auto
+layout becomes flex from its rules, children of groups and frames without auto layout sit at
+their boxes, the frame and its page-wide sections span the window while narrower parts stay
+centred, text is live and its fonts are asked from Google Fonts, and icons, masks and image layers
+are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
+image file. Assets already in <dir>/assets are kept unless --refresh is given. It prints the fonts
+and notes on what it could only approximate. Measure the page with \`compare\` and refine it.
 
   --depth <n>       Stop after n levels (default: all).
   --origin <x,y>    Measure boxes from this canvas point instead of the node's corner,
                     e.g. the page frame's corner, to get page coordinates for every section.
   --from <file>     Read a .kdl file saved by \`node\` (holding the node or an ancestor), or any
                     .json of the same shape, instead of calling the API.
-  --refresh         Fetch again instead of using the local cache.
+  --html <dir>      Write the starting page and its assets to this directory.
+  --refresh         Fetch again instead of using the local cache (and render the assets again).
   -o, --out <path>  Write to a file instead of stdout.
 
 File and node reads are cached under ~/.figma-access/cache, since the API rate-limits them;
 pass --refresh after the design changed.`,
 
-  render: `Usage: figma-access render <url|fileKey> [nodeId ...] [--scale n] [--format png|jpg|svg|pdf] [-o dir]
+  render: `Usage: figma-access render <url|fileKey> [nodeId ...] [--scale n] [--format png|jpg|svg|pdf] [-o dir|file]
 
 Renders each node through Figma's own renderer and downloads the files. Exact for comparisons;
 SVG keeps text as text and node ids as element ids. Prints each PNG's width and height, with a
@@ -200,7 +225,8 @@ note when a side is over 2000 px (read such an image in parts).
 
   --scale <n>      0.01 to 4 (default 1).
   --format <fmt>   png (default), jpg, svg or pdf.
-  -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/renders/).`,
+  -o, --out <path> Output directory (default: _swe/figma-access/<fileKey>/renders/), or the file
+                   itself when one node is rendered (a name ending in .png, .jpg, .svg or .pdf).`,
 
   "image-fills": `Usage: figma-access image-fills <url|fileKey> [-o dir]
 
@@ -212,7 +238,7 @@ entries in \`spec\` name the ones the visible design uses.
 
   compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
                           [--nodes file.kdl [--node id]] [--crop x,y,w,h] [--width n] [--shift n]
-                          [--threshold n] [--wide n] [--wait ms] [-o dir]
+                          [--threshold n] [--wide n] [--wait ms] [--full] [-o dir]
 
 Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
 then prints, for the whole page and each section, the share of differing pixels (a channel off by
@@ -221,6 +247,8 @@ and tints, which a threshold misses). For each section it also tries the capture
 --shift pixels (default 3) each way: when a shift explains the difference, the section is right
 and something before it has the wrong size. Writes the capture and diff.png (the reference faded,
 differing pixels red) to the output directory; open diff.png to see where the pixels differ.
+The full report goes to report.kdl there; stdout shows the 12 text styles and 10 nodes most worth
+fixing first.
 
   <reference.png>       The design render, e.g. from \`render\` at scale 1.
   <page>                An HTML file or URL to capture, or a PNG you captured yourself.
@@ -234,6 +262,8 @@ differing pixels red) to the output directory; open diff.png to see where the pi
                         text, icon and image of the design on both images. Prints, per text style,
                         how far its copies sit off (dy, dx) and how wide they are against the design
                         (widthRatio), then the nodes that are off by half a pixel or more, or missing.
+                        A style whose copies all sit off by the same small amount gets a css line
+                        for the style class that \`spec --html\` gives its texts.
                         Positive dx and dy: the page draws it further right or lower. On a busy
                         background (a photo) a node is matched as a whole: whole-pixel dx and dy,
                         no widthRatio.
@@ -242,8 +272,10 @@ differing pixels red) to the output directory; open diff.png to see where the pi
   --width <px>          The page width in CSS pixels when the reference is not at scale 1
                         (a 2880 px wide render of a 1440 frame: --width 1440).
   --wide <px>           Also capture at this wider window and report whether the content stays
-                        centred or sticks to the left.
+                        centred or sticks to the left, and whether the backgrounds that are flat at
+                        the design's edges reach the window's edges.
   --wait <ms>           Time the page gets to load fonts and images (default 8000).
+  --full                Print the full report instead of the summary.
   -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
 
   api: `Usage: figma-access api <path> [-o file.kdl]

@@ -9,8 +9,9 @@ import { EXIT_FAILED, EXIT_UNAVAILABLE, EXIT_USAGE } from "./config";
 import { showHelp } from "./help";
 import { decodePng, encodePng, type Image } from "./png";
 import { measureNodes, offNodes, renderOrigin, styleSummary } from "./nodes";
+import { slug } from "./html";
 import { exportBounds } from "./spec";
-import { fail, out, parseArgs, readData, str } from "./util";
+import { fail, out, parseArgs, readData, str, writeData } from "./util";
 
 interface Rect { x: number; y: number; w: number; h: number }
 interface Section extends Rect { name: string }
@@ -156,7 +157,7 @@ function measure(ref: Uint8Array, cap: Uint8Array, W: number, H: number, r: Rect
 export async function compare(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, {
     value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out", "nodes", "node"],
-    bool: ["help"],
+    bool: ["help", "full"],
     alias: { h: "help", o: "out" },
   });
   if (flags.help || positionals.length < 2) showHelp("compare");
@@ -291,11 +292,19 @@ export async function compare(argv: string[]) {
     const origin = { x: o.x + cropAt.x / scale, y: o.y + cropAt.y / scale };
     const measured = measureNodes(root, origin, refRgb, capRgb, W, H, scale, threshold);
     const off = offNodes(measured);
+    // A style whose copies all sit off by the same small amount: one rule on the class that
+    // \`spec --html\` gives every text of that style moves them all.
+    const block = slug(root.name) || "page";
+    const styles = styleSummary(measured).map((st: any) => {
+      if (!String(st.hint ?? "").startsWith("Every copy")) return st;
+      const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
+      return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r2(dx)}px ${r2(-st.dy)}px; }` };
+    });
     report.nodes = {
       root: root.id,
       measured: measured.length,
       off: off.length,
-      styles: styleSummary(measured),
+      styles,
       list: off.slice(0, 40),
       ...(off.length > 40 ? { more: `${off.length - 40} more nodes are off; fix the styles and sections above first, then compare again.` } : {}),
     };
@@ -317,14 +326,23 @@ export async function compare(argv: string[]) {
     const EDGE_THRESHOLD = 3;
     const WW = wideImg.width;
     const wideRgb = flatten(wideImg);
-    let edgeDiff = 0;
+    // Only rows where the design's edge is flat for a stretch inward count: a decoration that
+    // touches the frame's edge is content, and stays with the centred column.
+    const FLAT = Math.min(32, Math.floor(W / 4));
+    const near = (a: Uint8Array, i: number, b: Uint8Array, j: number) =>
+      Math.max(Math.abs(a[i]! - b[j]!), Math.abs(a[i + 1]! - b[j + 1]!), Math.abs(a[i + 2]! - b[j + 2]!)) <= EDGE_THRESHOLD;
+    let edgeDiff = 0, edgeRows = 0;
     for (let y = 0; y < H; y++) {
-      for (const [rx, wx] of [[0, 0], [W - 1, WW - 1]] as const) {
+      for (const [rx, wx, step] of [[0, 0, 1], [W - 1, WW - 1, -1]] as const) {
         const i = (y * W + rx) * 3, j = (y * WW + wx) * 3;
-        if (Math.max(Math.abs(refRgb[i]! - wideRgb[j]!), Math.abs(refRgb[i + 1]! - wideRgb[j + 1]!), Math.abs(refRgb[i + 2]! - wideRgb[j + 2]!)) > EDGE_THRESHOLD) edgeDiff++;
+        let flat = true;
+        for (let k = 1; k < FLAT && flat; k++) flat = near(refRgb, i, refRgb, i + k * step * 3);
+        if (!flat) continue;
+        edgeRows++;
+        if (!near(refRgb, i, wideRgb, j)) edgeDiff++;
       }
     }
-    const edge = (100 * edgeDiff) / (2 * H);
+    const edge = edgeRows ? (100 * edgeDiff) / edgeRows : 0;
     const w: Record<string, unknown> = {
       width: wide, capture: widePath,
       centredDiffering: r2(centred.differing), leftDiffering: r2(left.differing), edgeDiffering: r2(edge),
@@ -335,5 +353,23 @@ export async function compare(argv: string[]) {
     w.hint = hints.length ? hints.join(" ") : "The content stays centred and the backgrounds reach the window's edges.";
     report.wide = w;
   }
-  out(report);
+  // The full report goes to a file; the summary on stdout is what to act on first.
+  const reportPath = join(dir, "report.kdl");
+  report.report = reportPath;
+  writeData(reportPath, report);
+  if (flags.full || !report.nodes) return out(report);
+  const nodes = report.nodes as any;
+  // Styles with a ready fix first, by how many texts it moves; then the rest by how far off they are.
+  const styleRank = (st: any) => (st.css ? 1e6 + st.count : 0) + (st.hint ? 1000 : 0) + Math.abs(st.dy) + Math.abs((st.widthRatio ?? 1) - 1) * 20;
+  out({
+    ...report,
+    nodes: {
+      root: nodes.root,
+      measured: nodes.measured,
+      off: nodes.off,
+      styles: [...nodes.styles].sort((a: any, b: any) => styleRank(b) - styleRank(a)).slice(0, 12),
+      list: nodes.list.slice(0, 10),
+      more: `${Math.max(0, nodes.styles.length - 12)} more styles and ${Math.max(0, nodes.off - 10)} more nodes in ${reportPath} (or pass --full).`,
+    },
+  });
 }

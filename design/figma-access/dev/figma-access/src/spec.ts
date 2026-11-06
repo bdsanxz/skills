@@ -2,10 +2,11 @@
 // Built for design-to-code work: the full node JSON is megabytes, this is what code needs.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { EXIT_USAGE } from "./config";
 import { showHelp } from "./help";
-import { getJson, parseTarget } from "./rest";
+import { emitHtml, linkAssets, type Note } from "./html";
+import { downloadFills, getJson, parseTarget, renderNodes, safeId } from "./rest";
 import { fail, out, parseArgs, readData, str } from "./util";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -316,7 +317,7 @@ function findNode(nodes: Record<string, any> | undefined, id: string): any {
 }
 
 export async function spec(argv: string[]) {
-  const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "origin", "from"], bool: ["help", "refresh"], alias: { h: "help", o: "out" } });
+  const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "origin", "from", "html"], bool: ["help", "refresh"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0]) showHelp("spec");
   const target = parseTarget(positionals[0]!);
   const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
@@ -330,6 +331,7 @@ export async function spec(argv: string[]) {
   } else {
     body = await getJson(`/v1/files/${target.fileKey}/nodes?${new URLSearchParams({ ids: ids.join(",") })}`, { cache: true, refresh: !!flags.refresh });
   }
+  if (flags.html) return writeHtml(target.fileKey, ids, body, resolve(str(flags.html)!), !!flags.refresh);
   const maxDepth = Number(str(flags.depth) ?? 99);
   const lines: string[] = [];
   let icons = 0;
@@ -362,6 +364,42 @@ export async function spec(argv: string[]) {
   } else {
     process.stdout.write(text);
   }
+}
+
+/** `spec --html <dir>`: the starting page and its assets. */
+async function writeHtml(fileKey: string, ids: string[], body: any, dir: string, refresh: boolean) {
+  if (ids.length !== 1) fail(EXIT_USAGE, "--html builds one page: name one node.");
+  const doc = body.nodes?.[ids[0]!]?.document ?? findNode(body.nodes, ids[0]!);
+  if (!doc) fail(EXIT_USAGE, `Node ${ids[0]} is not in the data.`);
+  if (!doc.absoluteBoundingBox) fail(EXIT_USAGE, `${doc.name} has no box: pick a frame, not a page.`);
+  const page = emitHtml(doc, doc.name);
+  const assets = join(dir, "assets");
+  const keep = !refresh;
+  const svgFiles = await renderNodes(fileKey, page.svg, { format: "svg", scale: 1, name: (id) => join(assets, "svg", `${safeId(id)}.svg`), keep });
+  const pngFiles = await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join(assets, "png", `${safeId(id)}.png`), keep });
+  const fillFiles = page.fills.length ? await downloadFills(fileKey, page.fills, join(assets, "fills"), keep) : {};
+  const rel = (p: string | undefined) => (p ? relative(dir, p).split("\\").join("/") : undefined);
+  const byId = (list: { id: string; path?: string }[]) => new Map(list.map((f) => [f.id, f.path]));
+  const svgs = byId(svgFiles), pngs = byId(pngFiles);
+  const notes: Note[] = [...page.notes];
+  const html = linkAssets(page.html, { svg: (id) => rel(svgs.get(id)), png: (id) => rel(pngs.get(id)), fill: (ref) => rel(fillFiles[ref]) }, notes);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, "index.html");
+  writeFileSync(path, html);
+  // One entry per kind of note, with the first few nodes it concerns.
+  const grouped = new Map<string, Note[]>();
+  for (const n of notes) {
+    const key = n.note.replace(/\(.*\)/, "(...)");
+    grouped.set(key, [...(grouped.get(key) ?? []), n]);
+  }
+  out({
+    ok: true,
+    path,
+    assets: { svg: svgFiles.filter((f) => f.path).length, png: pngFiles.filter((f) => f.path).length, fills: Object.keys(fillFiles).length },
+    fonts: page.fonts,
+    notes: [...grouped.entries()].map(([note, list]) => ({ note, count: list.length, nodes: list.slice(0, 6).map((n) => `${n.id}${n.name ? ` ${n.name}` : ""}`) })),
+    next: "Load the fonts, then measure with `compare` and refine section by section.",
+  });
 }
 
 // ---------------------------------------------------------------------------

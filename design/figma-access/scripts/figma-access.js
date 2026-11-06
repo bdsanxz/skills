@@ -2663,7 +2663,7 @@ Read a file through the Figma REST API (no Figma Desktop or plugin needed; token
 FIGMA_TOKEN_KEY, FIGMA_ACCESS_TOKEN or FIGMA_TOKEN)
   file <url|key>        File name, pages and top-level frames with their boxes.
   node <url|key> [ids]  Full node data (exact styles, layout, text) to a .kdl file, plus an outline.
-  spec <url|key> [ids]  Compact CSS-ready outline of the visible tree, one line per node.
+  spec <url|key> [ids]  Compact CSS-ready outline of the visible tree, one line per node; --html writes a starting page.
   render <url|key> [ids]
                         Render nodes to PNG, JPG, SVG or PDF files.
   image-fills <url|key> Download the original images used as fills, named by imageRef.
@@ -2778,38 +2778,63 @@ visible node types, how many hidden nodes were pruned) and an outline down to --
   --refresh        Fetch again instead of using the local cache (use after the design changed).
   -o, --out <path> Output file (default: _swe/figma-access/<fileKey>/nodes/<ids>.kdl).`,
   spec: `Usage: figma-access spec <url|fileKey> [nodeId ...] [--depth n] [--origin x,y] [--from file] [--refresh] [-o file.txt]
+       figma-access spec <url|fileKey> [nodeId] [--from file] [--refresh] --html <dir>
 
-Prints the visible tree under each node, one line per node, with what code needs:
-type, name, id, box [x,y wxh] relative to the node (or to --origin), render[x,y wxh] when the
-area visible on the canvas differs (shadows grow it, masks and clipping parents shrink it),
-opacity, blend, clip,
-component id, text with font family weight size/line-height, letter spacing, alignment and case
-(valign center|bottom when a fixed-height box is taller than its lines),
-fills as CSS colors or gradients, top layer first as in a CSS background list (image fills as
-image(<imageRef>, <scaleMode>); a radial gradient with a tilted ellipse ends in "ROTATED <angle>deg"
-and must be drawn on its own rotated layer), borders,
-radii, shadows and blurs, and auto layout as flex direction, gap, padding, justify and align.
-Text with mixed styles lists its runs: runs[ "13 ": base | "GB": font ... ].
-Hidden layers are skipped. A subtree made only of vectors is one line marked
-"ICON \u2192 render as svg", and a node holding a mask is one line marked "MASKED \u2192 render as
-svg or png": export those with \`render\` instead of rebuilding them; export[x,y wxh] then
-gives the area the exported file covers, where it differs from the box (clipping by parents
-does not shrink an export, so place the file there and clip it in code).
-An auto layout frame whose stored boxes break its own gap, padding, hug or fill rules is marked
-"LAYOUT DRIFT": its boxes, or a child's, are stale (often a hidden child still counted), so lay it out
-from its direction, gap, padding and sizing, not its boxes, and check it against the render.
+Node ids may be written 1:2 or 1-2 (as in URLs); a URL with node-id needs no id after it.
+
+Prints the visible tree under each node, one line per node, indented two spaces per level.
+Hidden layers are skipped. Each line holds, in this order, the fields that apply:
+
+  TYPE "name" id [x,y wxh]   Layout box, relative to the node (or to --origin).
+  render[x,y wxh]          What is visible on the canvas, where it differs from the box
+                           (shadows grow it, masks and clipping parents shrink it).
+  rot <deg>deg             Rotation, clockwise as in CSS.
+  opacity <n>, blend <mode>, MASK (this layer masks the ones above it), clip (overflow: hidden),
+  component <id>           The component an instance comes from.
+  "text"                   Text, with line breaks as \\n; then:
+    font <family> <weight> <size>/<line-height>, italic, ls <letter-spacing px>,
+    text-center|text-right|text-justified, case upper|lower|title, underline|strikethrough,
+    resize width_and_height (one line, hugs its text) | height (fixed width, wraps) | none (fixed box),
+    valign center|bottom (lines placed in a fixed box taller than them),
+    runs[ "part": base | "part": font <family> <weight> <size>/<lh> color <c> ... ] for mixed styles.
+  bg <layers> | color <layers>   Fills, top layer first as in a CSS background list: CSS colors and
+                           gradients, image(<imageRef>, FILL|FIT|CROP|TILE|STRETCH). A radial gradient
+                           with a tilted ellipse ends in "ROTATED <deg>deg": draw it on its own rotated layer.
+  border <w | top right bottom left> inside|center|outside <paint> [dashed]
+  radius <r | tl tr br bl>
+  shadow(x y blur spread color), inset-shadow(...), blur(r), backdrop-blur(r)
+                           Blur radii are Figma's: CSS blur() takes half.
+  flex-row|flex-col [wrap], gap <n>, pad <top right bottom left>, justify center|max|space_between,
+  align center|max|baseline   Auto layout (missing justify or align means start).
+  size <horizontal>/<vertical>   fill (takes the free space), hug (fits its content) or fixed.
+  absolute                 Placed at its box inside an auto layout parent, outside the flow.
+  LAYOUT DRIFT (...)       The stored boxes break the frame's own rules (often a hidden child is still
+                           counted): lay it out from its rules, not its boxes, and check the render.
+  export[x,y wxh]          The area an exported file covers, where it differs from the box (clipping
+                           by parents does not shrink an export: place the file there, clip it in code).
+  ICON \u2192 render as svg     A subtree of vectors only; MASKED \u2192 render as svg or png: a node holding a
+                           mask. Export those with \`render\` instead of rebuilding them.
+
+With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/assets/. Auto
+layout becomes flex from its rules, children of groups and frames without auto layout sit at
+their boxes, the frame and its page-wide sections span the window while narrower parts stay
+centred, text is live and its fonts are asked from Google Fonts, and icons, masks and image layers
+are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
+image file. Assets already in <dir>/assets are kept unless --refresh is given. It prints the fonts
+and notes on what it could only approximate. Measure the page with \`compare\` and refine it.
 
   --depth <n>       Stop after n levels (default: all).
   --origin <x,y>    Measure boxes from this canvas point instead of the node's corner,
                     e.g. the page frame's corner, to get page coordinates for every section.
   --from <file>     Read a .kdl file saved by \`node\` (holding the node or an ancestor), or any
                     .json of the same shape, instead of calling the API.
-  --refresh         Fetch again instead of using the local cache.
+  --html <dir>      Write the starting page and its assets to this directory.
+  --refresh         Fetch again instead of using the local cache (and render the assets again).
   -o, --out <path>  Write to a file instead of stdout.
 
 File and node reads are cached under ~/.figma-access/cache, since the API rate-limits them;
 pass --refresh after the design changed.`,
-  render: `Usage: figma-access render <url|fileKey> [nodeId ...] [--scale n] [--format png|jpg|svg|pdf] [-o dir]
+  render: `Usage: figma-access render <url|fileKey> [nodeId ...] [--scale n] [--format png|jpg|svg|pdf] [-o dir|file]
 
 Renders each node through Figma's own renderer and downloads the files. Exact for comparisons;
 SVG keeps text as text and node ids as element ids. Prints each PNG's width and height, with a
@@ -2817,7 +2842,8 @@ note when a side is over 2000 px (read such an image in parts).
 
   --scale <n>      0.01 to 4 (default 1).
   --format <fmt>   png (default), jpg, svg or pdf.
-  -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/renders/).`,
+  -o, --out <path> Output directory (default: _swe/figma-access/<fileKey>/renders/), or the file
+                   itself when one node is rendered (a name ending in .png, .jpg, .svg or .pdf).`,
   "image-fills": `Usage: figma-access image-fills <url|fileKey> [-o dir]
 
 Downloads every image used as an image fill in the file, at its original resolution, named
@@ -2827,7 +2853,7 @@ entries in \`spec\` name the ones the visible design uses.
   -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/image-fills/).`,
   compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
                           [--nodes file.kdl [--node id]] [--crop x,y,w,h] [--width n] [--shift n]
-                          [--threshold n] [--wide n] [--wait ms] [-o dir]
+                          [--threshold n] [--wide n] [--wait ms] [--full] [-o dir]
 
 Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
 then prints, for the whole page and each section, the share of differing pixels (a channel off by
@@ -2836,6 +2862,8 @@ and tints, which a threshold misses). For each section it also tries the capture
 --shift pixels (default 3) each way: when a shift explains the difference, the section is right
 and something before it has the wrong size. Writes the capture and diff.png (the reference faded,
 differing pixels red) to the output directory; open diff.png to see where the pixels differ.
+The full report goes to report.kdl there; stdout shows the 12 text styles and 10 nodes most worth
+fixing first.
 
   <reference.png>       The design render, e.g. from \`render\` at scale 1.
   <page>                An HTML file or URL to capture, or a PNG you captured yourself.
@@ -2849,6 +2877,8 @@ differing pixels red) to the output directory; open diff.png to see where the pi
                         text, icon and image of the design on both images. Prints, per text style,
                         how far its copies sit off (dy, dx) and how wide they are against the design
                         (widthRatio), then the nodes that are off by half a pixel or more, or missing.
+                        A style whose copies all sit off by the same small amount gets a css line
+                        for the style class that \`spec --html\` gives its texts.
                         Positive dx and dy: the page draws it further right or lower. On a busy
                         background (a photo) a node is matched as a whole: whole-pixel dx and dy,
                         no widthRatio.
@@ -2857,8 +2887,10 @@ differing pixels red) to the output directory; open diff.png to see where the pi
   --width <px>          The page width in CSS pixels when the reference is not at scale 1
                         (a 2880 px wide render of a 1440 frame: --width 1440).
   --wide <px>           Also capture at this wider window and report whether the content stays
-                        centred or sticks to the left.
+                        centred or sticks to the left, and whether the backgrounds that are flat at
+                        the design's edges reach the window's edges.
   --wait <ms>           Time the page gets to load fonts and images (default 8000).
+  --full                Print the full report instead of the summary.
   -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
   api: `Usage: figma-access api <path> [-o file.kdl]
 
@@ -3729,6 +3761,56 @@ async function node2(argv) {
   const nodes = Object.entries(body.nodes ?? {}).map(([id, v]) => v ? summarize(v.document, 0, outlineDepth) : { id, error: "not found" });
   out({ ok: true, fileKey: target.fileKey, path, keptHidden: !!flags["keep-hidden"], reports, nodes });
 }
+async function renderNodes(fileKey, ids, opts) {
+  const files = new Array(ids.length);
+  const todo = [];
+  ids.forEach((id, k) => {
+    const path = opts.name(id);
+    if (opts.keep && existsSync2(path))
+      files[k] = { id, path };
+    else
+      todo.push(k);
+  });
+  const urls = {};
+  for (let i = 0;i < todo.length; i += 100) {
+    const chunk = todo.slice(i, i + 100).map((k) => ids[k]);
+    const q = new URLSearchParams({ ids: chunk.join(","), format: opts.format, scale: String(opts.scale) });
+    if (opts.format === "svg") {
+      q.set("svg_outline_text", "false");
+      q.set("svg_include_id", "true");
+    }
+    Object.assign(urls, (await getJson(`/v1/images/${fileKey}?${q}`)).images ?? {});
+  }
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const k = todo[next++];
+      const id = ids[k];
+      const url = urls[id];
+      if (!url) {
+        files[k] = { id, error: "Figma could not render this node (missing, invisible or empty)." };
+      } else {
+        const path = opts.name(id);
+        const buf = await download(url, path);
+        const size = pngSize(buf);
+        const entry = { id, path, bytes: buf.length, ...size };
+        if (size && Math.max(size.width, size.height) > 2000) {
+          entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
+        }
+        files[k] = entry;
+      }
+      done++;
+      if (todo.length > 4 && (done % 10 === 0 || done === todo.length))
+        process.stderr.write(`figma-access: downloaded ${done}/${todo.length}
+`);
+    }
+  };
+  if (todo.length > 4)
+    process.stderr.write(`figma-access: Figma rendered ${todo.length} nodes; downloading
+`);
+  await Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker));
+  return files;
+}
 async function render(argv) {
   const { flags, positionals } = parseArgs(argv, { value: ["scale", "format", "out"], bool: ["help"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0])
@@ -3745,621 +3827,61 @@ async function render(argv) {
   const scale = Number(str(flags.scale) ?? 1);
   if (!(scale >= 0.01 && scale <= 4))
     fail(EXIT_USAGE, "--scale must be between 0.01 and 4.");
-  const q = new URLSearchParams({ ids: ids.join(","), format, scale: String(scale) });
-  if (format === "svg") {
-    q.set("svg_outline_text", "false");
-    q.set("svg_include_id", "true");
-  }
-  const body = await getJson(`/v1/images/${target.fileKey}?${q}`);
-  const dir = outDir(str(flags.out), target.fileKey, "renders");
-  const files = new Array(ids.length);
-  let next = 0, done = 0;
+  const o = str(flags.out);
+  const asFile = !!o && /\.(png|jpe?g|svg|pdf)$/i.test(o);
+  if (asFile && ids.length > 1)
+    fail(EXIT_USAGE, "-o names a file, but several nodes are rendered: give a directory instead.");
+  const dir = outDir(asFile ? undefined : o, target.fileKey, "renders");
+  const name = (id) => asFile ? resolve3(o) : join3(dir, `${safeId(id)}@${scale}x.${format}`);
+  const files = await renderNodes(target.fileKey, ids, { format, scale, name });
+  out({ ok: files.every((f) => !f.error), fileKey: target.fileKey, scale, format, files });
+}
+async function downloadFills(fileKey, refs, dir, keep = false) {
+  const body = await getJson(`/v1/files/${fileKey}/images`);
+  const images = body.meta?.images ?? {};
+  const want = refs ?? Object.keys(images);
+  const paths = {};
+  let next = 0;
   const worker = async () => {
-    while (next < ids.length) {
-      const k = next++;
-      const id = ids[k];
-      const url = body.images?.[id];
-      if (!url) {
-        files[k] = { id, error: "Figma could not render this node (missing, invisible or empty)." };
-      } else {
-        const path = join3(dir, `${safeId(id)}@${scale}x.${format}`);
-        const buf = await download(url, path);
-        const size = pngSize(buf);
-        const entry = { id, path, bytes: buf.length, ...size };
-        if (size && Math.max(size.width, size.height) > 2000) {
-          entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
-        }
-        files[k] = entry;
+    while (next < want.length) {
+      const ref = want[next++];
+      const url = images[ref];
+      if (!url)
+        continue;
+      const old = keep ? ["png", "jpg", "gif", "svg", "bin"].map((e) => join3(dir, `${ref}.${e}`)).find((f) => existsSync2(f)) : undefined;
+      if (old) {
+        paths[ref] = old;
+        continue;
       }
-      done++;
-      if (ids.length > 4 && (done % 10 === 0 || done === ids.length))
-        process.stderr.write(`figma-access: downloaded ${done}/${ids.length}
-`);
+      const res = await fetch(url, { signal: AbortSignal.timeout(120000) });
+      const type = res.headers.get("content-type") ?? "";
+      const ext = type.includes("png") ? "png" : type.includes("jpeg") ? "jpg" : type.includes("gif") ? "gif" : type.includes("svg") ? "svg" : "bin";
+      const path = join3(dir, `${ref}.${ext}`);
+      mkdirSync4(dir, { recursive: true });
+      writeFileSync4(path, Buffer.from(await res.arrayBuffer()));
+      paths[ref] = path;
     }
   };
-  if (ids.length > 4)
-    process.stderr.write(`figma-access: Figma rendered ${ids.length} nodes; downloading
-`);
-  await Promise.all(Array.from({ length: Math.min(8, ids.length) }, worker));
-  out({ ok: files.every((f) => !("error" in f)), fileKey: target.fileKey, scale, format, files });
+  await Promise.all(Array.from({ length: Math.min(8, want.length) }, worker));
+  return paths;
 }
 async function imageFills(argv) {
   const { flags, positionals } = parseArgs(argv, { value: ["out"], bool: ["help"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0])
     showHelp("image-fills");
   const { fileKey } = parseTarget(positionals[0]);
-  const body = await getJson(`/v1/files/${fileKey}/images`);
-  const images = body.meta?.images ?? {};
   const dir = outDir(str(flags.out), fileKey, "image-fills");
-  const files = [];
-  for (const [ref, url] of Object.entries(images)) {
-    if (!url)
-      continue;
-    const res = await fetch(url, { signal: AbortSignal.timeout(120000) });
-    const type = res.headers.get("content-type") ?? "";
-    const ext = type.includes("png") ? "png" : type.includes("jpeg") ? "jpg" : type.includes("gif") ? "gif" : type.includes("svg") ? "svg" : "bin";
-    const buf = Buffer.from(await res.arrayBuffer());
-    const path = join3(dir, `${ref}.${ext}`);
-    mkdirSync4(dir, { recursive: true });
-    writeFileSync4(path, buf);
-    files.push({ imageRef: ref, path, bytes: buf.length });
-  }
+  const paths = await downloadFills(fileKey, null, dir);
+  const files = Object.entries(paths).map(([imageRef, path]) => ({ imageRef, path }));
   out({ ok: true, fileKey, dir, count: files.length, files });
 }
 
 // src/spec.ts
 import { existsSync as existsSync3, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5 } from "fs";
-import { dirname as dirname4, resolve as resolve4 } from "path";
-var r2 = (n) => Math.round(n * 100) / 100;
-var hex2 = (n) => Math.round(n * 255).toString(16).padStart(2, "0");
-function color(c, opacity = 1) {
-  const a = (c.a ?? 1) * opacity;
-  const base = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`.toUpperCase();
-  return a >= 0.999 ? base : `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${r2(a)})`;
-}
-function gradientAngle(handles, size) {
-  if (!handles || handles.length < 2)
-    return null;
-  const [a, b] = handles;
-  return Math.round((Math.atan2((b.y - a.y) * size.h, (b.x - a.x) * size.w) * 180 / Math.PI + 90 + 360) % 360);
-}
-function linearGradient(p, size, op) {
-  const h = p.gradientHandlePositions;
-  if (!h || h.length < 2)
-    return null;
-  const px = (q) => ({ x: q.x * size.w, y: q.y * size.h });
-  const p0 = px(h[0]);
-  const p1 = px(h[1]);
-  const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
-  if (Math.hypot(v1.x, v1.y) < 0.000000001)
-    return null;
-  let n = v1;
-  if (h[2]) {
-    const p2 = px(h[2]);
-    const v2 = { x: p2.x - p0.x, y: p2.y - p0.y };
-    const perp = { x: -v2.y, y: v2.x };
-    const along = perp.x * v1.x + perp.y * v1.y;
-    if (Math.hypot(v2.x, v2.y) > 0.000000001 && Math.abs(along) > 0.000000001)
-      n = along > 0 ? perp : { x: -perp.x, y: -perp.y };
-  }
-  const angle = Math.round((Math.atan2(n.y, n.x) * 180 / Math.PI + 90 + 360) % 360) % 360;
-  const rad = angle * Math.PI / 180;
-  const dir = { x: Math.sin(rad), y: -Math.cos(rad) };
-  const L = Math.abs(size.w * dir.x) + Math.abs(size.h * dir.y);
-  const start = ((p0.x - size.w / 2) * dir.x + (p0.y - size.h / 2) * dir.y + L / 2) / L;
-  const span = (v1.x * dir.x + v1.y * dir.y) / L;
-  const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${r2((start + s.position * span) * 100)}%`).join(", ");
-  return `linear-gradient(${angle}deg, ${stops})`;
-}
-function gradientShape(handles, size) {
-  if (!handles || handles.length < 3)
-    return { shape: "", rotated: null };
-  const [c, a, b] = handles;
-  const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
-  const ra = r2(Math.hypot(vx, vy));
-  const rb = r2(Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h));
-  const at = `at ${r2(c.x * size.w)}px ${r2(c.y * size.h)}px, `;
-  const angle = Math.atan2(vy, vx) * 180 / Math.PI;
-  const off = (angle % 180 + 180) % 180;
-  if (Math.min(off, 180 - off) <= 2)
-    return { shape: `${ra}px ${rb}px ${at}`, rotated: null };
-  if (Math.abs(off - 90) <= 2)
-    return { shape: `${rb}px ${ra}px ${at}`, rotated: null };
-  return { shape: `${ra}px ${rb}px ${at}`, rotated: r2(angle) };
-}
-function paint(p, size = { w: 1, h: 1 }) {
-  if (p.visible === false)
-    return null;
-  const op = p.opacity ?? 1;
-  switch (p.type) {
-    case "SOLID":
-      return color(p.color, op);
-    case "GRADIENT_LINEAR":
-    case "GRADIENT_RADIAL":
-    case "GRADIENT_ANGULAR":
-    case "GRADIENT_DIAMOND": {
-      const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${Math.round(s.position * 100)}%`).join(", ");
-      if (p.type === "GRADIENT_LINEAR")
-        return linearGradient(p, size, op) ?? `linear-gradient(180deg, ${stops})`;
-      if (p.type === "GRADIENT_RADIAL" || p.type === "GRADIENT_DIAMOND") {
-        const { shape, rotated } = gradientShape(p.gradientHandlePositions, size);
-        const css = `${p.type === "GRADIENT_RADIAL" ? "radial" : "diamond"}-gradient(${shape}${stops})`;
-        return rotated === null ? css : `${css} ROTATED ${rotated}deg`;
-      }
-      if (p.type === "GRADIENT_ANGULAR") {
-        const h = p.gradientHandlePositions;
-        const at = h?.[0] ? `from ${gradientAngle(h, size) ?? 0}deg at ${r2(h[0].x * size.w)}px ${r2(h[0].y * size.h)}px, ` : "";
-        return `conic-gradient(${at}${stops})`;
-      }
-      return null;
-    }
-    case "IMAGE":
-      return `image(${p.imageRef}, ${p.scaleMode ?? "FILL"}${op < 1 ? `, opacity ${r2(op)}` : ""})`;
-    default:
-      return p.type.toLowerCase();
-  }
-}
-function effects(n) {
-  const outList = [];
-  for (const e of n.effects ?? []) {
-    if (e.visible === false)
-      continue;
-    if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
-      outList.push(`${e.type === "INNER_SHADOW" ? "inset-" : ""}shadow(${r2(e.offset?.x ?? 0)} ${r2(e.offset?.y ?? 0)} ${r2(e.radius ?? 0)} ${r2(e.spread ?? 0)} ${color(e.color)})`);
-    } else if (e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR") {
-      outList.push(`${e.type === "LAYER_BLUR" ? "blur" : "backdrop-blur"}(${r2(e.radius ?? 0)})`);
-    }
-  }
-  return outList;
-}
-function layout(n) {
-  const parts = [];
-  if (n.layoutMode && n.layoutMode !== "NONE") {
-    parts.push(`flex-${n.layoutMode === "HORIZONTAL" ? "row" : "col"}${n.layoutWrap === "WRAP" ? " wrap" : ""}`);
-    if (n.itemSpacing)
-      parts.push(`gap ${r2(n.itemSpacing)}`);
-    const pad = [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0].map(r2);
-    if (pad.some((v) => v))
-      parts.push(`pad ${pad.join(" ")}`);
-    if (n.primaryAxisAlignItems && n.primaryAxisAlignItems !== "MIN")
-      parts.push(`justify ${n.primaryAxisAlignItems.toLowerCase()}`);
-    if (n.counterAxisAlignItems && n.counterAxisAlignItems !== "MIN")
-      parts.push(`align ${n.counterAxisAlignItems.toLowerCase()}`);
-  }
-  const sizing = [n.layoutSizingHorizontal, n.layoutSizingVertical];
-  if (sizing.some((s) => s && s !== "FIXED"))
-    parts.push(`size ${sizing.map((s) => (s ?? "FIXED").toLowerCase()).join("/")}`);
-  if (n.layoutPositioning === "ABSOLUTE")
-    parts.push("absolute");
-  return parts;
-}
-function layoutDrift(n) {
-  if (!n.layoutMode || n.layoutMode === "NONE" || !n.absoluteBoundingBox)
-    return null;
-  const row = n.layoutMode === "HORIZONTAL";
-  const kids = (n.children ?? []).filter((c) => c.visible !== false && c.layoutPositioning !== "ABSOLUTE" && c.absoluteBoundingBox && !c.rotation);
-  if (!kids.length || n.layoutWrap === "WRAP")
-    return null;
-  const pos = (b) => row ? b.x : b.y;
-  const len = (b) => row ? b.width : b.height;
-  const gap = n.itemSpacing ?? 0;
-  const between = n.primaryAxisAlignItems === "SPACE_BETWEEN";
-  for (let i = 1;i < kids.length; i++) {
-    const a = kids[i - 1].absoluteBoundingBox;
-    const b = kids[i].absoluteBoundingBox;
-    const got = pos(b) - (pos(a) + len(a));
-    if (!between && Math.abs(got - gap) > 1)
-      return `${JSON.stringify(kids[i].name)} is ${r2(got)} after the previous item, gap is ${r2(gap)}`;
-  }
-  const hug = (row ? n.layoutSizingHorizontal : n.layoutSizingVertical) === "HUG";
-  if (hug && !between) {
-    const pads = row ? (n.paddingLeft ?? 0) + (n.paddingRight ?? 0) : (n.paddingTop ?? 0) + (n.paddingBottom ?? 0);
-    const need = pads + kids.reduce((t, c) => t + len(c.absoluteBoundingBox), 0) + gap * (kids.length - 1);
-    const has = len(n.absoluteBoundingBox);
-    if (Math.abs(need - has) > 1)
-      return `hugs ${r2(has)} but its stored items add up to ${r2(need)}`;
-  }
-  const cross = (b) => row ? b.height : b.width;
-  const inner = cross(n.absoluteBoundingBox) - (row ? (n.paddingTop ?? 0) + (n.paddingBottom ?? 0) : (n.paddingLeft ?? 0) + (n.paddingRight ?? 0));
-  for (const c of kids) {
-    const fills = (row ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL" || c.layoutAlign === "STRETCH";
-    const got = cross(c.absoluteBoundingBox);
-    if (fills && Math.abs(got - inner) > 1)
-      return `${JSON.stringify(c.name)} fills ${r2(inner)} but is stored ${r2(got)} ${row ? "high" : "wide"}`;
-  }
-  return null;
-}
-function textInfo(n) {
-  const s = n.style ?? {};
-  const parts = [`"${String(n.characters ?? "").replace(/[\n\u2028\u2029]/g, "\\n").slice(0, 300)}"`];
-  const lh = s.lineHeightPx ? `/${r2(s.lineHeightPx)}` : "";
-  parts.push(`font ${s.fontFamily} ${s.fontWeight} ${r2(s.fontSize)}${lh}`);
-  if (s.italic)
-    parts.push("italic");
-  if (s.letterSpacing)
-    parts.push(`ls ${r2(s.letterSpacing)}`);
-  if (s.textAlignHorizontal && s.textAlignHorizontal !== "LEFT")
-    parts.push(`text-${s.textAlignHorizontal.toLowerCase()}`);
-  if (s.textCase && s.textCase !== "ORIGINAL")
-    parts.push(`case ${s.textCase.toLowerCase()}`);
-  if (s.textDecoration && s.textDecoration !== "NONE")
-    parts.push(s.textDecoration.toLowerCase());
-  if (s.textAutoResize)
-    parts.push(`resize ${s.textAutoResize.toLowerCase()}`);
-  const fixedHeight = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
-  if (fixedHeight && s.textAlignVertical && s.textAlignVertical !== "TOP")
-    parts.push(`valign ${s.textAlignVertical.toLowerCase()}`);
-  const runs = textRuns(n);
-  if (runs)
-    parts.push(runs);
-  return parts;
-}
-function textRuns(n) {
-  const table = n.styleOverrideTable ?? {};
-  const ids = n.characterStyleOverrides ?? [];
-  if (!Object.keys(table).length || !ids.length)
-    return null;
-  const chars = Array.from(String(n.characters ?? ""));
-  const runs = [];
-  chars.forEach((ch, i) => {
-    const id = ids[i] ?? 0;
-    const last = runs[runs.length - 1];
-    if (last && last.id === id)
-      last.text += ch;
-    else
-      runs.push({ id, text: ch });
-  });
-  const describe = (id) => {
-    const o = table[id];
-    if (!id || !o)
-      return "base";
-    const d = [];
-    if (o.fontFamily || o.fontWeight || o.fontSize)
-      d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ? r2(o.fontSize) : ""}${o.lineHeightPx ? `/${r2(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
-    if (o.fills?.length)
-      d.push(`color ${o.fills.map(paint).filter(Boolean).join(" + ")}`);
-    if (o.textDecoration && o.textDecoration !== "NONE")
-      d.push(o.textDecoration.toLowerCase());
-    if (o.italic)
-      d.push("italic");
-    if (o.letterSpacing)
-      d.push(`ls ${r2(o.letterSpacing)}`);
-    return d.join(" ") || "base";
-  };
-  return `runs[ ${runs.map((r) => `${JSON.stringify(r.text)}: ${describe(r.id)}`).join(" | ")} ]`;
-}
-function vectorOnly(n) {
-  if (["VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON", "REGULAR_POLYGON"].includes(n.type))
-    return true;
-  if (n.type === "TEXT")
-    return false;
-  if ((n.fills ?? []).some((f) => f.type === "IMAGE" && f.visible !== false))
-    return false;
-  const kids = (n.children ?? []).filter((c) => c.visible !== false);
-  return kids.length > 0 && kids.every(vectorOnly);
-}
-function walk(n, depth, ctx) {
-  if (n.visible === false)
-    return;
-  const b = n.absoluteBoundingBox;
-  const parts = [n.type, JSON.stringify(n.name), n.id];
-  if (b)
-    parts.push(`[${r2(b.x - ctx.ox)},${r2(b.y - ctx.oy)} ${r2(b.width)}x${r2(b.height)}]`);
-  const rb = n.absoluteRenderBounds;
-  if (b && rb && [rb.x - b.x, rb.y - b.y, rb.width - b.width, rb.height - b.height].some((d) => Math.abs(d) > 0.5)) {
-    parts.push(`render[${r2(rb.x - ctx.ox)},${r2(rb.y - ctx.oy)} ${r2(rb.width)}x${r2(rb.height)}]`);
-  }
-  if (n.rotation && Math.abs(n.rotation) > 0.01)
-    parts.push(`rot ${r2(-n.rotation * 180 / Math.PI)}deg`);
-  if (n.opacity !== undefined && n.opacity < 1)
-    parts.push(`opacity ${r2(n.opacity)}`);
-  if (n.blendMode && !["PASS_THROUGH", "NORMAL"].includes(n.blendMode))
-    parts.push(`blend ${n.blendMode.toLowerCase()}`);
-  if (n.isMask)
-    parts.push("MASK");
-  if (n.clipsContent)
-    parts.push("clip");
-  if (n.componentId)
-    parts.push(`component ${n.componentId}`);
-  const icon = n.type !== "TEXT" && depth > 0 && vectorOnly(n);
-  const masked = !icon && depth > 0 && (n.children ?? []).some((c) => c.visible !== false && c.isMask);
-  if (n.type === "TEXT")
-    parts.push(...textInfo(n));
-  const size = { w: n.size?.x ?? n.absoluteBoundingBox?.width ?? 1, h: n.size?.y ?? n.absoluteBoundingBox?.height ?? 1 };
-  const fills = (n.fills ?? []).map((p) => paint(p, size)).filter(Boolean).reverse();
-  if (fills.length)
-    parts.push(`${n.type === "TEXT" ? "color" : "bg"} ${fills.join(", ")}`);
-  const strokes = (n.strokes ?? []).map((p) => paint(p, size)).filter(Boolean);
-  if (strokes.length && n.strokeWeight) {
-    const sides = n.individualStrokeWeights;
-    const w = sides ? `${sides.top} ${sides.right} ${sides.bottom} ${sides.left}` : r2(n.strokeWeight);
-    parts.push(`border ${w} ${(n.strokeAlign ?? "INSIDE").toLowerCase()} ${strokes.join(" + ")}${n.strokeDashes?.length ? " dashed" : ""}`);
-  }
-  if (n.rectangleCornerRadii)
-    parts.push(`radius ${n.rectangleCornerRadii.map(r2).join(" ")}`);
-  else if (n.cornerRadius)
-    parts.push(`radius ${r2(n.cornerRadius)}`);
-  parts.push(...effects(n), ...layout(n));
-  const drift = layoutDrift(n);
-  if (drift)
-    parts.push(`LAYOUT DRIFT (${drift}) \u2192 trust the render`);
-  if (icon || masked) {
-    const e = exportBounds(n);
-    if (e && b && [e.x - b.x, e.y - b.y, e.w - b.width, e.h - b.height].some((d) => Math.abs(d) > 0.5)) {
-      parts.push(`export[${r2(e.x - ctx.ox)},${r2(e.y - ctx.oy)} ${r2(e.w)}x${r2(e.h)}]`);
-    }
-  }
-  if (icon) {
-    parts.push("ICON \u2192 render as svg");
-    ctx.icons++;
-  }
-  if (masked) {
-    parts.push("MASKED \u2192 render as svg or png");
-    ctx.icons++;
-  }
-  ctx.lines.push("  ".repeat(depth) + parts.join(" "));
-  if (icon || masked)
-    return;
-  const kids = (n.children ?? []).filter((c) => c.visible !== false);
-  if (depth >= ctx.maxDepth) {
-    if (kids.length)
-      ctx.lines.push("  ".repeat(depth + 1) + `\u2026 ${kids.length} children (raise --depth or run spec on ${n.id})`);
-    return;
-  }
-  for (const c of kids)
-    walk(c, depth + 1, ctx);
-}
-function findNode(nodes, id) {
-  const search = (n) => n.id === id ? n : (n.children ?? []).reduce((hit, c) => hit ?? search(c), null);
-  for (const v of Object.values(nodes ?? {})) {
-    const hit = v?.document && search(v.document);
-    if (hit)
-      return hit;
-  }
-  return null;
-}
-async function spec(argv) {
-  const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "origin", "from"], bool: ["help", "refresh"], alias: { h: "help", o: "out" } });
-  if (flags.help || !positionals[0])
-    showHelp("spec");
-  const target = parseTarget(positionals[0]);
-  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
-  if (!ids.length && target.nodeId)
-    ids.push(target.nodeId);
-  if (!ids.length)
-    fail(EXIT_USAGE, "Name the node: a URL with node-id, or node ids after the file.");
-  let body;
-  const fromFile = str(flags.from);
-  if (fromFile) {
-    if (!existsSync3(fromFile))
-      fail(EXIT_USAGE, `File not found: ${fromFile}`);
-    body = readData(fromFile);
-  } else {
-    body = await getJson(`/v1/files/${target.fileKey}/nodes?${new URLSearchParams({ ids: ids.join(",") })}`, { cache: true, refresh: !!flags.refresh });
-  }
-  const maxDepth = Number(str(flags.depth) ?? 99);
-  const lines = [];
-  let icons = 0;
-  let originRoot = null;
-  if (flags.origin) {
-    const o = /^(-?[\d.]+),(-?[\d.]+)$/.exec(String(flags.origin));
-    if (!o)
-      fail(EXIT_USAGE, "--origin takes x,y, e.g. --origin 0,80");
-    originRoot = { x: Number(o[1]), y: Number(o[2]) };
-  }
-  for (const id of ids) {
-    const doc = body.nodes?.[id]?.document ?? findNode(body.nodes, id);
-    if (!doc) {
-      lines.push(`# ${id}: not found`);
-      continue;
-    }
-    const b = doc.absoluteBoundingBox ?? { x: 0, y: 0 };
-    const ctx = { ox: originRoot?.x ?? b.x, oy: originRoot?.y ?? b.y, lines, maxDepth, icons: 0 };
-    lines.push(`# ${doc.name} (${id}); boxes are [x,y wxh] relative to ${originRoot ? `canvas point ${originRoot.x},${originRoot.y}` : "this node"}`);
-    walk(doc, 0, ctx);
-    icons += ctx.icons;
-  }
-  const text = lines.join(`
-`) + `
-`;
-  const outPath = str(flags.out);
-  if (outPath) {
-    const p = resolve4(outPath);
-    mkdirSync5(dirname4(p), { recursive: true });
-    writeFileSync5(p, text);
-    out({ ok: true, path: p, lines: lines.length, icons });
-  } else {
-    process.stdout.write(text);
-  }
-}
-var union = (a, b) => {
-  if (!a)
-    return b;
-  if (!b)
-    return a;
-  const x = Math.min(a.x, b.x);
-  const y = Math.min(a.y, b.y);
-  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-};
-var intersect = (a, b) => {
-  if (!a || !b)
-    return null;
-  const x = Math.max(a.x, b.x);
-  const y = Math.max(a.y, b.y);
-  const w = Math.min(a.x + a.w, b.x + b.w) - x;
-  const h = Math.min(a.y + a.h, b.y + b.h) - y;
-  return w > 0 && h > 0 ? { x, y, w, h } : null;
-};
-function grow(r, d) {
-  return { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d };
-}
-function withEffects(n, r) {
-  let out = r;
-  const strokes = (n.strokes ?? []).some((s) => s.visible !== false) && n.strokeWeight;
-  if (strokes && n.strokeAlign === "OUTSIDE")
-    out = grow(out, n.strokeWeight);
-  else if (strokes && n.strokeAlign === "CENTER")
-    out = grow(out, n.strokeWeight / 2);
-  let total = out;
-  for (const e of n.effects ?? []) {
-    if (e.visible === false)
-      continue;
-    if (e.type === "DROP_SHADOW") {
-      const s = grow({ x: out.x + (e.offset?.x ?? 0), y: out.y + (e.offset?.y ?? 0), w: out.w, h: out.h }, (e.radius ?? 0) + (e.spread ?? 0));
-      total = union(total, s);
-    } else if (e.type === "LAYER_BLUR") {
-      total = union(total, grow(out, e.radius ?? 0));
-    }
-  }
-  return total;
-}
-function exportBounds(n) {
-  if (n.visible === false)
-    return null;
-  const b = n.absoluteBoundingBox;
-  let r = b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
-  const kids = (n.children ?? []).filter((c) => c.visible !== false);
-  if (kids.length && !n.clipsContent) {
-    const own = n.type === "GROUP" || n.type === "BOOLEAN_OPERATION" ? null : r;
-    const maskAt = kids.findIndex((c) => c.isMask);
-    if (maskAt >= 0) {
-      let content = null;
-      for (const c of kids.slice(maskAt + 1))
-        content = union(content, exportBounds(c));
-      const before = kids.slice(0, maskAt).reduce((acc, c) => union(acc, exportBounds(c)), own);
-      r = union(before, intersect(exportBounds({ ...kids[maskAt], effects: [] }), content));
-    } else {
-      r = kids.reduce((acc, c) => union(acc, exportBounds(c)), own);
-    }
-  }
-  return r ? withEffects(n, r) : null;
-}
-
-// src/compare.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync6, mkdtempSync, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync6 } from "fs";
-import { tmpdir } from "os";
-import { join as join4, resolve as resolve5 } from "path";
-import { pathToFileURL } from "url";
-
-// src/png.ts
-import { deflateSync, inflateSync } from "zlib";
-var SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-var CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
-function decodePng(buf) {
-  if (buf.length < 8 || !buf.subarray(0, 8).equals(SIGNATURE))
-    throw new Error("not a PNG file");
-  let width = 0, height = 0, depth = 0, color = 0, interlace = 0;
-  let palette, alpha;
-  const idat = [];
-  for (let p = 8;p + 8 <= buf.length; ) {
-    const len = buf.readUInt32BE(p);
-    const type = buf.toString("latin1", p + 4, p + 8);
-    const body = buf.subarray(p + 8, p + 8 + len);
-    if (type === "IHDR") {
-      width = body.readUInt32BE(0);
-      height = body.readUInt32BE(4);
-      depth = body[8];
-      color = body[9];
-      interlace = body[12];
-    } else if (type === "PLTE")
-      palette = body;
-    else if (type === "tRNS")
-      alpha = body;
-    else if (type === "IDAT")
-      idat.push(body);
-    else if (type === "IEND")
-      break;
-    p += 12 + len;
-  }
-  const ch = CHANNELS[color];
-  if (depth !== 8 || ch === undefined || interlace !== 0) {
-    throw new Error(`unsupported PNG (bit depth ${depth}, color type ${color}, interlace ${interlace}); only 8-bit non-interlaced PNGs are read`);
-  }
-  const raw = inflateSync(Buffer.concat(idat));
-  const stride = width * ch;
-  const px = new Uint8Array(stride * height);
-  for (let y = 0;y < height; y++) {
-    const f = raw[y * (stride + 1)];
-    const src = y * (stride + 1) + 1;
-    const row = y * stride;
-    for (let x = 0;x < stride; x++) {
-      const a = x >= ch ? px[row + x - ch] : 0;
-      const b = y > 0 ? px[row - stride + x] : 0;
-      const c = x >= ch && y > 0 ? px[row - stride + x - ch] : 0;
-      let v = raw[src + x];
-      if (f === 1)
-        v += a;
-      else if (f === 2)
-        v += b;
-      else if (f === 3)
-        v += a + b >> 1;
-      else if (f === 4) {
-        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
-        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-      }
-      px[row + x] = v & 255;
-    }
-  }
-  const data = new Uint8Array(width * height * 4);
-  for (let i = 0, j = 0;i < width * height; i++, j += 4) {
-    const s = i * ch;
-    if (color === 3) {
-      const k = px[s];
-      data[j] = palette[k * 3];
-      data[j + 1] = palette[k * 3 + 1];
-      data[j + 2] = palette[k * 3 + 2];
-      data[j + 3] = alpha && k < alpha.length ? alpha[k] : 255;
-    } else if (ch <= 2) {
-      data[j] = data[j + 1] = data[j + 2] = px[s];
-      data[j + 3] = ch === 2 ? px[s + 1] : 255;
-    } else {
-      data[j] = px[s];
-      data[j + 1] = px[s + 1];
-      data[j + 2] = px[s + 2];
-      data[j + 3] = ch === 4 ? px[s + 3] : 255;
-    }
-  }
-  return { width, height, data };
-}
-var CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0;n < 256; n++) {
-    let c = n;
-    for (let k = 0;k < 8; k++)
-      c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(buf) {
-  let c = 4294967295;
-  for (const b of buf)
-    c = CRC_TABLE[(c ^ b) & 255] ^ c >>> 8;
-  return (c ^ 4294967295) >>> 0;
-}
-function chunk(type, body) {
-  const head = Buffer.alloc(8);
-  head.writeUInt32BE(body.length, 0);
-  head.write(type, 4, "latin1");
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
-  return Buffer.concat([head, body, crc]);
-}
-function encodePng(img) {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(img.width, 0);
-  ihdr.writeUInt32BE(img.height, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  const stride = img.width * 4;
-  const raw = Buffer.alloc((stride + 1) * img.height);
-  for (let y = 0;y < img.height; y++)
-    raw.set(img.data.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
-  return Buffer.concat([SIGNATURE, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
-}
+import { dirname as dirname4, join as join4, relative, resolve as resolve4 } from "path";
 
 // src/nodes.ts
-var r22 = (n) => Math.round(n * 100) / 100;
+var r2 = (n) => Math.round(n * 100) / 100;
 function clipTo(a, b) {
   if (!b)
     return a;
@@ -4369,8 +3891,8 @@ function clipTo(a, b) {
 }
 function textStyle(n) {
   const s = n.style ?? {};
-  const lh = s.lineHeightPx ? `/${r22(s.lineHeightPx)}` : "";
-  return `${s.fontFamily} ${s.fontWeight} ${r22(s.fontSize)}${lh}`;
+  const lh = s.lineHeightPx ? `/${r2(s.lineHeightPx)}` : "";
+  return `${s.fontFamily} ${s.fontWeight} ${r2(s.fontSize)}${lh}`;
 }
 function targets(root) {
   const list = [];
@@ -4494,13 +4016,13 @@ function measureNodes(root, origin, ref, cap, W, H, scale, threshold) {
     const px = { x: css.x * scale, y: css.y * scale, w: css.w * scale, h: css.h * scale };
     if (px.x + px.w <= 0 || px.y + px.h <= 0 || px.x >= W || px.y >= H)
       continue;
-    const m = { id: t.node.id, name: t.node.name, kind: t.kind, box: [r22(css.x), r22(css.y), r22(css.w), r22(css.h)] };
+    const m = { id: t.node.id, name: t.node.name, kind: t.kind, box: [r2(css.x), r2(css.y), r2(css.w), r2(css.h)] };
     if (t.kind === "text")
       m.style = textStyle(t.node);
     if (t.kind === "image") {
       const s = bestShift(ref, cap, W, H, px, Math.round(4 * scale));
-      m.dx = r22(s.dx / scale);
-      m.dy = r22(s.dy / scale);
+      m.dx = r2(s.dx / scale);
+      m.dy = r2(s.dy / scale);
       out.push(m);
       continue;
     }
@@ -4514,8 +4036,8 @@ function measureNodes(root, origin, ref, cap, W, H, scale, threshold) {
       continue;
     if (a.flat < 0.5) {
       const s = bestShift(ref, cap, W, H, area, Math.round(4 * scale));
-      m.dx = r22(s.dx / scale);
-      m.dy = r22(s.dy / scale);
+      m.dx = r2(s.dx / scale);
+      m.dy = r2(s.dy / scale);
       out.push(m);
       continue;
     }
@@ -4525,10 +4047,10 @@ function measureNodes(root, origin, ref, cap, W, H, scale, threshold) {
       out.push(m);
       continue;
     }
-    m.dx = r22((b.cx - a.cx) / scale);
-    m.dy = r22((b.cy - a.cy) / scale);
+    m.dx = r2((b.cx - a.cx) / scale);
+    m.dy = r2((b.cy - a.cy) / scale);
     if (t.kind === "text")
-      m.widthRatio = r22((b.x1 - b.x0) / (a.x1 - a.x0));
+      m.widthRatio = r2((b.x1 - b.x0) / (a.x1 - a.x0));
     out.push(m);
   }
   return out;
@@ -4547,17 +4069,17 @@ function styleSummary(nodes) {
     const widths = list.filter((n) => n.widthRatio !== undefined).map((n) => n.widthRatio);
     const wr = widths.length ? median(widths) : 1;
     const same = list.filter((n) => Math.abs(n.dy - dy) <= 0.3).length / list.length;
-    const s = { style, count: list.length, dy: r22(dy), dx: r22(dx) };
+    const s = { style, count: list.length, dy: r2(dy), dx: r2(dx) };
     if (widths.length)
-      s.widthRatio = r22(wr);
+      s.widthRatio = r2(wr);
     const hints = [];
     if (Math.abs(dy) >= 0.5 && Math.abs(dy) <= 2 && same >= 0.75) {
-      hints.push(`Every copy sits ${r22(Math.abs(dy))} px ${dy > 0 ? "lower" : "higher"}: correct it once for this style, if the boxes around it match.`);
+      hints.push(`Every copy sits ${r2(Math.abs(dy))} px ${dy > 0 ? "lower" : "higher"}: correct it once for this style, if the boxes around it match.`);
     } else if (Math.abs(dy) > 2) {
-      hints.push(`Off by ${r22(Math.abs(dy))} px: more than font metrics explain, so a box or gap above or around it is wrong; check the section's shift first.`);
+      hints.push(`Off by ${r2(Math.abs(dy))} px: more than font metrics explain, so a box or gap above or around it is wrong; check the section's shift first.`);
     }
     if (Math.abs(wr - 1) > 0.02)
-      hints.push(`Text is ${r22(Math.abs(wr - 1) * 100)}% ${wr > 1 ? "wider" : "narrower"}: check the font file, weight and letter spacing.`);
+      hints.push(`Text is ${r2(Math.abs(wr - 1) * 100)}% ${wr > 1 ? "wider" : "narrower"}: check the font file, weight and letter spacing.`);
     if (hints.length)
       s.hint = hints.join(" ");
     return s;
@@ -4566,6 +4088,1082 @@ function styleSummary(nodes) {
 function offNodes(nodes) {
   const size = (n) => n.missing ? 1000 : Math.hypot(n.dx ?? 0, n.dy ?? 0) + Math.abs((n.widthRatio ?? 1) - 1) * 20;
   return nodes.filter((n) => n.missing || Math.abs(n.dx ?? 0) >= 0.5 || Math.abs(n.dy ?? 0) >= 0.5 || Math.abs((n.widthRatio ?? 1) - 1) > 0.02).sort((a, b) => size(b) - size(a));
+}
+
+// src/html.ts
+var r22 = (n) => Math.round(n * 100) / 100;
+var px = (n) => `${r22(n)}px`;
+var slug = (s) => String(s).toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+var esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var shown = (n) => (n.children ?? []).filter((c) => c.visible !== false && c.absoluteBoundingBox);
+var hasImage = (n) => (n.fills ?? []).some((f) => f.type === "IMAGE" && f.visible !== false);
+var flexOf = (n) => n.layoutMode && n.layoutMode !== "NONE";
+var rotated = (n) => Math.abs(n.rotation ?? 0) > 0.01;
+var JUSTIFY = { MIN: "flex-start", CENTER: "center", MAX: "flex-end", SPACE_BETWEEN: "space-between" };
+var ALIGN = { MIN: "flex-start", CENTER: "center", MAX: "flex-end", BASELINE: "baseline" };
+var CASE = { UPPER: "uppercase", LOWER: "lowercase", TITLE: "capitalize" };
+var DECO = { UNDERLINE: "underline", STRIKETHROUGH: "line-through" };
+var BLEND = new Set(["multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"]);
+function emitHtml(root, title) {
+  const block = slug(root.name) || "page";
+  const css = [];
+  const used = new Map([[`${block}__text`, 1]]);
+  const svg = new Set, png = new Set, fills = new Set, fonts = new Set;
+  const weights = new Map;
+  const useFont = (family, weight) => {
+    fonts.add(family);
+    weights.set(family, (weights.get(family) ?? new Set).add(Math.round(weight / 100) * 100 || 400));
+  };
+  const notes = [];
+  const note = (n, text) => notes.push({ id: n.id, name: n.name, note: text });
+  const cls = (n) => {
+    const base = `${block}__${slug(n.name) || n.type.toLowerCase()}`;
+    const k = (used.get(base) ?? 0) + 1;
+    used.set(base, k);
+    return k > 1 ? `${base}-${k}` : base;
+  };
+  const rule = (sel, props) => {
+    if (props.length)
+      css.push(`.${sel}{${props.join(";")}}`);
+  };
+  function placement(n, place, own) {
+    const b = n.absoluteBoundingBox;
+    const p = [];
+    if (place.kind === "root")
+      return ["position:relative", "width:100%"];
+    if (place.kind === "abs") {
+      const left = b.x - place.origin.x;
+      p.push("position:absolute", `top:${px(b.y - place.origin.y)}`);
+      if (place.fluidW && !own.frozen && left <= 1 && Math.abs(b.width - pageW) <= 1)
+        p.push("left:0", "width:100%");
+      else
+        p.push(place.fluidW ? `left:calc(50% + ${px(left - place.fluidW / 2)})` : `left:${px(left)}`, `width:${px(b.width)}`);
+      p.push(`height:${px(b.height)}`);
+      return p;
+    }
+    p.push("position:relative");
+    if (place.kind === "stack") {
+      p.push(`margin-top:${px(place.top)}`);
+      if (place.fluid)
+        p.push("width:100%");
+      else {
+        const left = b.x - place.x0;
+        p.push(`width:${px(b.width)}`, "max-width:100%", `margin-left:calc(50% + ${px(left - place.parentW / 2)})`);
+      }
+      const hugV = n.layoutSizingVertical === "HUG" && !own.frozen;
+      if (!hugV && !own.text)
+        p.push(`height:${px(b.height)}`);
+      return p;
+    }
+    if (place.lead)
+      p.push(`margin-${place.row ? "left" : "top"}:${px(place.lead)}`);
+    const sizing = (horizontal) => {
+      const s = horizontal ? n.layoutSizingHorizontal : n.layoutSizingVertical;
+      if (s)
+        return own.frozen && s === "HUG" ? "FIXED" : s;
+      const main = horizontal === place.row;
+      if (main)
+        return n.layoutGrow ? "FILL" : "FIXED";
+      return n.layoutAlign === "STRETCH" ? "FILL" : "FIXED";
+    };
+    const w = sizing(true), h = sizing(false);
+    const mainS = place.row ? w : h, crossS = place.row ? h : w;
+    const mainLen = place.row ? b.width : b.height, crossLen = place.row ? b.height : b.width;
+    const mainProp = place.row ? "width" : "height", crossProp = place.row ? "height" : "width";
+    if (mainS === "FILL")
+      p.push("flex:1 1 0", `min-${mainProp}:0`);
+    else {
+      p.push("flex:none");
+      if (mainS === "FIXED" && !(own.text && !place.row))
+        p.push(`${mainProp}:${px(mainLen)}`);
+    }
+    if (crossS === "FILL" || place.fluid)
+      p.push("align-self:stretch");
+    else if (crossS === "FIXED" && !(own.text && place.row))
+      p.push(`${crossProp}:${px(crossLen)}`);
+    if (n.minWidth)
+      p.push(`min-width:${px(n.minWidth)}`);
+    if (n.maxWidth)
+      p.push(`max-width:${px(n.maxWidth)}`);
+    return p;
+  }
+  function paintProps(n, layers) {
+    const p = [];
+    const size = { w: n.size?.x ?? n.absoluteBoundingBox.width, h: n.size?.y ?? n.absoluteBoundingBox.height };
+    const bg = [];
+    let bgColor;
+    const list = [...n.fills ?? []].filter((f) => f.visible !== false).reverse();
+    list.forEach((f, i) => {
+      if (f.type === "IMAGE") {
+        fills.add(f.imageRef);
+        const url = `url("${FILL_MARK}${f.imageRef}")`;
+        const op = f.opacity ?? 1;
+        if (op < 1)
+          note(n, `image fill at opacity ${r22(op)}: drawn opaque`);
+        if (f.scaleMode === "FIT")
+          bg.push({ image: url, size: "contain", pos: "center", repeat: "no-repeat" });
+        else if (f.scaleMode === "TILE")
+          bg.push({ image: url, size: f.scalingFactor ? `${r22(f.scalingFactor * 100)}%` : "auto", pos: "0 0", repeat: "repeat" });
+        else {
+          if (f.scaleMode === "STRETCH" || f.scaleMode === "CROP")
+            note(n, `image fill ${f.scaleMode}: drawn as cover; Figma's crop is not in the data, so check it against the render`);
+          bg.push({ image: url, size: "cover", pos: "center", repeat: "no-repeat" });
+        }
+        return;
+      }
+      let v = paint(f, size);
+      if (!v)
+        return;
+      if (v.includes(" ROTATED ")) {
+        layers.push(rotatedLayer(f, size));
+        note(n, "rotated radial gradient: drawn on its own layer above the other fills");
+        return;
+      }
+      if (v.startsWith("diamond-gradient")) {
+        v = v.replace("diamond-gradient", "radial-gradient");
+        note(n, "diamond gradient: drawn as a radial gradient");
+      }
+      if (f.type === "SOLID" && i === list.length - 1)
+        bgColor = v;
+      else
+        bg.push({ image: f.type === "SOLID" ? `linear-gradient(${v},${v})` : v });
+    });
+    if (bg.length) {
+      p.push(`background-image:${bg.map((l) => l.image).join(",")}`);
+      if (bg.some((l) => l.size)) {
+        p.push(`background-size:${bg.map((l) => l.size ?? "auto").join(",")}`);
+        p.push(`background-position:${bg.map((l) => l.pos ?? "0 0").join(",")}`);
+        p.push(`background-repeat:${bg.map((l) => l.repeat ?? "repeat").join(",")}`);
+      }
+    }
+    if (bgColor)
+      p.push(`background-color:${bgColor}`);
+    const shadows = [];
+    const strokes = (n.strokes ?? []).filter((s) => s.visible !== false);
+    if (strokes.length && n.strokeWeight) {
+      const top = strokes[strokes.length - 1];
+      let c = top.type === "SOLID" ? color(top.color, top.opacity ?? 1) : null;
+      if (!c && top.gradientStops?.length) {
+        c = color(top.gradientStops[0].color, top.opacity ?? 1);
+        note(n, "gradient stroke: drawn in its first colour");
+      }
+      if (c) {
+        const align = n.strokeAlign ?? "INSIDE";
+        if (n.strokeDashes?.length) {
+          p.push(`outline:${px(n.strokeWeight)} dashed ${c}`, `outline-offset:${px(align === "INSIDE" ? -n.strokeWeight : align === "CENTER" ? -n.strokeWeight / 2 : 0)}`);
+        } else if (n.individualStrokeWeights) {
+          const s = n.individualStrokeWeights;
+          if (s.top)
+            shadows.push(`inset 0 ${px(s.top)} 0 0 ${c}`);
+          if (s.bottom)
+            shadows.push(`inset 0 ${px(-s.bottom)} 0 0 ${c}`);
+          if (s.left)
+            shadows.push(`inset ${px(s.left)} 0 0 0 ${c}`);
+          if (s.right)
+            shadows.push(`inset ${px(-s.right)} 0 0 0 ${c}`);
+        } else if (align === "INSIDE")
+          shadows.push(`inset 0 0 0 ${px(n.strokeWeight)} ${c}`);
+        else if (align === "OUTSIDE")
+          shadows.push(`0 0 0 ${px(n.strokeWeight)} ${c}`);
+        else
+          shadows.push(`inset 0 0 0 ${px(n.strokeWeight / 2)} ${c}`, `0 0 0 ${px(n.strokeWeight / 2)} ${c}`);
+      }
+    }
+    if (n.rectangleCornerRadii)
+      p.push(`border-radius:${n.rectangleCornerRadii.map(px).join(" ")}`);
+    else if (n.cornerRadius)
+      p.push(`border-radius:${px(n.cornerRadius)}`);
+    const filters = [];
+    for (const e of n.effects ?? []) {
+      if (e.visible === false)
+        continue;
+      const sh = e.color ? `${px(e.offset?.x ?? 0)} ${px(e.offset?.y ?? 0)} ${px(e.radius ?? 0)} ${px(e.spread ?? 0)} ${color(e.color)}` : "";
+      if (e.type === "DROP_SHADOW" && sh)
+        shadows.push(sh);
+      else if (e.type === "INNER_SHADOW" && sh)
+        shadows.push(`inset ${sh}`);
+      else if (e.type === "LAYER_BLUR")
+        filters.push(`blur(${px((e.radius ?? 0) / 2)})`);
+      else if (e.type === "BACKGROUND_BLUR")
+        p.push(`backdrop-filter:blur(${px((e.radius ?? 0) / 2)})`, `-webkit-backdrop-filter:blur(${px((e.radius ?? 0) / 2)})`);
+    }
+    if (shadows.length)
+      p.push(`box-shadow:${shadows.join(",")}`);
+    if (filters.length)
+      p.push(`filter:${filters.join(" ")}`);
+    return p.concat(common(n));
+  }
+  function common(n) {
+    const p = [];
+    if (n.opacity !== undefined && n.opacity < 1)
+      p.push(`opacity:${r22(n.opacity)}`);
+    const blend = String(n.blendMode ?? "").toLowerCase().replace(/_/g, "-");
+    if (BLEND.has(blend))
+      p.push(`mix-blend-mode:${blend}`);
+    return p;
+  }
+  function rotatedLayer(f, size) {
+    const [c, a, b] = f.gradientHandlePositions;
+    const cx = c.x * size.w, cy = c.y * size.h;
+    const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
+    const ra = Math.hypot(vx, vy), rb = Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h);
+    const angle = Math.atan2(vy, vx) * 180 / Math.PI;
+    const side = 2 * (Math.hypot(size.w, size.h) + Math.max(ra, rb));
+    const stops = (f.gradientStops ?? []).map((s) => `${color(s.color, f.opacity ?? 1)} ${r22(s.position * 100)}%`).join(", ");
+    const style = [
+      "position:absolute",
+      `left:${px(cx - side / 2)}`,
+      `top:${px(cy - side / 2)}`,
+      `width:${px(side)}`,
+      `height:${px(side)}`,
+      `background:radial-gradient(${px(ra)} ${px(rb)} at 50% 50%, ${stops})`,
+      `transform:rotate(${r22(angle)}deg)`
+    ].join(";");
+    return `<div style="position:absolute;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none"><div style="${style}"></div></div>`;
+  }
+  function textProps(n) {
+    const s = n.style ?? {};
+    useFont(s.fontFamily, s.fontWeight ?? 400);
+    const p = [
+      `font-family:"${s.fontFamily}",sans-serif`,
+      `font-weight:${s.fontWeight ?? 400}`,
+      `font-size:${px(s.fontSize ?? 16)}`,
+      `line-height:${s.lineHeightPx ? px(s.lineHeightPx) : "normal"}`
+    ];
+    if (s.italic)
+      p.push("font-style:italic");
+    if (s.letterSpacing)
+      p.push(`letter-spacing:${px(s.letterSpacing)}`);
+    if (s.textAlignHorizontal && s.textAlignHorizontal !== "LEFT")
+      p.push(`text-align:${s.textAlignHorizontal === "JUSTIFIED" ? "justify" : s.textAlignHorizontal.toLowerCase()}`);
+    if (CASE[s.textCase])
+      p.push(`text-transform:${CASE[s.textCase]}`);
+    if (DECO[s.textDecoration])
+      p.push(`text-decoration:${DECO[s.textDecoration]}`);
+    const top = [...n.fills ?? []].filter((f) => f.visible !== false).pop();
+    if (top?.type === "SOLID")
+      p.push(`color:${color(top.color, top.opacity ?? 1)}`);
+    else if (top) {
+      const g = paint(top, { w: n.absoluteBoundingBox.width, h: n.absoluteBoundingBox.height });
+      if (g)
+        p.push(`background:${g.replace(/ ROTATED .*$/, "")}`, "-webkit-background-clip:text", "background-clip:text", "color:transparent");
+    }
+    if (s.textAutoResize === "WIDTH_AND_HEIGHT")
+      p.push("white-space:nowrap");
+    if (n.style?.textTruncation === "ENDING") {
+      p.push("overflow:hidden", "text-overflow:ellipsis");
+      if (s.maxLines > 1)
+        p.push("display:-webkit-box", `-webkit-line-clamp:${s.maxLines}`, "-webkit-box-orient:vertical");
+      else
+        p.push("white-space:nowrap");
+    }
+    const shadows = (n.effects ?? []).filter((e) => e.visible !== false && e.type === "DROP_SHADOW" && e.color).map((e) => `${px(e.offset?.x ?? 0)} ${px(e.offset?.y ?? 0)} ${px(e.radius ?? 0)} ${color(e.color)}`);
+    if (shadows.length)
+      p.push(`text-shadow:${shadows.join(",")}`);
+    return p.concat(common(n));
+  }
+  function textContent(n) {
+    const chars = Array.from(String(n.characters ?? ""));
+    const ids = n.characterStyleOverrides ?? [];
+    const table = n.styleOverrideTable ?? {};
+    const brk = (t) => esc(t).replace(/\r?\n|\u2028|\u2029/g, "<br>");
+    if (!ids.length || !Object.keys(table).length)
+      return brk(chars.join(""));
+    const runs = [];
+    chars.forEach((ch, i) => {
+      const id = ids[i] ?? 0;
+      const last = runs[runs.length - 1];
+      if (last && last.id === id)
+        last.text += ch;
+      else
+        runs.push({ id, text: ch });
+    });
+    return runs.map((r) => {
+      const o = table[r.id];
+      if (!r.id || !o)
+        return brk(r.text);
+      const st = [];
+      if (o.fontFamily || o.fontWeight)
+        useFont(o.fontFamily ?? n.style?.fontFamily, o.fontWeight ?? n.style?.fontWeight ?? 400);
+      if (o.fontFamily) {
+        st.push(`font-family:'${o.fontFamily}',sans-serif`);
+      }
+      if (o.fontWeight)
+        st.push(`font-weight:${o.fontWeight}`);
+      if (o.fontSize)
+        st.push(`font-size:${px(o.fontSize)}`);
+      if (o.lineHeightPx)
+        st.push(`line-height:${px(o.lineHeightPx)}`);
+      if (o.italic)
+        st.push("font-style:italic");
+      if (o.letterSpacing)
+        st.push(`letter-spacing:${px(o.letterSpacing)}`);
+      if (DECO[o.textDecoration])
+        st.push(`text-decoration:${DECO[o.textDecoration]}`);
+      if (CASE[o.textCase])
+        st.push(`text-transform:${CASE[o.textCase]}`);
+      const f = (o.fills ?? []).filter((x) => x.visible !== false).pop();
+      if (f?.type === "SOLID")
+        st.push(`color:${color(f.color, f.opacity ?? 1)}`);
+      return st.length ? `<span style="${st.join(";")}">${brk(r.text)}</span>` : brk(r.text);
+    }).join("");
+  }
+  function emit(n, place, depth) {
+    const b = n.absoluteBoundingBox;
+    const c = cls(n);
+    const drift = layoutDrift(n);
+    if (drift)
+      note(n, `LAYOUT DRIFT (${drift}): built from its rules; check it against the render`);
+    const leafImage = hasImage(n) && !shown(n).length;
+    const masked = shown(n).some((k) => k.isMask);
+    const icon = depth > 0 && n.type !== "TEXT" && vectorOnly(n);
+    const turned = depth > 0 && n.type !== "TEXT" && rotated(n);
+    if (icon || masked || leafImage || turned) {
+      const kind = icon ? "svg" : "png";
+      (kind === "svg" ? svg : png).add(n.id);
+      const e = exportBounds(n) ?? { x: b.x, y: b.y, w: b.width, h: b.height };
+      rule(c, placement(n, place, { frozen: true }));
+      const img = `<img src="${ASSET_MARK}${kind}:${n.id}" alt="" style="position:absolute;left:${px(e.x - b.x)};top:${px(e.y - b.y)};width:${px(e.w)};height:${px(e.h)};max-width:none">`;
+      return `<div class="${c}">${img}</div>`;
+    }
+    if (n.type === "TEXT") {
+      const props = placement(n, place, { text: true }).concat(textProps(n));
+      const s = n.style ?? {};
+      const fixedH = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
+      let inner = textContent(n);
+      if (fixedH && s.textAlignVertical && s.textAlignVertical !== "TOP") {
+        props.push("display:flex", "flex-direction:column", `justify-content:${s.textAlignVertical === "CENTER" ? "center" : "flex-end"}`);
+        inner = `<span>${inner}</span>`;
+      }
+      if (fixedH && !props.some((x) => x.startsWith("height:")) && n.layoutSizingVertical !== "HUG" && n.layoutSizingVertical !== "FILL")
+        props.push(`height:${px(b.height)}`);
+      if (rotated(n)) {
+        props.push(`transform:rotate(${r22(-n.rotation * 180 / Math.PI)}deg)`);
+        note(n, "rotated text: check its position against the render");
+      }
+      rule(c, props);
+      return `<div class="${c} ${block}__text ${block}__text--${slug(textStyle(n))}">${inner}</div>`;
+    }
+    const layers = [];
+    const fluid = place.kind === "root" || (place.kind === "stack" || place.kind === "flex") && place.fluid;
+    const props = placement(n, place, {});
+    const isRoot = place.kind === "root";
+    const own = paintProps(isRoot ? { ...n, effects: [] } : n, layers);
+    props.push(...own, "box-sizing:border-box");
+    if (n.clipsContent)
+      props.push("overflow:hidden");
+    const kids = shown(n);
+    let body = "";
+    if (flexOf(n)) {
+      const row = n.layoutMode === "HORIZONTAL";
+      const between = n.primaryAxisAlignItems === "SPACE_BETWEEN";
+      const gap = n.itemSpacing ?? 0;
+      props.push("display:flex", `flex-direction:${row ? "row" : "column"}`, `justify-content:${JUSTIFY[n.primaryAxisAlignItems ?? "MIN"] ?? "flex-start"}`, `align-items:${ALIGN[n.counterAxisAlignItems ?? "MIN"] ?? "flex-start"}`);
+      if (n.layoutWrap === "WRAP") {
+        props.push("flex-wrap:wrap");
+        if (n.counterAxisSpacing)
+          props.push(`row-gap:${px(n.counterAxisSpacing)}`);
+      }
+      if (!between && gap > 0)
+        props.push(`${n.layoutWrap === "WRAP" ? "column-gap" : "gap"}:${px(gap)}`);
+      const pad = [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0];
+      if (fluid && (pad[1] > 0 || pad[3] > 0)) {
+        const W = b.width;
+        props.push(`padding:${px(pad[0])} max(${px(pad[1])}, calc(50% - ${px(W / 2 - pad[1])})) ${px(pad[2])} max(${px(pad[3])}, calc(50% - ${px(W / 2 - pad[3])}))`);
+      } else if (pad.some((v) => v))
+        props.push(`padding:${pad.map(px).join(" ")}`);
+      let first = true;
+      for (const k of kids) {
+        if (k.layoutPositioning === "ABSOLUTE") {
+          body += emit(k, { kind: "abs", origin: b, ...fluid ? { fluidW: b.width } : {} }, depth + 1);
+          continue;
+        }
+        const lead = !first && !between && gap < 0 ? gap : undefined;
+        first = false;
+        const kidFluid = fluid && !row && Math.abs(k.absoluteBoundingBox.width - pageW) <= 1;
+        body += emit(k, { kind: "flex", row, parent: n, lead, fluid: kidFluid }, depth + 1);
+      }
+    } else if (fluid && kids.length) {
+      const W = b.width;
+      const sorted = [...kids].sort((p, q) => p.absoluteBoundingBox.y - q.absoluteBoundingBox.y);
+      const flow = new Set;
+      let bottom = b.y;
+      for (const k of sorted) {
+        const kb = k.absoluteBoundingBox;
+        if (kb.y >= bottom - 1 && kb.height < b.height + 1) {
+          flow.add(k);
+          bottom = kb.y + kb.height;
+        }
+      }
+      if (flow.size >= 2 || flow.size === 1 && kids.length === 1) {
+        let last = b.y;
+        for (const k of kids) {
+          if (flow.has(k))
+            continue;
+          body += emit(k, { kind: "abs", origin: b, fluidW: W }, depth + 1);
+        }
+        for (const k of sorted.filter((k) => flow.has(k))) {
+          const kb = k.absoluteBoundingBox;
+          const kidFluid = kb.x - b.x <= 1 && Math.abs(kb.width - pageW) <= 1;
+          body += emit(k, { kind: "stack", parentW: W, x0: b.x, top: kb.y - last, fluid: kidFluid }, depth + 1);
+          last = kb.y + kb.height;
+        }
+        const rest = b.y + b.height - last;
+        if (rest > 0.5)
+          props.push(`padding-bottom:${px(rest)}`);
+        for (let i = props.length - 1;i >= 0; i--)
+          if (props[i].startsWith("height:"))
+            props.splice(i, 1);
+      } else {
+        if (!props.some((x) => x.startsWith("height:")))
+          props.push(`height:${px(b.height)}`);
+        for (const k of kids)
+          body += emit(k, { kind: "abs", origin: b, fluidW: W }, depth + 1);
+      }
+    } else {
+      if (!props.some((x) => x.startsWith("height:")) && kids.length)
+        props.push(`height:${px(b.height)}`);
+      if (!props.some((x) => x.startsWith("width:")) && place.kind === "flex" && !props.includes("flex:1 1 0") && !props.includes("align-self:stretch"))
+        props.push(`width:${px(b.width)}`);
+      for (const k of kids)
+        body += emit(k, { kind: "abs", origin: b }, depth + 1);
+    }
+    if (n.type === "ELLIPSE")
+      props.push("border-radius:50%");
+    rule(c, props);
+    return `<div class="${c}">${layers.join("")}${body}</div>`;
+  }
+  const pageW = root.absoluteBoundingBox.width;
+  const bodyHtml = emit(root, { kind: "root" }, 0);
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<!-- Generated by figma-access spec --html from ${esc(root.name)} (${esc(root.id)}): a first pass to refine. -->
+<!-- Fonts used: ${[...fonts].map(esc).join(", ")}. Each is asked from Google Fonts below; a family Google does not have stays missing until you add its files with @font-face. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+${[...weights.entries()].map(([f, w]) => `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@${[...w].sort((a, b) => a - b).join(";")}&amp;display=block">`).join(`
+`)}
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+img{display:block}
+${css.join(`
+`)}
+</style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>
+`;
+  return { html, svg: [...svg], png: [...png], fills: [...fills], fonts: [...fonts], notes };
+}
+var ASSET_MARK = "figma-asset:";
+var FILL_MARK = "figma-fill:";
+function linkAssets(html, assets, notes) {
+  return html.replace(new RegExp(`${ASSET_MARK}(svg|png):([^"]+)`, "g"), (_m, kind, id) => {
+    const path = kind === "svg" ? assets.svg(id) : assets.png(id);
+    if (!path)
+      notes.push({ id, name: "", note: `Figma did not render this ${kind}` });
+    return path ?? "";
+  }).replace(new RegExp(`${FILL_MARK}([0-9a-f]+)`, "g"), (_m, ref) => {
+    const path = assets.fill(ref);
+    if (!path)
+      notes.push({ id: ref, name: "", note: "image fill not downloaded" });
+    return path ?? "";
+  });
+}
+
+// src/spec.ts
+var r23 = (n) => Math.round(n * 100) / 100;
+var hex2 = (n) => Math.round(n * 255).toString(16).padStart(2, "0");
+function color(c, opacity = 1) {
+  const a = (c.a ?? 1) * opacity;
+  const base = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`.toUpperCase();
+  return a >= 0.999 ? base : `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${r23(a)})`;
+}
+function gradientAngle(handles, size) {
+  if (!handles || handles.length < 2)
+    return null;
+  const [a, b] = handles;
+  return Math.round((Math.atan2((b.y - a.y) * size.h, (b.x - a.x) * size.w) * 180 / Math.PI + 90 + 360) % 360);
+}
+function linearGradient(p, size, op) {
+  const h = p.gradientHandlePositions;
+  if (!h || h.length < 2)
+    return null;
+  const px = (q) => ({ x: q.x * size.w, y: q.y * size.h });
+  const p0 = px(h[0]);
+  const p1 = px(h[1]);
+  const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
+  if (Math.hypot(v1.x, v1.y) < 0.000000001)
+    return null;
+  let n = v1;
+  if (h[2]) {
+    const p2 = px(h[2]);
+    const v2 = { x: p2.x - p0.x, y: p2.y - p0.y };
+    const perp = { x: -v2.y, y: v2.x };
+    const along = perp.x * v1.x + perp.y * v1.y;
+    if (Math.hypot(v2.x, v2.y) > 0.000000001 && Math.abs(along) > 0.000000001)
+      n = along > 0 ? perp : { x: -perp.x, y: -perp.y };
+  }
+  const angle = Math.round((Math.atan2(n.y, n.x) * 180 / Math.PI + 90 + 360) % 360) % 360;
+  const rad = angle * Math.PI / 180;
+  const dir = { x: Math.sin(rad), y: -Math.cos(rad) };
+  const L = Math.abs(size.w * dir.x) + Math.abs(size.h * dir.y);
+  const start = ((p0.x - size.w / 2) * dir.x + (p0.y - size.h / 2) * dir.y + L / 2) / L;
+  const span = (v1.x * dir.x + v1.y * dir.y) / L;
+  const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${r23((start + s.position * span) * 100)}%`).join(", ");
+  return `linear-gradient(${angle}deg, ${stops})`;
+}
+function gradientShape(handles, size) {
+  if (!handles || handles.length < 3)
+    return { shape: "", rotated: null };
+  const [c, a, b] = handles;
+  const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
+  const ra = r23(Math.hypot(vx, vy));
+  const rb = r23(Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h));
+  const at = `at ${r23(c.x * size.w)}px ${r23(c.y * size.h)}px, `;
+  const angle = Math.atan2(vy, vx) * 180 / Math.PI;
+  const off = (angle % 180 + 180) % 180;
+  if (Math.min(off, 180 - off) <= 2)
+    return { shape: `${ra}px ${rb}px ${at}`, rotated: null };
+  if (Math.abs(off - 90) <= 2)
+    return { shape: `${rb}px ${ra}px ${at}`, rotated: null };
+  return { shape: `${ra}px ${rb}px ${at}`, rotated: r23(angle) };
+}
+function paint(p, size = { w: 1, h: 1 }) {
+  if (p.visible === false)
+    return null;
+  const op = p.opacity ?? 1;
+  switch (p.type) {
+    case "SOLID":
+      return color(p.color, op);
+    case "GRADIENT_LINEAR":
+    case "GRADIENT_RADIAL":
+    case "GRADIENT_ANGULAR":
+    case "GRADIENT_DIAMOND": {
+      const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${Math.round(s.position * 100)}%`).join(", ");
+      if (p.type === "GRADIENT_LINEAR")
+        return linearGradient(p, size, op) ?? `linear-gradient(180deg, ${stops})`;
+      if (p.type === "GRADIENT_RADIAL" || p.type === "GRADIENT_DIAMOND") {
+        const { shape, rotated } = gradientShape(p.gradientHandlePositions, size);
+        const css = `${p.type === "GRADIENT_RADIAL" ? "radial" : "diamond"}-gradient(${shape}${stops})`;
+        return rotated === null ? css : `${css} ROTATED ${rotated}deg`;
+      }
+      if (p.type === "GRADIENT_ANGULAR") {
+        const h = p.gradientHandlePositions;
+        const at = h?.[0] ? `from ${gradientAngle(h, size) ?? 0}deg at ${r23(h[0].x * size.w)}px ${r23(h[0].y * size.h)}px, ` : "";
+        return `conic-gradient(${at}${stops})`;
+      }
+      return null;
+    }
+    case "IMAGE":
+      return `image(${p.imageRef}, ${p.scaleMode ?? "FILL"}${op < 1 ? `, opacity ${r23(op)}` : ""})`;
+    default:
+      return p.type.toLowerCase();
+  }
+}
+function effects(n) {
+  const outList = [];
+  for (const e of n.effects ?? []) {
+    if (e.visible === false)
+      continue;
+    if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
+      outList.push(`${e.type === "INNER_SHADOW" ? "inset-" : ""}shadow(${r23(e.offset?.x ?? 0)} ${r23(e.offset?.y ?? 0)} ${r23(e.radius ?? 0)} ${r23(e.spread ?? 0)} ${color(e.color)})`);
+    } else if (e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR") {
+      outList.push(`${e.type === "LAYER_BLUR" ? "blur" : "backdrop-blur"}(${r23(e.radius ?? 0)})`);
+    }
+  }
+  return outList;
+}
+function layout(n) {
+  const parts = [];
+  if (n.layoutMode && n.layoutMode !== "NONE") {
+    parts.push(`flex-${n.layoutMode === "HORIZONTAL" ? "row" : "col"}${n.layoutWrap === "WRAP" ? " wrap" : ""}`);
+    if (n.itemSpacing)
+      parts.push(`gap ${r23(n.itemSpacing)}`);
+    const pad = [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0].map(r23);
+    if (pad.some((v) => v))
+      parts.push(`pad ${pad.join(" ")}`);
+    if (n.primaryAxisAlignItems && n.primaryAxisAlignItems !== "MIN")
+      parts.push(`justify ${n.primaryAxisAlignItems.toLowerCase()}`);
+    if (n.counterAxisAlignItems && n.counterAxisAlignItems !== "MIN")
+      parts.push(`align ${n.counterAxisAlignItems.toLowerCase()}`);
+  }
+  const sizing = [n.layoutSizingHorizontal, n.layoutSizingVertical];
+  if (sizing.some((s) => s && s !== "FIXED"))
+    parts.push(`size ${sizing.map((s) => (s ?? "FIXED").toLowerCase()).join("/")}`);
+  if (n.layoutPositioning === "ABSOLUTE")
+    parts.push("absolute");
+  return parts;
+}
+function layoutDrift(n) {
+  if (!n.layoutMode || n.layoutMode === "NONE" || !n.absoluteBoundingBox)
+    return null;
+  const row = n.layoutMode === "HORIZONTAL";
+  const kids = (n.children ?? []).filter((c) => c.visible !== false && c.layoutPositioning !== "ABSOLUTE" && c.absoluteBoundingBox && !c.rotation);
+  if (!kids.length || n.layoutWrap === "WRAP")
+    return null;
+  const pos = (b) => row ? b.x : b.y;
+  const len = (b) => row ? b.width : b.height;
+  const gap = n.itemSpacing ?? 0;
+  const between = n.primaryAxisAlignItems === "SPACE_BETWEEN";
+  for (let i = 1;i < kids.length; i++) {
+    const a = kids[i - 1].absoluteBoundingBox;
+    const b = kids[i].absoluteBoundingBox;
+    const got = pos(b) - (pos(a) + len(a));
+    if (!between && Math.abs(got - gap) > 1)
+      return `${JSON.stringify(kids[i].name)} is ${r23(got)} after the previous item, gap is ${r23(gap)}`;
+  }
+  const hug = (row ? n.layoutSizingHorizontal : n.layoutSizingVertical) === "HUG";
+  if (hug && !between) {
+    const pads = row ? (n.paddingLeft ?? 0) + (n.paddingRight ?? 0) : (n.paddingTop ?? 0) + (n.paddingBottom ?? 0);
+    const need = pads + kids.reduce((t, c) => t + len(c.absoluteBoundingBox), 0) + gap * (kids.length - 1);
+    const has = len(n.absoluteBoundingBox);
+    if (Math.abs(need - has) > 1)
+      return `hugs ${r23(has)} but its stored items add up to ${r23(need)}`;
+  }
+  const cross = (b) => row ? b.height : b.width;
+  const inner = cross(n.absoluteBoundingBox) - (row ? (n.paddingTop ?? 0) + (n.paddingBottom ?? 0) : (n.paddingLeft ?? 0) + (n.paddingRight ?? 0));
+  for (const c of kids) {
+    const fills = (row ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL" || c.layoutAlign === "STRETCH";
+    const got = cross(c.absoluteBoundingBox);
+    if (fills && Math.abs(got - inner) > 1)
+      return `${JSON.stringify(c.name)} fills ${r23(inner)} but is stored ${r23(got)} ${row ? "high" : "wide"}`;
+  }
+  return null;
+}
+function textInfo(n) {
+  const s = n.style ?? {};
+  const parts = [`"${String(n.characters ?? "").replace(/[\n\u2028\u2029]/g, "\\n").slice(0, 300)}"`];
+  const lh = s.lineHeightPx ? `/${r23(s.lineHeightPx)}` : "";
+  parts.push(`font ${s.fontFamily} ${s.fontWeight} ${r23(s.fontSize)}${lh}`);
+  if (s.italic)
+    parts.push("italic");
+  if (s.letterSpacing)
+    parts.push(`ls ${r23(s.letterSpacing)}`);
+  if (s.textAlignHorizontal && s.textAlignHorizontal !== "LEFT")
+    parts.push(`text-${s.textAlignHorizontal.toLowerCase()}`);
+  if (s.textCase && s.textCase !== "ORIGINAL")
+    parts.push(`case ${s.textCase.toLowerCase()}`);
+  if (s.textDecoration && s.textDecoration !== "NONE")
+    parts.push(s.textDecoration.toLowerCase());
+  if (s.textAutoResize)
+    parts.push(`resize ${s.textAutoResize.toLowerCase()}`);
+  const fixedHeight = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
+  if (fixedHeight && s.textAlignVertical && s.textAlignVertical !== "TOP")
+    parts.push(`valign ${s.textAlignVertical.toLowerCase()}`);
+  const runs = textRuns(n);
+  if (runs)
+    parts.push(runs);
+  return parts;
+}
+function textRuns(n) {
+  const table = n.styleOverrideTable ?? {};
+  const ids = n.characterStyleOverrides ?? [];
+  if (!Object.keys(table).length || !ids.length)
+    return null;
+  const chars = Array.from(String(n.characters ?? ""));
+  const runs = [];
+  chars.forEach((ch, i) => {
+    const id = ids[i] ?? 0;
+    const last = runs[runs.length - 1];
+    if (last && last.id === id)
+      last.text += ch;
+    else
+      runs.push({ id, text: ch });
+  });
+  const describe = (id) => {
+    const o = table[id];
+    if (!id || !o)
+      return "base";
+    const d = [];
+    if (o.fontFamily || o.fontWeight || o.fontSize)
+      d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ? r23(o.fontSize) : ""}${o.lineHeightPx ? `/${r23(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
+    if (o.fills?.length)
+      d.push(`color ${o.fills.map(paint).filter(Boolean).join(" + ")}`);
+    if (o.textDecoration && o.textDecoration !== "NONE")
+      d.push(o.textDecoration.toLowerCase());
+    if (o.italic)
+      d.push("italic");
+    if (o.letterSpacing)
+      d.push(`ls ${r23(o.letterSpacing)}`);
+    return d.join(" ") || "base";
+  };
+  return `runs[ ${runs.map((r) => `${JSON.stringify(r.text)}: ${describe(r.id)}`).join(" | ")} ]`;
+}
+function vectorOnly(n) {
+  if (["VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON", "REGULAR_POLYGON"].includes(n.type))
+    return true;
+  if (n.type === "TEXT")
+    return false;
+  if ((n.fills ?? []).some((f) => f.type === "IMAGE" && f.visible !== false))
+    return false;
+  const kids = (n.children ?? []).filter((c) => c.visible !== false);
+  return kids.length > 0 && kids.every(vectorOnly);
+}
+function walk(n, depth, ctx) {
+  if (n.visible === false)
+    return;
+  const b = n.absoluteBoundingBox;
+  const parts = [n.type, JSON.stringify(n.name), n.id];
+  if (b)
+    parts.push(`[${r23(b.x - ctx.ox)},${r23(b.y - ctx.oy)} ${r23(b.width)}x${r23(b.height)}]`);
+  const rb = n.absoluteRenderBounds;
+  if (b && rb && [rb.x - b.x, rb.y - b.y, rb.width - b.width, rb.height - b.height].some((d) => Math.abs(d) > 0.5)) {
+    parts.push(`render[${r23(rb.x - ctx.ox)},${r23(rb.y - ctx.oy)} ${r23(rb.width)}x${r23(rb.height)}]`);
+  }
+  if (n.rotation && Math.abs(n.rotation) > 0.01)
+    parts.push(`rot ${r23(-n.rotation * 180 / Math.PI)}deg`);
+  if (n.opacity !== undefined && n.opacity < 1)
+    parts.push(`opacity ${r23(n.opacity)}`);
+  if (n.blendMode && !["PASS_THROUGH", "NORMAL"].includes(n.blendMode))
+    parts.push(`blend ${n.blendMode.toLowerCase()}`);
+  if (n.isMask)
+    parts.push("MASK");
+  if (n.clipsContent)
+    parts.push("clip");
+  if (n.componentId)
+    parts.push(`component ${n.componentId}`);
+  const icon = n.type !== "TEXT" && depth > 0 && vectorOnly(n);
+  const masked = !icon && depth > 0 && (n.children ?? []).some((c) => c.visible !== false && c.isMask);
+  if (n.type === "TEXT")
+    parts.push(...textInfo(n));
+  const size = { w: n.size?.x ?? n.absoluteBoundingBox?.width ?? 1, h: n.size?.y ?? n.absoluteBoundingBox?.height ?? 1 };
+  const fills = (n.fills ?? []).map((p) => paint(p, size)).filter(Boolean).reverse();
+  if (fills.length)
+    parts.push(`${n.type === "TEXT" ? "color" : "bg"} ${fills.join(", ")}`);
+  const strokes = (n.strokes ?? []).map((p) => paint(p, size)).filter(Boolean);
+  if (strokes.length && n.strokeWeight) {
+    const sides = n.individualStrokeWeights;
+    const w = sides ? `${sides.top} ${sides.right} ${sides.bottom} ${sides.left}` : r23(n.strokeWeight);
+    parts.push(`border ${w} ${(n.strokeAlign ?? "INSIDE").toLowerCase()} ${strokes.join(" + ")}${n.strokeDashes?.length ? " dashed" : ""}`);
+  }
+  if (n.rectangleCornerRadii)
+    parts.push(`radius ${n.rectangleCornerRadii.map(r23).join(" ")}`);
+  else if (n.cornerRadius)
+    parts.push(`radius ${r23(n.cornerRadius)}`);
+  parts.push(...effects(n), ...layout(n));
+  const drift = layoutDrift(n);
+  if (drift)
+    parts.push(`LAYOUT DRIFT (${drift}) \u2192 trust the render`);
+  if (icon || masked) {
+    const e = exportBounds(n);
+    if (e && b && [e.x - b.x, e.y - b.y, e.w - b.width, e.h - b.height].some((d) => Math.abs(d) > 0.5)) {
+      parts.push(`export[${r23(e.x - ctx.ox)},${r23(e.y - ctx.oy)} ${r23(e.w)}x${r23(e.h)}]`);
+    }
+  }
+  if (icon) {
+    parts.push("ICON \u2192 render as svg");
+    ctx.icons++;
+  }
+  if (masked) {
+    parts.push("MASKED \u2192 render as svg or png");
+    ctx.icons++;
+  }
+  ctx.lines.push("  ".repeat(depth) + parts.join(" "));
+  if (icon || masked)
+    return;
+  const kids = (n.children ?? []).filter((c) => c.visible !== false);
+  if (depth >= ctx.maxDepth) {
+    if (kids.length)
+      ctx.lines.push("  ".repeat(depth + 1) + `\u2026 ${kids.length} children (raise --depth or run spec on ${n.id})`);
+    return;
+  }
+  for (const c of kids)
+    walk(c, depth + 1, ctx);
+}
+function findNode(nodes, id) {
+  const search = (n) => n.id === id ? n : (n.children ?? []).reduce((hit, c) => hit ?? search(c), null);
+  for (const v of Object.values(nodes ?? {})) {
+    const hit = v?.document && search(v.document);
+    if (hit)
+      return hit;
+  }
+  return null;
+}
+async function spec(argv) {
+  const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "origin", "from", "html"], bool: ["help", "refresh"], alias: { h: "help", o: "out" } });
+  if (flags.help || !positionals[0])
+    showHelp("spec");
+  const target = parseTarget(positionals[0]);
+  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
+  if (!ids.length && target.nodeId)
+    ids.push(target.nodeId);
+  if (!ids.length)
+    fail(EXIT_USAGE, "Name the node: a URL with node-id, or node ids after the file.");
+  let body;
+  const fromFile = str(flags.from);
+  if (fromFile) {
+    if (!existsSync3(fromFile))
+      fail(EXIT_USAGE, `File not found: ${fromFile}`);
+    body = readData(fromFile);
+  } else {
+    body = await getJson(`/v1/files/${target.fileKey}/nodes?${new URLSearchParams({ ids: ids.join(",") })}`, { cache: true, refresh: !!flags.refresh });
+  }
+  if (flags.html)
+    return writeHtml(target.fileKey, ids, body, resolve4(str(flags.html)), !!flags.refresh);
+  const maxDepth = Number(str(flags.depth) ?? 99);
+  const lines = [];
+  let icons = 0;
+  let originRoot = null;
+  if (flags.origin) {
+    const o = /^(-?[\d.]+),(-?[\d.]+)$/.exec(String(flags.origin));
+    if (!o)
+      fail(EXIT_USAGE, "--origin takes x,y, e.g. --origin 0,80");
+    originRoot = { x: Number(o[1]), y: Number(o[2]) };
+  }
+  for (const id of ids) {
+    const doc = body.nodes?.[id]?.document ?? findNode(body.nodes, id);
+    if (!doc) {
+      lines.push(`# ${id}: not found`);
+      continue;
+    }
+    const b = doc.absoluteBoundingBox ?? { x: 0, y: 0 };
+    const ctx = { ox: originRoot?.x ?? b.x, oy: originRoot?.y ?? b.y, lines, maxDepth, icons: 0 };
+    lines.push(`# ${doc.name} (${id}); boxes are [x,y wxh] relative to ${originRoot ? `canvas point ${originRoot.x},${originRoot.y}` : "this node"}`);
+    walk(doc, 0, ctx);
+    icons += ctx.icons;
+  }
+  const text = lines.join(`
+`) + `
+`;
+  const outPath = str(flags.out);
+  if (outPath) {
+    const p = resolve4(outPath);
+    mkdirSync5(dirname4(p), { recursive: true });
+    writeFileSync5(p, text);
+    out({ ok: true, path: p, lines: lines.length, icons });
+  } else {
+    process.stdout.write(text);
+  }
+}
+async function writeHtml(fileKey, ids, body, dir, refresh) {
+  if (ids.length !== 1)
+    fail(EXIT_USAGE, "--html builds one page: name one node.");
+  const doc = body.nodes?.[ids[0]]?.document ?? findNode(body.nodes, ids[0]);
+  if (!doc)
+    fail(EXIT_USAGE, `Node ${ids[0]} is not in the data.`);
+  if (!doc.absoluteBoundingBox)
+    fail(EXIT_USAGE, `${doc.name} has no box: pick a frame, not a page.`);
+  const page = emitHtml(doc, doc.name);
+  const assets = join4(dir, "assets");
+  const keep = !refresh;
+  const svgFiles = await renderNodes(fileKey, page.svg, { format: "svg", scale: 1, name: (id) => join4(assets, "svg", `${safeId(id)}.svg`), keep });
+  const pngFiles = await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join4(assets, "png", `${safeId(id)}.png`), keep });
+  const fillFiles = page.fills.length ? await downloadFills(fileKey, page.fills, join4(assets, "fills"), keep) : {};
+  const rel = (p) => p ? relative(dir, p).split("\\").join("/") : undefined;
+  const byId = (list) => new Map(list.map((f) => [f.id, f.path]));
+  const svgs = byId(svgFiles), pngs = byId(pngFiles);
+  const notes = [...page.notes];
+  const html = linkAssets(page.html, { svg: (id) => rel(svgs.get(id)), png: (id) => rel(pngs.get(id)), fill: (ref) => rel(fillFiles[ref]) }, notes);
+  mkdirSync5(dir, { recursive: true });
+  const path = join4(dir, "index.html");
+  writeFileSync5(path, html);
+  const grouped = new Map;
+  for (const n of notes) {
+    const key = n.note.replace(/\(.*\)/, "(...)");
+    grouped.set(key, [...grouped.get(key) ?? [], n]);
+  }
+  out({
+    ok: true,
+    path,
+    assets: { svg: svgFiles.filter((f) => f.path).length, png: pngFiles.filter((f) => f.path).length, fills: Object.keys(fillFiles).length },
+    fonts: page.fonts,
+    notes: [...grouped.entries()].map(([note, list]) => ({ note, count: list.length, nodes: list.slice(0, 6).map((n) => `${n.id}${n.name ? ` ${n.name}` : ""}`) })),
+    next: "Load the fonts, then measure with `compare` and refine section by section."
+  });
+}
+var union = (a, b) => {
+  if (!a)
+    return b;
+  if (!b)
+    return a;
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+};
+var intersect = (a, b) => {
+  if (!a || !b)
+    return null;
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const w = Math.min(a.x + a.w, b.x + b.w) - x;
+  const h = Math.min(a.y + a.h, b.y + b.h) - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+};
+function grow(r, d) {
+  return { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d };
+}
+function withEffects(n, r) {
+  let out = r;
+  const strokes = (n.strokes ?? []).some((s) => s.visible !== false) && n.strokeWeight;
+  if (strokes && n.strokeAlign === "OUTSIDE")
+    out = grow(out, n.strokeWeight);
+  else if (strokes && n.strokeAlign === "CENTER")
+    out = grow(out, n.strokeWeight / 2);
+  let total = out;
+  for (const e of n.effects ?? []) {
+    if (e.visible === false)
+      continue;
+    if (e.type === "DROP_SHADOW") {
+      const s = grow({ x: out.x + (e.offset?.x ?? 0), y: out.y + (e.offset?.y ?? 0), w: out.w, h: out.h }, (e.radius ?? 0) + (e.spread ?? 0));
+      total = union(total, s);
+    } else if (e.type === "LAYER_BLUR") {
+      total = union(total, grow(out, e.radius ?? 0));
+    }
+  }
+  return total;
+}
+function exportBounds(n) {
+  if (n.visible === false)
+    return null;
+  const b = n.absoluteBoundingBox;
+  let r = b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
+  const kids = (n.children ?? []).filter((c) => c.visible !== false);
+  if (kids.length && !n.clipsContent) {
+    const own = n.type === "GROUP" || n.type === "BOOLEAN_OPERATION" ? null : r;
+    const maskAt = kids.findIndex((c) => c.isMask);
+    if (maskAt >= 0) {
+      let content = null;
+      for (const c of kids.slice(maskAt + 1))
+        content = union(content, exportBounds(c));
+      const before = kids.slice(0, maskAt).reduce((acc, c) => union(acc, exportBounds(c)), own);
+      r = union(before, intersect(exportBounds({ ...kids[maskAt], effects: [] }), content));
+    } else {
+      r = kids.reduce((acc, c) => union(acc, exportBounds(c)), own);
+    }
+  }
+  return r ? withEffects(n, r) : null;
+}
+
+// src/compare.ts
+import { existsSync as existsSync4, mkdirSync as mkdirSync6, mkdtempSync, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync6 } from "fs";
+import { tmpdir } from "os";
+import { join as join5, resolve as resolve5 } from "path";
+import { pathToFileURL } from "url";
+
+// src/png.ts
+import { deflateSync, inflateSync } from "zlib";
+var SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+var CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+function decodePng(buf) {
+  if (buf.length < 8 || !buf.subarray(0, 8).equals(SIGNATURE))
+    throw new Error("not a PNG file");
+  let width = 0, height = 0, depth = 0, color = 0, interlace = 0;
+  let palette, alpha;
+  const idat = [];
+  for (let p = 8;p + 8 <= buf.length; ) {
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString("latin1", p + 4, p + 8);
+    const body = buf.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") {
+      width = body.readUInt32BE(0);
+      height = body.readUInt32BE(4);
+      depth = body[8];
+      color = body[9];
+      interlace = body[12];
+    } else if (type === "PLTE")
+      palette = body;
+    else if (type === "tRNS")
+      alpha = body;
+    else if (type === "IDAT")
+      idat.push(body);
+    else if (type === "IEND")
+      break;
+    p += 12 + len;
+  }
+  const ch = CHANNELS[color];
+  if (depth !== 8 || ch === undefined || interlace !== 0) {
+    throw new Error(`unsupported PNG (bit depth ${depth}, color type ${color}, interlace ${interlace}); only 8-bit non-interlaced PNGs are read`);
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * ch;
+  const px = new Uint8Array(stride * height);
+  for (let y = 0;y < height; y++) {
+    const f = raw[y * (stride + 1)];
+    const src = y * (stride + 1) + 1;
+    const row = y * stride;
+    for (let x = 0;x < stride; x++) {
+      const a = x >= ch ? px[row + x - ch] : 0;
+      const b = y > 0 ? px[row - stride + x] : 0;
+      const c = x >= ch && y > 0 ? px[row - stride + x - ch] : 0;
+      let v = raw[src + x];
+      if (f === 1)
+        v += a;
+      else if (f === 2)
+        v += b;
+      else if (f === 3)
+        v += a + b >> 1;
+      else if (f === 4) {
+        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      px[row + x] = v & 255;
+    }
+  }
+  const data = new Uint8Array(width * height * 4);
+  for (let i = 0, j = 0;i < width * height; i++, j += 4) {
+    const s = i * ch;
+    if (color === 3) {
+      const k = px[s];
+      data[j] = palette[k * 3];
+      data[j + 1] = palette[k * 3 + 1];
+      data[j + 2] = palette[k * 3 + 2];
+      data[j + 3] = alpha && k < alpha.length ? alpha[k] : 255;
+    } else if (ch <= 2) {
+      data[j] = data[j + 1] = data[j + 2] = px[s];
+      data[j + 3] = ch === 2 ? px[s + 1] : 255;
+    } else {
+      data[j] = px[s];
+      data[j + 1] = px[s + 1];
+      data[j + 2] = px[s + 2];
+      data[j + 3] = ch === 4 ? px[s + 3] : 255;
+    }
+  }
+  return { width, height, data };
+}
+var CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0;n < 256; n++) {
+    let c = n;
+    for (let k = 0;k < 8; k++)
+      c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 4294967295;
+  for (const b of buf)
+    c = CRC_TABLE[(c ^ b) & 255] ^ c >>> 8;
+  return (c ^ 4294967295) >>> 0;
+}
+function chunk(type, body) {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(body.length, 0);
+  head.write(type, 4, "latin1");
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
+  return Buffer.concat([head, body, crc]);
+}
+function encodePng(img) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(img.width, 0);
+  ihdr.writeUInt32BE(img.height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  const stride = img.width * 4;
+  const raw = Buffer.alloc((stride + 1) * img.height);
+  for (let y = 0;y < img.height; y++)
+    raw.set(img.data.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+  return Buffer.concat([SIGNATURE, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
 // src/compare.ts
@@ -4595,7 +5193,7 @@ async function capture(page, width, height, scale, waitMs, path) {
   const url = /^(https?|file):/.test(page) ? page : pathToFileURL(resolve5(page)).href;
   if (url.startsWith("file:") && !existsSync4(new URL(url)))
     fail(EXIT_USAGE, `No such page: ${page}`);
-  const profile = mkdtempSync(join4(tmpdir(), "figma-access-chrome-"));
+  const profile = mkdtempSync(join5(tmpdir(), "figma-access-chrome-"));
   try {
     const p = Bun.spawn([
       findChrome(),
@@ -4684,7 +5282,7 @@ function childSections(root, width, height) {
     return { name: n > 1 ? `${c.name} ${n}` : String(c.name), x: 0, y: top, w: width, h: bottom - top };
   }).filter((s) => s.h > 0).sort((a, z) => a.y - z.y);
 }
-var r23 = (n) => Math.round(n * 100) / 100;
+var r24 = (n) => Math.round(n * 100) / 100;
 function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
   let n = 0, diff = 0, sum = 0;
   for (let y = r.y;y < r.y + r.h; y++) {
@@ -4711,7 +5309,7 @@ function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
 async function compare(argv) {
   const { flags, positionals } = parseArgs(argv, {
     value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out", "nodes", "node"],
-    bool: ["help"],
+    bool: ["help", "full"],
     alias: { h: "help", o: "out" }
   });
   if (flags.help || positionals.length < 2)
@@ -4758,7 +5356,7 @@ async function compare(argv) {
   const threshold = Number(str(flags.threshold) ?? 24);
   const maxShift = Number(str(flags.shift) ?? 3);
   const waitMs = Number(str(flags.wait) ?? 8000);
-  const dir = resolve5(str(flags.out) ?? join4(process.cwd(), "_swe", "figma-access", "compare"));
+  const dir = resolve5(str(flags.out) ?? join5(process.cwd(), "_swe", "figma-access", "compare"));
   mkdirSync6(dir, { recursive: true });
   let cap;
   let capPath;
@@ -4766,7 +5364,7 @@ async function compare(argv) {
     capPath = resolve5(page);
     cap = readPng(capPath, "capture");
   } else {
-    capPath = join4(dir, `capture-${cssWidth}.png`);
+    capPath = join5(dir, `capture-${cssWidth}.png`);
     rmSync3(capPath, { force: true });
     cap = await capture(page, cssWidth, cssHeight, scale, waitMs, capPath);
   }
@@ -4793,7 +5391,7 @@ async function compare(argv) {
       fail(EXIT_USAGE, `Section "${s.name}" (${s.x},${s.y},${s.w},${s.h}) falls outside the ${cssWidth}x${cssHeight} page.`);
     }
     const base = measure(refRgb, capRgb, W, H, r, 0, 0, threshold);
-    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r23(base.differing), mean: r23(base.mean) };
+    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r24(base.differing), mean: r24(base.mean) };
     let best = { dx: 0, dy: 0, differing: base.differing };
     const step = Math.max(1, Math.round(scale));
     for (let dy = -maxShift * step;dy <= maxShift * step; dy += step) {
@@ -4806,8 +5404,8 @@ async function compare(argv) {
       }
     }
     if (best.differing < base.differing * 0.5 && base.differing > 0.5) {
-      const dxCss = r23(best.dx / scale), dyCss = r23(best.dy / scale);
-      entry.shift = { dx: dxCss, dy: dyCss, differing: r23(best.differing) };
+      const dxCss = r24(best.dx / scale), dyCss = r24(best.dy / scale);
+      entry.shift = { dx: dxCss, dy: dyCss, differing: r24(best.differing) };
       entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
     }
     return entry;
@@ -4822,7 +5420,7 @@ async function compare(argv) {
         diffImg.data[o + k] = 255 - Math.round((255 - refRgb[s + k]) * 0.3);
     diffImg.data[o + 3] = 255;
   }
-  const diffPath = join4(dir, "diff.png");
+  const diffPath = join5(dir, "diff.png");
   writeFileSync6(diffPath, encodePng(diffImg));
   const report = {
     ok: true,
@@ -4830,10 +5428,10 @@ async function compare(argv) {
     capture: capPath,
     diff: diffPath,
     page: [cssWidth, cssHeight],
-    scale: r23(scale),
+    scale: r24(scale),
     threshold,
     ...autoCrop ? { crop: autoCrop } : {},
-    whole: { differing: r23(whole.differing), mean: r23(whole.mean) },
+    whole: { differing: r24(whole.differing), mean: r24(whole.mean) },
     sections: results,
     worst: [...results].sort((a, b) => b.differing - a.differing)[0]?.name
   };
@@ -4842,11 +5440,18 @@ async function compare(argv) {
     const origin = { x: o.x + cropAt.x / scale, y: o.y + cropAt.y / scale };
     const measured = measureNodes(root, origin, refRgb, capRgb, W, H, scale, threshold);
     const off = offNodes(measured);
+    const block = slug(root.name) || "page";
+    const styles = styleSummary(measured).map((st) => {
+      if (!String(st.hint ?? "").startsWith("Every copy"))
+        return st;
+      const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
+      return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r24(dx)}px ${r24(-st.dy)}px; }` };
+    });
     report.nodes = {
       root: root.id,
       measured: measured.length,
       off: off.length,
-      styles: styleSummary(measured),
+      styles,
       list: off.slice(0, 40),
       ...off.length > 40 ? { more: `${off.length - 40} more nodes are off; fix the styles and sections above first, then compare again.` } : {}
     };
@@ -4857,7 +5462,7 @@ async function compare(argv) {
       fail(EXIT_USAGE, `--wide must be wider than the page width ${cssWidth}.`);
     if (/\.png$/i.test(page) && !/^https?:/.test(page))
       fail(EXIT_USAGE, "--wide needs a page to capture, not a PNG.");
-    const widePath = join4(dir, `capture-${wide}.png`);
+    const widePath = join5(dir, `capture-${wide}.png`);
     rmSync3(widePath, { force: true });
     const wideImg = await capture(page, wide, cssHeight, scale, waitMs, widePath);
     const at = (x) => flatten(crop(wideImg, { x, y: 0, w: W, h: H }));
@@ -4866,31 +5471,56 @@ async function compare(argv) {
     const EDGE_THRESHOLD = 3;
     const WW = wideImg.width;
     const wideRgb = flatten(wideImg);
-    let edgeDiff = 0;
+    const FLAT = Math.min(32, Math.floor(W / 4));
+    const near = (a, i, b, j) => Math.max(Math.abs(a[i] - b[j]), Math.abs(a[i + 1] - b[j + 1]), Math.abs(a[i + 2] - b[j + 2])) <= EDGE_THRESHOLD;
+    let edgeDiff = 0, edgeRows = 0;
     for (let y = 0;y < H; y++) {
-      for (const [rx, wx] of [[0, 0], [W - 1, WW - 1]]) {
+      for (const [rx, wx, step] of [[0, 0, 1], [W - 1, WW - 1, -1]]) {
         const i = (y * W + rx) * 3, j = (y * WW + wx) * 3;
-        if (Math.max(Math.abs(refRgb[i] - wideRgb[j]), Math.abs(refRgb[i + 1] - wideRgb[j + 1]), Math.abs(refRgb[i + 2] - wideRgb[j + 2])) > EDGE_THRESHOLD)
+        let flat = true;
+        for (let k = 1;k < FLAT && flat; k++)
+          flat = near(refRgb, i, refRgb, i + k * step * 3);
+        if (!flat)
+          continue;
+        edgeRows++;
+        if (!near(refRgb, i, wideRgb, j))
           edgeDiff++;
       }
     }
-    const edge = 100 * edgeDiff / (2 * H);
+    const edge = edgeRows ? 100 * edgeDiff / edgeRows : 0;
     const w = {
       width: wide,
       capture: widePath,
-      centredDiffering: r23(centred.differing),
-      leftDiffering: r23(left.differing),
-      edgeDiffering: r23(edge)
+      centredDiffering: r24(centred.differing),
+      leftDiffering: r24(left.differing),
+      edgeDiffering: r24(edge)
     };
     const hints = [];
     if (left.differing < centred.differing)
       hints.push("The content stays at the left edge of a wider window. Centre the content column (margin: 0 auto) unless the user asked for a fixed width.");
     if (edge > 2)
-      hints.push(`The window's edges differ from the design's edges in ${r23(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
+      hints.push(`The window's edges differ from the design's edges in ${r24(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
     w.hint = hints.length ? hints.join(" ") : "The content stays centred and the backgrounds reach the window's edges.";
     report.wide = w;
   }
-  out(report);
+  const reportPath = join5(dir, "report.kdl");
+  report.report = reportPath;
+  writeData(reportPath, report);
+  if (flags.full || !report.nodes)
+    return out(report);
+  const nodes = report.nodes;
+  const styleRank = (st) => (st.css ? 1e6 + st.count : 0) + (st.hint ? 1000 : 0) + Math.abs(st.dy) + Math.abs((st.widthRatio ?? 1) - 1) * 20;
+  out({
+    ...report,
+    nodes: {
+      root: nodes.root,
+      measured: nodes.measured,
+      off: nodes.off,
+      styles: [...nodes.styles].sort((a, b) => styleRank(b) - styleRank(a)).slice(0, 12),
+      list: nodes.list.slice(0, 10),
+      more: `${Math.max(0, nodes.styles.length - 12)} more styles and ${Math.max(0, nodes.off - 10)} more nodes in ${reportPath} (or pass --full).`
+    }
+  });
 }
 
 // src/main.ts
