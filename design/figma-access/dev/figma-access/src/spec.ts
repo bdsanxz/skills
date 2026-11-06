@@ -7,6 +7,7 @@ import { EXIT_USAGE } from "./config";
 import { showHelp } from "./help";
 import { emitHtml, linkAssets, type Note } from "./html";
 import { downloadFills, getJson, parseTarget, renderNodes, safeId } from "./rest";
+import { closest, googleHas, measureCandidates, samples, useStandIn } from "./fonts";
 import { fail, out, parseArgs, readData, str } from "./util";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -382,7 +383,21 @@ async function writeHtml(fileKey: string, ids: string[], body: any, dir: string,
   const byId = (list: { id: string; path?: string }[]) => new Map(list.map((f) => [f.id, f.path]));
   const svgs = byId(svgFiles), pngs = byId(pngFiles);
   const notes: Note[] = [...page.notes];
-  const html = linkAssets(page.html, { svg: (id) => rel(svgs.get(id)), png: (id) => rel(pngs.get(id)), fill: (ref) => rel(fillFiles[ref]) }, notes);
+  let html = linkAssets(page.html, { svg: (id) => rel(svgs.get(id)), png: (id) => rel(pngs.get(id)), fill: (ref) => rel(fillFiles[ref]) }, notes);
+  // A family Google does not have gets the Google family closest to it in width.
+  const fonts: Record<string, string> = {};
+  for (const family of page.fonts) {
+    const has = await googleHas(family);
+    if (has) { fonts[family] = "Google Fonts"; continue; }
+    if (has === undefined) { fonts[family] = "not checked: Google Fonts could not be reached"; continue; }
+    const list = samples(doc, family);
+    if (!list.length) { fonts[family] = "not on Google Fonts; no one-line text to measure a stand-in by: add its files with @font-face"; continue; }
+    process.stderr.write(`figma-access: "${family}" is not on Google Fonts; measuring stand-ins against ${list.length} of its texts\n`);
+    const best = closest((await measureCandidates(list)) ?? {});
+    if (!best) { fonts[family] = "not on Google Fonts; no stand-in measured (no Chrome found, or the fonts did not load): add its files with @font-face"; continue; }
+    html = useStandIn(html, family, best.family, best.ratio);
+    fonts[family] = `not on Google Fonts: stand-in ${best.family}, texts ${Math.round(Math.abs(best.ratio - 1) * 1000) / 10}% ${best.ratio >= 1 ? "wider" : "narrower"} over ${list.length} texts; add its files with @font-face and they take over`;
+  }
   mkdirSync(dir, { recursive: true });
   const path = join(dir, "index.html");
   writeFileSync(path, html);
@@ -396,9 +411,9 @@ async function writeHtml(fileKey: string, ids: string[], body: any, dir: string,
     ok: true,
     path,
     assets: { svg: svgFiles.filter((f) => f.path).length, png: pngFiles.filter((f) => f.path).length, fills: Object.keys(fillFiles).length },
-    fonts: page.fonts,
+    fonts,
     notes: [...grouped.entries()].map(([note, list]) => ({ note, count: list.length, nodes: list.slice(0, 6).map((n) => `${n.id}${n.name ? ` ${n.name}` : ""}`) })),
-    next: "Load the fonts, then measure with `compare` and refine section by section.",
+    next: "Measure with `compare <reference.png> <index.html> --nodes <node file> --apply-css`, then refine section by section until each differs by less than 5%.",
   });
 }
 

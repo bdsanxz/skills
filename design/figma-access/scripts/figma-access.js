@@ -2818,11 +2818,14 @@ Hidden layers are skipped. Each line holds, in this order, the fields that apply
 With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/assets/. Auto
 layout becomes flex from its rules, children of groups and frames without auto layout sit at
 their boxes, the frame and its page-wide sections span the window while narrower parts stay
-centred, text is live and its fonts are asked from Google Fonts, and icons, masks and image layers
+centred, text is live, gradient strokes are masked rings, and icons, masks and image layers
 are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
 image file. The first run asks Figma to render every asset and downloads them (about a minute for
 two hundred; progress goes to stderr). Assets already in <dir>/assets are kept unless --refresh is
-given. It prints the fonts and notes on what it could only approximate. Measure the page with
+given. It checks each font family with Google Fonts; for a family Google does not have, it measures
+its one-line texts in a set of Google sans families in headless Chrome, and puts the closest in
+width behind it in every font-family list (add the real files with @font-face and they take over).
+It prints the fonts, with the stand-ins, and notes on what it could only approximate. Measure the page with
 \`compare --apply-css\` and refine it.
 
   --depth <n>       Stop after n levels (default: all).
@@ -3887,8 +3890,8 @@ async function imageFills(argv) {
 }
 
 // src/spec.ts
-import { existsSync as existsSync3, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5 } from "fs";
-import { dirname as dirname4, join as join4, relative, resolve as resolve4 } from "path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync6, writeFileSync as writeFileSync7 } from "fs";
+import { dirname as dirname4, join as join6, relative, resolve as resolve5 } from "path";
 
 // src/nodes.ts
 var r2 = (n) => Math.round(n * 100) / 100;
@@ -4197,7 +4200,7 @@ function emitHtml(root, title) {
       p.push(`max-width:${px(n.maxWidth)}`);
     return p;
   }
-  function paintProps(n, layers) {
+  function paintProps(n, layers, over = []) {
     const p = [];
     const size = { w: n.size?.x ?? n.absoluteBoundingBox.width, h: n.size?.y ?? n.absoluteBoundingBox.height };
     const bg = [];
@@ -4253,7 +4256,10 @@ function emitHtml(root, title) {
     if (strokes.length && n.strokeWeight) {
       const top = strokes[strokes.length - 1];
       let c = top.type === "SOLID" ? color(top.color, top.opacity ?? 1) : null;
-      if (!c && top.gradientStops?.length) {
+      const ring = !c && !n.strokeDashes?.length ? strokeLayer(n, top, size) : undefined;
+      if (ring)
+        over.push(ring);
+      else if (!c && top.gradientStops?.length) {
         c = color(top.gradientStops[0].color, top.opacity ?? 1);
         note(n, "gradient stroke: drawn in its first colour");
       }
@@ -4302,6 +4308,30 @@ function emitHtml(root, title) {
     if (filters.length)
       p.push(`filter:${filters.join(" ")}`);
     return p.concat(common(n));
+  }
+  function strokeLayer(n, f, size) {
+    let g = paint(f, size);
+    if (!g || g.includes(" ROTATED "))
+      return;
+    g = g.replace("diamond-gradient", "radial-gradient");
+    const w = n.strokeWeight;
+    const align = n.strokeAlign ?? "INSIDE";
+    const out = align === "INSIDE" ? 0 : align === "CENTER" ? w / 2 : w;
+    const s = n.individualStrokeWeights;
+    const pad = s ? [s.top, s.right, s.bottom, s.left].map((v) => px(v ?? 0)).join(" ") : px(w);
+    const radius = n.type === "ELLIPSE" ? "50%" : n.rectangleCornerRadii ? n.rectangleCornerRadii.map((r) => px(r ? r + out : 0)).join(" ") : n.cornerRadius ? px(n.cornerRadius + out) : "0";
+    const style = [
+      "position:absolute",
+      `inset:${px(-out)}`,
+      `padding:${pad}`,
+      `border-radius:${radius}`,
+      `background:${g}`,
+      "-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0)",
+      "-webkit-mask-composite:xor",
+      "mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)",
+      "pointer-events:none"
+    ].join(";");
+    return `<div style="${style}"></div>`;
   }
   function common(n) {
     const p = [];
@@ -4459,11 +4489,11 @@ function emitHtml(root, title) {
       rule(c, props);
       return `<div class="${c} ${block}__text ${block}__text--${slug(textStyle(n))}">${inner}</div>`;
     }
-    const layers = [];
+    const layers = [], over = [];
     const fluid = place.kind === "root" || (place.kind === "stack" || place.kind === "flex") && place.fluid;
     const props = placement(n, place, {});
     const isRoot = place.kind === "root";
-    const own = paintProps(isRoot ? { ...n, effects: [] } : n, layers);
+    const own = paintProps(isRoot ? { ...n, effects: [] } : n, layers, over);
     props.push(...own, "box-sizing:border-box");
     if (n.clipsContent)
       props.push("overflow:hidden");
@@ -4546,7 +4576,7 @@ function emitHtml(root, title) {
     if (n.type === "ELLIPSE")
       props.push("border-radius:50%");
     rule(c, props);
-    return `<div class="${c}">${layers.join("")}${body}</div>`;
+    return `<div class="${c}">${layers.join("")}${body}${over.join("")}</div>`;
   }
   const pageW = root.absoluteBoundingBox.width;
   const bodyHtml = emit(root, { kind: "root" }, 0);
@@ -4594,474 +4624,16 @@ function linkAssets(html, assets, notes) {
   });
 }
 
-// src/spec.ts
-var r23 = (n) => Math.round(n * 100) / 100;
-var hex2 = (n) => Math.round(n * 255).toString(16).padStart(2, "0");
-function color(c, opacity = 1) {
-  const a = (c.a ?? 1) * opacity;
-  const base = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`.toUpperCase();
-  return a >= 0.999 ? base : `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${r23(a)})`;
-}
-function gradientAngle(handles, size) {
-  if (!handles || handles.length < 2)
-    return null;
-  const [a, b] = handles;
-  return Math.round((Math.atan2((b.y - a.y) * size.h, (b.x - a.x) * size.w) * 180 / Math.PI + 90 + 360) % 360);
-}
-function linearGradient(p, size, op) {
-  const h = p.gradientHandlePositions;
-  if (!h || h.length < 2)
-    return null;
-  const px = (q) => ({ x: q.x * size.w, y: q.y * size.h });
-  const p0 = px(h[0]);
-  const p1 = px(h[1]);
-  const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
-  if (Math.hypot(v1.x, v1.y) < 0.000000001)
-    return null;
-  let n = v1;
-  if (h[2]) {
-    const p2 = px(h[2]);
-    const v2 = { x: p2.x - p0.x, y: p2.y - p0.y };
-    const perp = { x: -v2.y, y: v2.x };
-    const along = perp.x * v1.x + perp.y * v1.y;
-    if (Math.hypot(v2.x, v2.y) > 0.000000001 && Math.abs(along) > 0.000000001)
-      n = along > 0 ? perp : { x: -perp.x, y: -perp.y };
-  }
-  const angle = Math.round((Math.atan2(n.y, n.x) * 180 / Math.PI + 90 + 360) % 360) % 360;
-  const rad = angle * Math.PI / 180;
-  const dir = { x: Math.sin(rad), y: -Math.cos(rad) };
-  const L = Math.abs(size.w * dir.x) + Math.abs(size.h * dir.y);
-  const start = ((p0.x - size.w / 2) * dir.x + (p0.y - size.h / 2) * dir.y + L / 2) / L;
-  const span = (v1.x * dir.x + v1.y * dir.y) / L;
-  const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${r23((start + s.position * span) * 100)}%`).join(", ");
-  return `linear-gradient(${angle}deg, ${stops})`;
-}
-function gradientShape(handles, size) {
-  if (!handles || handles.length < 3)
-    return { shape: "", rotated: null };
-  const [c, a, b] = handles;
-  const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
-  const ra = r23(Math.hypot(vx, vy));
-  const rb = r23(Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h));
-  const at = `at ${r23(c.x * size.w)}px ${r23(c.y * size.h)}px, `;
-  const angle = Math.atan2(vy, vx) * 180 / Math.PI;
-  const off = (angle % 180 + 180) % 180;
-  if (Math.min(off, 180 - off) <= 2)
-    return { shape: `${ra}px ${rb}px ${at}`, rotated: null };
-  if (Math.abs(off - 90) <= 2)
-    return { shape: `${rb}px ${ra}px ${at}`, rotated: null };
-  return { shape: `${ra}px ${rb}px ${at}`, rotated: r23(angle) };
-}
-function paint(p, size = { w: 1, h: 1 }) {
-  if (p.visible === false)
-    return null;
-  const op = p.opacity ?? 1;
-  switch (p.type) {
-    case "SOLID":
-      return color(p.color, op);
-    case "GRADIENT_LINEAR":
-    case "GRADIENT_RADIAL":
-    case "GRADIENT_ANGULAR":
-    case "GRADIENT_DIAMOND": {
-      const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${Math.round(s.position * 100)}%`).join(", ");
-      if (p.type === "GRADIENT_LINEAR")
-        return linearGradient(p, size, op) ?? `linear-gradient(180deg, ${stops})`;
-      if (p.type === "GRADIENT_RADIAL" || p.type === "GRADIENT_DIAMOND") {
-        const { shape, rotated } = gradientShape(p.gradientHandlePositions, size);
-        const css = `${p.type === "GRADIENT_RADIAL" ? "radial" : "diamond"}-gradient(${shape}${stops})`;
-        return rotated === null ? css : `${css} ROTATED ${rotated}deg`;
-      }
-      if (p.type === "GRADIENT_ANGULAR") {
-        const h = p.gradientHandlePositions;
-        const at = h?.[0] ? `from ${gradientAngle(h, size) ?? 0}deg at ${r23(h[0].x * size.w)}px ${r23(h[0].y * size.h)}px, ` : "";
-        return `conic-gradient(${at}${stops})`;
-      }
-      return null;
-    }
-    case "IMAGE":
-      return `image(${p.imageRef}, ${p.scaleMode ?? "FILL"}${op < 1 ? `, opacity ${r23(op)}` : ""})`;
-    default:
-      return p.type.toLowerCase();
-  }
-}
-function effects(n) {
-  const outList = [];
-  for (const e of n.effects ?? []) {
-    if (e.visible === false)
-      continue;
-    if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
-      outList.push(`${e.type === "INNER_SHADOW" ? "inset-" : ""}shadow(${r23(e.offset?.x ?? 0)} ${r23(e.offset?.y ?? 0)} ${r23(e.radius ?? 0)} ${r23(e.spread ?? 0)} ${color(e.color)})`);
-    } else if (e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR") {
-      outList.push(`${e.type === "LAYER_BLUR" ? "blur" : "backdrop-blur"}(${r23(e.radius ?? 0)})`);
-    }
-  }
-  return outList;
-}
-function layout(n) {
-  const parts = [];
-  if (n.layoutMode && n.layoutMode !== "NONE") {
-    parts.push(`flex-${n.layoutMode === "HORIZONTAL" ? "row" : "col"}${n.layoutWrap === "WRAP" ? " wrap" : ""}`);
-    if (n.itemSpacing)
-      parts.push(`gap ${r23(n.itemSpacing)}`);
-    const pad = [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0].map(r23);
-    if (pad.some((v) => v))
-      parts.push(`pad ${pad.join(" ")}`);
-    if (n.primaryAxisAlignItems && n.primaryAxisAlignItems !== "MIN")
-      parts.push(`justify ${n.primaryAxisAlignItems.toLowerCase()}`);
-    if (n.counterAxisAlignItems && n.counterAxisAlignItems !== "MIN")
-      parts.push(`align ${n.counterAxisAlignItems.toLowerCase()}`);
-  }
-  const sizing = [n.layoutSizingHorizontal, n.layoutSizingVertical];
-  if (sizing.some((s) => s && s !== "FIXED"))
-    parts.push(`size ${sizing.map((s) => (s ?? "FIXED").toLowerCase()).join("/")}`);
-  if (n.layoutPositioning === "ABSOLUTE")
-    parts.push("absolute");
-  return parts;
-}
-function layoutDrift(n) {
-  if (!n.layoutMode || n.layoutMode === "NONE" || !n.absoluteBoundingBox)
-    return null;
-  const row = n.layoutMode === "HORIZONTAL";
-  const kids = (n.children ?? []).filter((c) => c.visible !== false && c.layoutPositioning !== "ABSOLUTE" && c.absoluteBoundingBox && !c.rotation);
-  if (!kids.length || n.layoutWrap === "WRAP")
-    return null;
-  const pos = (b) => row ? b.x : b.y;
-  const len = (b) => row ? b.width : b.height;
-  const gap = n.itemSpacing ?? 0;
-  const between = n.primaryAxisAlignItems === "SPACE_BETWEEN";
-  for (let i = 1;i < kids.length; i++) {
-    const a = kids[i - 1].absoluteBoundingBox;
-    const b = kids[i].absoluteBoundingBox;
-    const got = pos(b) - (pos(a) + len(a));
-    if (!between && Math.abs(got - gap) > 1)
-      return `${JSON.stringify(kids[i].name)} is ${r23(got)} after the previous item, gap is ${r23(gap)}`;
-  }
-  const hug = (row ? n.layoutSizingHorizontal : n.layoutSizingVertical) === "HUG";
-  if (hug && !between) {
-    const pads = row ? (n.paddingLeft ?? 0) + (n.paddingRight ?? 0) : (n.paddingTop ?? 0) + (n.paddingBottom ?? 0);
-    const need = pads + kids.reduce((t, c) => t + len(c.absoluteBoundingBox), 0) + gap * (kids.length - 1);
-    const has = len(n.absoluteBoundingBox);
-    if (Math.abs(need - has) > 1)
-      return `hugs ${r23(has)} but its stored items add up to ${r23(need)}`;
-  }
-  const cross = (b) => row ? b.height : b.width;
-  const inner = cross(n.absoluteBoundingBox) - (row ? (n.paddingTop ?? 0) + (n.paddingBottom ?? 0) : (n.paddingLeft ?? 0) + (n.paddingRight ?? 0));
-  for (const c of kids) {
-    const fills = (row ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL" || c.layoutAlign === "STRETCH";
-    const got = cross(c.absoluteBoundingBox);
-    if (fills && Math.abs(got - inner) > 1)
-      return `${JSON.stringify(c.name)} fills ${r23(inner)} but is stored ${r23(got)} ${row ? "high" : "wide"}`;
-  }
-  return null;
-}
-function textInfo(n) {
-  const s = n.style ?? {};
-  const parts = [`"${String(n.characters ?? "").replace(/[\n\u2028\u2029]/g, "\\n").slice(0, 300)}"`];
-  const lh = s.lineHeightPx ? `/${r23(s.lineHeightPx)}` : "";
-  parts.push(`font ${s.fontFamily} ${s.fontWeight} ${r23(s.fontSize)}${lh}`);
-  if (s.italic)
-    parts.push("italic");
-  if (s.letterSpacing)
-    parts.push(`ls ${r23(s.letterSpacing)}`);
-  if (s.textAlignHorizontal && s.textAlignHorizontal !== "LEFT")
-    parts.push(`text-${s.textAlignHorizontal.toLowerCase()}`);
-  if (s.textCase && s.textCase !== "ORIGINAL")
-    parts.push(`case ${s.textCase.toLowerCase()}`);
-  if (s.textDecoration && s.textDecoration !== "NONE")
-    parts.push(s.textDecoration.toLowerCase());
-  if (s.textAutoResize)
-    parts.push(`resize ${s.textAutoResize.toLowerCase()}`);
-  const fixedHeight = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
-  if (fixedHeight && s.textAlignVertical && s.textAlignVertical !== "TOP")
-    parts.push(`valign ${s.textAlignVertical.toLowerCase()}`);
-  const runs = textRuns(n);
-  if (runs)
-    parts.push(runs);
-  return parts;
-}
-function textRuns(n) {
-  const table = n.styleOverrideTable ?? {};
-  const ids = n.characterStyleOverrides ?? [];
-  if (!Object.keys(table).length || !ids.length)
-    return null;
-  const chars = Array.from(String(n.characters ?? ""));
-  const runs = [];
-  chars.forEach((ch, i) => {
-    const id = ids[i] ?? 0;
-    const last = runs[runs.length - 1];
-    if (last && last.id === id)
-      last.text += ch;
-    else
-      runs.push({ id, text: ch });
-  });
-  const describe = (id) => {
-    const o = table[id];
-    if (!id || !o)
-      return "base";
-    const d = [];
-    if (o.fontFamily || o.fontWeight || o.fontSize)
-      d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ? r23(o.fontSize) : ""}${o.lineHeightPx ? `/${r23(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
-    if (o.fills?.length)
-      d.push(`color ${o.fills.map(paint).filter(Boolean).join(" + ")}`);
-    if (o.textDecoration && o.textDecoration !== "NONE")
-      d.push(o.textDecoration.toLowerCase());
-    if (o.italic)
-      d.push("italic");
-    if (o.letterSpacing)
-      d.push(`ls ${r23(o.letterSpacing)}`);
-    return d.join(" ") || "base";
-  };
-  return `runs[ ${runs.map((r) => `${JSON.stringify(r.text)}: ${describe(r.id)}`).join(" | ")} ]`;
-}
-function vectorOnly(n) {
-  if (["VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON", "REGULAR_POLYGON"].includes(n.type))
-    return true;
-  if (n.type === "TEXT")
-    return false;
-  if ((n.fills ?? []).some((f) => f.type === "IMAGE" && f.visible !== false))
-    return false;
-  const kids = (n.children ?? []).filter((c) => c.visible !== false);
-  return kids.length > 0 && kids.every(vectorOnly);
-}
-function walk(n, depth, ctx) {
-  if (n.visible === false)
-    return;
-  const b = n.absoluteBoundingBox;
-  const parts = [n.type, JSON.stringify(n.name), n.id];
-  if (b)
-    parts.push(`[${r23(b.x - ctx.ox)},${r23(b.y - ctx.oy)} ${r23(b.width)}x${r23(b.height)}]`);
-  const rb = n.absoluteRenderBounds;
-  if (b && rb && [rb.x - b.x, rb.y - b.y, rb.width - b.width, rb.height - b.height].some((d) => Math.abs(d) > 0.5)) {
-    parts.push(`render[${r23(rb.x - ctx.ox)},${r23(rb.y - ctx.oy)} ${r23(rb.width)}x${r23(rb.height)}]`);
-  }
-  if (n.rotation && Math.abs(n.rotation) > 0.01)
-    parts.push(`rot ${r23(-n.rotation * 180 / Math.PI)}deg`);
-  if (n.opacity !== undefined && n.opacity < 1)
-    parts.push(`opacity ${r23(n.opacity)}`);
-  if (n.blendMode && !["PASS_THROUGH", "NORMAL"].includes(n.blendMode))
-    parts.push(`blend ${n.blendMode.toLowerCase()}`);
-  if (n.isMask)
-    parts.push("MASK");
-  if (n.clipsContent)
-    parts.push("clip");
-  if (n.componentId)
-    parts.push(`component ${n.componentId}`);
-  const icon = n.type !== "TEXT" && depth > 0 && vectorOnly(n);
-  const masked = !icon && depth > 0 && (n.children ?? []).some((c) => c.visible !== false && c.isMask);
-  if (n.type === "TEXT")
-    parts.push(...textInfo(n));
-  const size = { w: n.size?.x ?? n.absoluteBoundingBox?.width ?? 1, h: n.size?.y ?? n.absoluteBoundingBox?.height ?? 1 };
-  const fills = (n.fills ?? []).map((p) => paint(p, size)).filter(Boolean).reverse();
-  if (fills.length)
-    parts.push(`${n.type === "TEXT" ? "color" : "bg"} ${fills.join(", ")}`);
-  const strokes = (n.strokes ?? []).map((p) => paint(p, size)).filter(Boolean);
-  if (strokes.length && n.strokeWeight) {
-    const sides = n.individualStrokeWeights;
-    const w = sides ? `${sides.top} ${sides.right} ${sides.bottom} ${sides.left}` : r23(n.strokeWeight);
-    parts.push(`border ${w} ${(n.strokeAlign ?? "INSIDE").toLowerCase()} ${strokes.join(" + ")}${n.strokeDashes?.length ? " dashed" : ""}`);
-  }
-  if (n.rectangleCornerRadii)
-    parts.push(`radius ${n.rectangleCornerRadii.map(r23).join(" ")}`);
-  else if (n.cornerRadius)
-    parts.push(`radius ${r23(n.cornerRadius)}`);
-  parts.push(...effects(n), ...layout(n));
-  const drift = layoutDrift(n);
-  if (drift)
-    parts.push(`LAYOUT DRIFT (${drift}) \u2192 trust the render`);
-  if (icon || masked) {
-    const e = exportBounds(n);
-    if (e && b && [e.x - b.x, e.y - b.y, e.w - b.width, e.h - b.height].some((d) => Math.abs(d) > 0.5)) {
-      parts.push(`export[${r23(e.x - ctx.ox)},${r23(e.y - ctx.oy)} ${r23(e.w)}x${r23(e.h)}]`);
-    }
-  }
-  if (icon) {
-    parts.push("ICON \u2192 render as svg");
-    ctx.icons++;
-  }
-  if (masked) {
-    parts.push("MASKED \u2192 render as svg or png");
-    ctx.icons++;
-  }
-  ctx.lines.push("  ".repeat(depth) + parts.join(" "));
-  if (icon || masked)
-    return;
-  const kids = (n.children ?? []).filter((c) => c.visible !== false);
-  if (depth >= ctx.maxDepth) {
-    if (kids.length)
-      ctx.lines.push("  ".repeat(depth + 1) + `\u2026 ${kids.length} children (raise --depth or run spec on ${n.id})`);
-    return;
-  }
-  for (const c of kids)
-    walk(c, depth + 1, ctx);
-}
-function findNode(nodes, id) {
-  const search = (n) => n.id === id ? n : (n.children ?? []).reduce((hit, c) => hit ?? search(c), null);
-  for (const v of Object.values(nodes ?? {})) {
-    const hit = v?.document && search(v.document);
-    if (hit)
-      return hit;
-  }
-  return null;
-}
-async function spec(argv) {
-  const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "origin", "from", "html"], bool: ["help", "refresh"], alias: { h: "help", o: "out" } });
-  if (flags.help || !positionals[0])
-    showHelp("spec");
-  const target = parseTarget(positionals[0]);
-  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
-  if (!ids.length && target.nodeId)
-    ids.push(target.nodeId);
-  if (!ids.length)
-    fail(EXIT_USAGE, "Name the node: a URL with node-id, or node ids after the file.");
-  let body;
-  const fromFile = str(flags.from);
-  if (fromFile) {
-    if (!existsSync3(fromFile))
-      fail(EXIT_USAGE, `File not found: ${fromFile}`);
-    body = readData(fromFile);
-  } else {
-    body = await getJson(`/v1/files/${target.fileKey}/nodes?${new URLSearchParams({ ids: ids.join(",") })}`, { cache: true, refresh: !!flags.refresh });
-  }
-  if (flags.html)
-    return writeHtml(target.fileKey, ids, body, resolve4(str(flags.html)), !!flags.refresh);
-  const maxDepth = Number(str(flags.depth) ?? 99);
-  const lines = [];
-  let icons = 0;
-  let originRoot = null;
-  if (flags.origin) {
-    const o = /^(-?[\d.]+),(-?[\d.]+)$/.exec(String(flags.origin));
-    if (!o)
-      fail(EXIT_USAGE, "--origin takes x,y, e.g. --origin 0,80");
-    originRoot = { x: Number(o[1]), y: Number(o[2]) };
-  }
-  for (const id of ids) {
-    const doc = body.nodes?.[id]?.document ?? findNode(body.nodes, id);
-    if (!doc) {
-      lines.push(`# ${id}: not found`);
-      continue;
-    }
-    const b = doc.absoluteBoundingBox ?? { x: 0, y: 0 };
-    const ctx = { ox: originRoot?.x ?? b.x, oy: originRoot?.y ?? b.y, lines, maxDepth, icons: 0 };
-    lines.push(`# ${doc.name} (${id}); boxes are [x,y wxh] relative to ${originRoot ? `canvas point ${originRoot.x},${originRoot.y}` : "this node"}`);
-    walk(doc, 0, ctx);
-    icons += ctx.icons;
-  }
-  const text = lines.join(`
-`) + `
-`;
-  const outPath = str(flags.out);
-  if (outPath) {
-    const p = resolve4(outPath);
-    mkdirSync5(dirname4(p), { recursive: true });
-    writeFileSync5(p, text);
-    out({ ok: true, path: p, lines: lines.length, icons });
-  } else {
-    process.stdout.write(text);
-  }
-}
-async function writeHtml(fileKey, ids, body, dir, refresh) {
-  if (ids.length !== 1)
-    fail(EXIT_USAGE, "--html builds one page: name one node.");
-  const doc = body.nodes?.[ids[0]]?.document ?? findNode(body.nodes, ids[0]);
-  if (!doc)
-    fail(EXIT_USAGE, `Node ${ids[0]} is not in the data.`);
-  if (!doc.absoluteBoundingBox)
-    fail(EXIT_USAGE, `${doc.name} has no box: pick a frame, not a page.`);
-  const page = emitHtml(doc, doc.name);
-  const assets = join4(dir, "assets");
-  const keep = !refresh;
-  const svgFiles = await renderNodes(fileKey, page.svg, { format: "svg", scale: 1, name: (id) => join4(assets, "svg", `${safeId(id)}.svg`), keep });
-  const pngFiles = await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join4(assets, "png", `${safeId(id)}.png`), keep });
-  const fillFiles = page.fills.length ? await downloadFills(fileKey, page.fills, join4(assets, "fills"), keep) : {};
-  const rel = (p) => p ? relative(dir, p).split("\\").join("/") : undefined;
-  const byId = (list) => new Map(list.map((f) => [f.id, f.path]));
-  const svgs = byId(svgFiles), pngs = byId(pngFiles);
-  const notes = [...page.notes];
-  const html = linkAssets(page.html, { svg: (id) => rel(svgs.get(id)), png: (id) => rel(pngs.get(id)), fill: (ref) => rel(fillFiles[ref]) }, notes);
-  mkdirSync5(dir, { recursive: true });
-  const path = join4(dir, "index.html");
-  writeFileSync5(path, html);
-  const grouped = new Map;
-  for (const n of notes) {
-    const key = n.note.replace(/\(.*\)/, "(...)");
-    grouped.set(key, [...grouped.get(key) ?? [], n]);
-  }
-  out({
-    ok: true,
-    path,
-    assets: { svg: svgFiles.filter((f) => f.path).length, png: pngFiles.filter((f) => f.path).length, fills: Object.keys(fillFiles).length },
-    fonts: page.fonts,
-    notes: [...grouped.entries()].map(([note, list]) => ({ note, count: list.length, nodes: list.slice(0, 6).map((n) => `${n.id}${n.name ? ` ${n.name}` : ""}`) })),
-    next: "Load the fonts, then measure with `compare` and refine section by section."
-  });
-}
-var union = (a, b) => {
-  if (!a)
-    return b;
-  if (!b)
-    return a;
-  const x = Math.min(a.x, b.x);
-  const y = Math.min(a.y, b.y);
-  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-};
-var intersect = (a, b) => {
-  if (!a || !b)
-    return null;
-  const x = Math.max(a.x, b.x);
-  const y = Math.max(a.y, b.y);
-  const w = Math.min(a.x + a.w, b.x + b.w) - x;
-  const h = Math.min(a.y + a.h, b.y + b.h) - y;
-  return w > 0 && h > 0 ? { x, y, w, h } : null;
-};
-function grow(r, d) {
-  return { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d };
-}
-function withEffects(n, r) {
-  let out = r;
-  const strokes = (n.strokes ?? []).some((s) => s.visible !== false) && n.strokeWeight;
-  if (strokes && n.strokeAlign === "OUTSIDE")
-    out = grow(out, n.strokeWeight);
-  else if (strokes && n.strokeAlign === "CENTER")
-    out = grow(out, n.strokeWeight / 2);
-  let total = out;
-  for (const e of n.effects ?? []) {
-    if (e.visible === false)
-      continue;
-    if (e.type === "DROP_SHADOW") {
-      const s = grow({ x: out.x + (e.offset?.x ?? 0), y: out.y + (e.offset?.y ?? 0), w: out.w, h: out.h }, (e.radius ?? 0) + (e.spread ?? 0));
-      total = union(total, s);
-    } else if (e.type === "LAYER_BLUR") {
-      total = union(total, grow(out, e.radius ?? 0));
-    }
-  }
-  return total;
-}
-function exportBounds(n) {
-  if (n.visible === false)
-    return null;
-  const b = n.absoluteBoundingBox;
-  let r = b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
-  const kids = (n.children ?? []).filter((c) => c.visible !== false);
-  if (kids.length && !n.clipsContent) {
-    const own = n.type === "GROUP" || n.type === "BOOLEAN_OPERATION" ? null : r;
-    const maskAt = kids.findIndex((c) => c.isMask);
-    if (maskAt >= 0) {
-      let content = null;
-      for (const c of kids.slice(maskAt + 1))
-        content = union(content, exportBounds(c));
-      const before = kids.slice(0, maskAt).reduce((acc, c) => union(acc, exportBounds(c)), own);
-      r = union(before, intersect(exportBounds({ ...kids[maskAt], effects: [] }), content));
-    } else {
-      r = kids.reduce((acc, c) => union(acc, exportBounds(c)), own);
-    }
-  }
-  return r ? withEffects(n, r) : null;
-}
+// src/fonts.ts
+import { mkdtempSync as mkdtempSync2, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "fs";
+import { tmpdir as tmpdir2 } from "os";
+import { join as join5 } from "path";
+import { pathToFileURL as pathToFileURL2 } from "url";
 
 // src/compare.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync6, mkdtempSync, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync6 } from "fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, mkdtempSync, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync5 } from "fs";
 import { tmpdir } from "os";
-import { join as join5, resolve as resolve5 } from "path";
+import { join as join4, resolve as resolve4 } from "path";
 import { pathToFileURL } from "url";
 
 // src/png.ts
@@ -5188,27 +4760,33 @@ var CHROME_PATHS = [
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
 ];
 var CHROME_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "microsoft-edge"];
-function findChrome() {
+function chromePath() {
   const env = process.env.CHROME_PATH;
-  if (env && existsSync4(env))
+  if (env && existsSync3(env))
     return env;
   for (const p of CHROME_PATHS)
-    if (existsSync4(p))
+    if (existsSync3(p))
       return p;
   for (const n of CHROME_NAMES) {
     const p = Bun.which(n);
     if (p)
       return p;
   }
+  return;
+}
+function findChrome() {
+  const found = chromePath();
+  if (found)
+    return found;
   fail(EXIT_UNAVAILABLE, "No Chrome, Chromium or Edge found to capture the page.", {
     hint: "Install one, or set CHROME_PATH to its executable. Or capture the page yourself and pass the PNG instead of the page."
   });
 }
 async function capture(page, width, height, scale, waitMs, path) {
-  const url = /^(https?|file):/.test(page) ? page : pathToFileURL(resolve5(page)).href;
-  if (url.startsWith("file:") && !existsSync4(new URL(url)))
+  const url = /^(https?|file):/.test(page) ? page : pathToFileURL(resolve4(page)).href;
+  if (url.startsWith("file:") && !existsSync3(new URL(url)))
     fail(EXIT_USAGE, `No such page: ${page}`);
-  const profile = mkdtempSync(join5(tmpdir(), "figma-access-chrome-"));
+  const profile = mkdtempSync(join4(tmpdir(), "figma-access-chrome-"));
   try {
     const p = Bun.spawn([
       findChrome(),
@@ -5228,7 +4806,7 @@ async function capture(page, width, height, scale, waitMs, path) {
     const err = await new Response(p.stderr).text();
     await p.exited;
     clearTimeout(timer);
-    if (!existsSync4(path))
+    if (!existsSync3(path))
       fail(EXIT_FAILED, `Chrome did not write a screenshot of ${url}.`, { chrome: err.trim().split(`
 `).slice(-3) });
   } finally {
@@ -5237,7 +4815,7 @@ async function capture(page, width, height, scale, waitMs, path) {
   return decodePng(readFileSync4(path));
 }
 function readPng(path, what) {
-  if (!existsSync4(path))
+  if (!existsSync3(path))
     fail(EXIT_USAGE, `No such ${what}: ${path}`);
   try {
     return decodePng(readFileSync4(path));
@@ -5297,7 +4875,7 @@ function childSections(root, width, height) {
     return { name: n > 1 ? `${c.name} ${n}` : String(c.name), x: 0, y: top, w: width, h: bottom - top };
   }).filter((s) => s.h > 0).sort((a, z) => a.y - z.y);
 }
-var r24 = (n) => Math.round(n * 100) / 100;
+var r23 = (n) => Math.round(n * 100) / 100;
 function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
   let n = 0, diff = 0, sum = 0;
   for (let y = r.y;y < r.y + r.h; y++) {
@@ -5333,7 +4911,7 @@ async function compare(argv) {
   const applyTo = flags["apply-css"] ? localHtml(page) : undefined;
   if (flags["apply-css"] && !flags.nodes)
     fail(EXIT_USAGE, "--apply-css needs --nodes <node file>: the css lines come from the text styles it measures.");
-  let ref = readPng(resolve5(refPath), "reference image");
+  let ref = readPng(resolve4(refPath), "reference image");
   let cropAt = { x: 0, y: 0 };
   if (flags.crop) {
     const [x, y, w, h] = parseNumbers(str(flags.crop), 4, "--crop");
@@ -5342,8 +4920,8 @@ async function compare(argv) {
   }
   let root = null;
   if (flags.nodes) {
-    const file = resolve5(str(flags.nodes));
-    if (!existsSync4(file))
+    const file = resolve4(str(flags.nodes));
+    if (!existsSync3(file))
       fail(EXIT_USAGE, `No such node file: ${file}`);
     const body = readData(file);
     const want = str(flags.node)?.replace(/-/g, ":");
@@ -5374,15 +4952,15 @@ async function compare(argv) {
   const threshold = Number(str(flags.threshold) ?? 24);
   const maxShift = Number(str(flags.shift) ?? 3);
   const waitMs = Number(str(flags.wait) ?? 8000);
-  const dir = resolve5(str(flags.out) ?? join5(process.cwd(), "_swe", "figma-access", "compare"));
-  mkdirSync6(dir, { recursive: true });
+  const dir = resolve4(str(flags.out) ?? join4(process.cwd(), "_swe", "figma-access", "compare"));
+  mkdirSync5(dir, { recursive: true });
   let cap;
   let capPath;
   if (/\.png$/i.test(page) && !/^https?:/.test(page)) {
-    capPath = resolve5(page);
+    capPath = resolve4(page);
     cap = readPng(capPath, "capture");
   } else {
-    capPath = join5(dir, `capture-${cssWidth}.png`);
+    capPath = join4(dir, `capture-${cssWidth}.png`);
     rmSync3(capPath, { force: true });
     cap = await capture(page, cssWidth, cssHeight, scale, waitMs, capPath);
   }
@@ -5409,7 +4987,7 @@ async function compare(argv) {
       fail(EXIT_USAGE, `Section "${s.name}" (${s.x},${s.y},${s.w},${s.h}) falls outside the ${cssWidth}x${cssHeight} page.`);
     }
     const base = measure(refRgb, capRgb, W, H, r, 0, 0, threshold);
-    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r24(base.differing), mean: r24(base.mean) };
+    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r23(base.differing), mean: r23(base.mean) };
     let best = { dx: 0, dy: 0, differing: base.differing };
     const step = Math.max(1, Math.round(scale));
     for (let dy = -maxShift * step;dy <= maxShift * step; dy += step) {
@@ -5422,8 +5000,8 @@ async function compare(argv) {
       }
     }
     if (best.differing < base.differing * 0.5 && base.differing > 0.5) {
-      const dxCss = r24(best.dx / scale), dyCss = r24(best.dy / scale);
-      entry.shift = { dx: dxCss, dy: dyCss, differing: r24(best.differing) };
+      const dxCss = r23(best.dx / scale), dyCss = r23(best.dy / scale);
+      entry.shift = { dx: dxCss, dy: dyCss, differing: r23(best.differing) };
       entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
     }
     return entry;
@@ -5438,18 +5016,18 @@ async function compare(argv) {
         diffImg.data[o + k] = 255 - Math.round((255 - refRgb[s + k]) * 0.3);
     diffImg.data[o + 3] = 255;
   }
-  const diffPath = join5(dir, "diff.png");
-  writeFileSync6(diffPath, encodePng(diffImg));
+  const diffPath = join4(dir, "diff.png");
+  writeFileSync5(diffPath, encodePng(diffImg));
   const report = {
     ok: true,
-    reference: resolve5(refPath),
+    reference: resolve4(refPath),
     capture: capPath,
     diff: diffPath,
     page: [cssWidth, cssHeight],
-    scale: r24(scale),
+    scale: r23(scale),
     threshold,
     ...autoCrop ? { crop: autoCrop } : {},
-    whole: { differing: r24(whole.differing), mean: r24(whole.mean) },
+    whole: { differing: r23(whole.differing), mean: r23(whole.mean) },
     sections: results,
     worst: [...results].sort((a, b) => b.differing - a.differing)[0]?.name
   };
@@ -5463,7 +5041,7 @@ async function compare(argv) {
       if (!String(st.hint ?? "").startsWith("Every copy"))
         return st;
       const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
-      return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r24(dx)}px ${r24(-st.dy)}px; }` };
+      return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r23(dx)}px ${r23(-st.dy)}px; }` };
     });
     if (applyTo)
       report.applied = applyCss(applyTo, styles);
@@ -5482,7 +5060,7 @@ async function compare(argv) {
       fail(EXIT_USAGE, `--wide is a wider window to try the page in: give more than the page width ${cssWidth}, e.g. --wide ${Math.round(cssWidth * 4 / 3)}.`);
     if (/\.png$/i.test(page) && !/^https?:/.test(page))
       fail(EXIT_USAGE, "--wide needs a page to capture, not a PNG.");
-    const widePath = join5(dir, `capture-${wide}.png`);
+    const widePath = join4(dir, `capture-${wide}.png`);
     rmSync3(widePath, { force: true });
     const wideImg = await capture(page, wide, cssHeight, scale, waitMs, widePath);
     const at = (x) => flatten(crop(wideImg, { x, y: 0, w: W, h: H }));
@@ -5511,19 +5089,19 @@ async function compare(argv) {
     const w = {
       width: wide,
       capture: widePath,
-      centredDiffering: r24(centred.differing),
-      leftDiffering: r24(left.differing),
-      edgeDiffering: r24(edge)
+      centredDiffering: r23(centred.differing),
+      leftDiffering: r23(left.differing),
+      edgeDiffering: r23(edge)
     };
     const hints = [];
     if (left.differing < centred.differing)
       hints.push("The content stays at the left edge of a wider window. Centre the content column (margin: 0 auto) unless the user asked for a fixed width.");
     if (edge > 2)
-      hints.push(`The window's edges differ from the design's edges in ${r24(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
+      hints.push(`The window's edges differ from the design's edges in ${r23(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
     w.hint = hints.length ? hints.join(" ") : "The content stays centred and the backgrounds reach the window's edges.";
     report.wide = w;
   }
-  const reportPath = join5(dir, "report.kdl");
+  const reportPath = join4(dir, "report.kdl");
   report.report = reportPath;
   writeData(reportPath, report);
   if (flags.full || !report.nodes)
@@ -5544,10 +5122,10 @@ async function compare(argv) {
 }
 function localHtml(page) {
   const file = page.startsWith("file://") ? decodeURIComponent(new URL(page).pathname) : page;
-  if (/^https?:/.test(page) || !/\.html?$/i.test(file) || !existsSync4(file)) {
+  if (/^https?:/.test(page) || !/\.html?$/i.test(file) || !existsSync3(file)) {
     fail(EXIT_USAGE, `--apply-css writes into the page, so the page must be a local .html file; ${page} is not one.`);
   }
-  return resolve5(file);
+  return resolve4(file);
 }
 var CSS_ID = "figma-access-css";
 var CSS_LINE = /^\.([\w-]+) \{ translate: (-?[\d.]+)px (-?[\d.]+)px; \}$/;
@@ -5573,7 +5151,7 @@ function applyCss(file, styles) {
       continue;
     }
     const [x, y] = have.get(m[1]) ?? [0, 0];
-    have.set(m[1], [r24(x + Number(m[2])), r24(y + Number(m[3]))]);
+    have.set(m[1], [r23(x + Number(m[2])), r23(y + Number(m[3]))]);
     changed.push(st.style);
   }
   const lines = [...have.entries()].map(([cls, [x, y]]) => `.${cls} { translate: ${x}px ${y}px; }`);
@@ -5585,12 +5163,623 @@ ${lines.join(`
 `;
   const next = block.test(html) ? html.replace(block, css) : html.includes("</head>") ? html.replace("</head>", `${css}</head>`) : css + html;
   if (changed.length)
-    writeFileSync6(file, next);
+    writeFileSync5(file, next);
   const result = { file, styles: changed.length, rules: lines.length };
   if (skipped.length)
     result.skipped = `${skipped.join(", ")}: the text is much wider or narrower than the design's, so its font, weight or letter spacing does not match yet. Fix that, then compare again.`;
   result.next = changed.length ? "Compare again to measure the page with these offsets." : "No style had a fix to apply.";
   return result;
+}
+
+// src/fonts.ts
+var CANDIDATES = [
+  "Inter",
+  "Roboto",
+  "Open Sans",
+  "Lato",
+  "Work Sans",
+  "DM Sans",
+  "Figtree",
+  "Manrope",
+  "Nunito Sans",
+  "Mulish",
+  "Rubik",
+  "Outfit",
+  "Urbanist",
+  "Plus Jakarta Sans",
+  "Lexend",
+  "Sora",
+  "Montserrat",
+  "Raleway",
+  "Poppins"
+];
+var googleUrl = (family, weight) => `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}${weight ? `:wght@${weight}` : ""}&display=block`;
+async function googleHas(family) {
+  try {
+    const r = await fetch(googleUrl(family), { signal: AbortSignal.timeout(1e4) });
+    return r.ok;
+  } catch {
+    return;
+  }
+}
+function samples(root, family, max = 40) {
+  const list = [];
+  const walk = (n) => {
+    if (n.visible === false || list.length >= max)
+      return;
+    const s = n.style;
+    if (n.type === "TEXT" && s?.fontFamily === family && s.textAutoResize === "WIDTH_AND_HEIGHT" && !(n.characterStyleOverrides ?? []).some((x) => x) && n.absoluteBoundingBox?.width > 8) {
+      let text = String(n.characters ?? "");
+      if (!/[\n\u2028\u2029]/.test(text) && text.trim()) {
+        if (s.textCase === "UPPER")
+          text = text.toUpperCase();
+        else if (s.textCase === "LOWER")
+          text = text.toLowerCase();
+        list.push({ text, width: n.absoluteBoundingBox.width, size: s.fontSize ?? 16, weight: Math.round((s.fontWeight ?? 400) / 100) * 100 || 400, spacing: s.letterSpacing ?? 0 });
+      }
+    }
+    for (const c of n.children ?? [])
+      walk(c);
+  };
+  walk(root);
+  return list;
+}
+async function measureCandidates(list, candidates = CANDIDATES, waitMs = 20000) {
+  const chrome = chromePath();
+  if (!chrome || !list.length)
+    return;
+  const weights = [...new Set(list.map((s) => s.weight))];
+  const links = candidates.flatMap((c) => weights.map((w) => `<link rel="stylesheet" href="${googleUrl(c, w).replace(/&/g, "&amp;")}">`));
+  const script = `
+const S = ${JSON.stringify(list)}, C = ${JSON.stringify(candidates)};
+(async () => {
+  const ctx = document.createElement("canvas").getContext("2d"), out = {};
+  for (const c of C) {
+    const r = [];
+    for (const s of S) {
+      const spec = s.weight + " " + s.size + "px \\"" + c + "\\"";
+      try { await document.fonts.load(spec, s.text); } catch {}
+      const has = [...document.fonts].some((f) => f.family.replace(/"/g, "") === c && f.status === "loaded" && String(f.weight) === String(s.weight));
+      if (!has) continue;
+      ctx.font = spec;
+      r.push((ctx.measureText(s.text).width + s.spacing * [...s.text].length) / s.width);
+    }
+    if (r.length) out[c] = r.sort((a, b) => a - b)[Math.floor(r.length / 2)];
+  }
+  document.getElementById("out").textContent = JSON.stringify(out);
+})();`;
+  const dir = mkdtempSync2(join5(tmpdir2(), "figma-access-fonts-"));
+  try {
+    const page = join5(dir, "fonts.html");
+    writeFileSync6(page, `<!doctype html><html><head><meta charset="utf-8">${links.join("")}</head><body><pre id="out"></pre><script>${script}</script></body></html>`);
+    const p = Bun.spawn([
+      chrome,
+      "--headless=new",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-default-browser-check",
+      `--user-data-dir=${join5(dir, "profile")}`,
+      `--virtual-time-budget=${waitMs}`,
+      "--dump-dom",
+      pathToFileURL2(page).href
+    ], { stdout: "pipe", stderr: "ignore" });
+    const timer = setTimeout(() => p.kill(), waitMs + 60000);
+    const dom = await new Response(p.stdout).text();
+    await p.exited;
+    clearTimeout(timer);
+    const m = /<pre id="out">([^<]*)<\/pre>/.exec(dom);
+    if (!m || !m[1].trim())
+      return;
+    return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
+  } catch {
+    return;
+  } finally {
+    rmSync4(dir, { recursive: true, force: true });
+  }
+}
+function closest(ratios) {
+  const best = Object.entries(ratios).sort((a, b) => Math.abs(a[1] - 1) - Math.abs(b[1] - 1))[0];
+  return best ? { family: best[0], ratio: Math.round(best[1] * 1000) / 1000 } : undefined;
+}
+function useStandIn(html, family, standIn, ratio) {
+  const enc = encodeURIComponent(family).replace(/%20/g, "+").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const link = new RegExp(`<link rel="stylesheet" href="https://fonts\\.googleapis\\.com/css2\\?family=${enc}:wght@([\\d;]+)&amp;display=block">`);
+  const weights = (link.exec(html)?.[1] ?? "400").split(";");
+  const links = weights.map((w) => `<link rel="stylesheet" href="${googleUrl(standIn, Number(w)).replace(/&/g, "&amp;")}">`).join(`
+`);
+  const comment = `<!-- "${family}" is not on Google Fonts: "${standIn}" stands in for it (its texts come out ${Math.round(Math.abs(ratio - 1) * 1000) / 10}% ${ratio >= 1 ? "wider" : "narrower"}). Add the real files with @font-face and they take over. -->`;
+  return html.replace(link, `${comment}
+${links}`).split(`font-family:"${family}",`).join(`font-family:"${family}","${standIn}",`).split(`font-family:'${family}',`).join(`font-family:'${family}','${standIn}',`);
+}
+
+// src/spec.ts
+var r24 = (n) => Math.round(n * 100) / 100;
+var hex2 = (n) => Math.round(n * 255).toString(16).padStart(2, "0");
+function color(c, opacity = 1) {
+  const a = (c.a ?? 1) * opacity;
+  const base = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`.toUpperCase();
+  return a >= 0.999 ? base : `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${r24(a)})`;
+}
+function gradientAngle(handles, size) {
+  if (!handles || handles.length < 2)
+    return null;
+  const [a, b] = handles;
+  return Math.round((Math.atan2((b.y - a.y) * size.h, (b.x - a.x) * size.w) * 180 / Math.PI + 90 + 360) % 360);
+}
+function linearGradient(p, size, op) {
+  const h = p.gradientHandlePositions;
+  if (!h || h.length < 2)
+    return null;
+  const px = (q) => ({ x: q.x * size.w, y: q.y * size.h });
+  const p0 = px(h[0]);
+  const p1 = px(h[1]);
+  const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
+  if (Math.hypot(v1.x, v1.y) < 0.000000001)
+    return null;
+  let n = v1;
+  if (h[2]) {
+    const p2 = px(h[2]);
+    const v2 = { x: p2.x - p0.x, y: p2.y - p0.y };
+    const perp = { x: -v2.y, y: v2.x };
+    const along = perp.x * v1.x + perp.y * v1.y;
+    if (Math.hypot(v2.x, v2.y) > 0.000000001 && Math.abs(along) > 0.000000001)
+      n = along > 0 ? perp : { x: -perp.x, y: -perp.y };
+  }
+  const angle = Math.round((Math.atan2(n.y, n.x) * 180 / Math.PI + 90 + 360) % 360) % 360;
+  const rad = angle * Math.PI / 180;
+  const dir = { x: Math.sin(rad), y: -Math.cos(rad) };
+  const L = Math.abs(size.w * dir.x) + Math.abs(size.h * dir.y);
+  const start = ((p0.x - size.w / 2) * dir.x + (p0.y - size.h / 2) * dir.y + L / 2) / L;
+  const span = (v1.x * dir.x + v1.y * dir.y) / L;
+  const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${r24((start + s.position * span) * 100)}%`).join(", ");
+  return `linear-gradient(${angle}deg, ${stops})`;
+}
+function gradientShape(handles, size) {
+  if (!handles || handles.length < 3)
+    return { shape: "", rotated: null };
+  const [c, a, b] = handles;
+  const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
+  const ra = r24(Math.hypot(vx, vy));
+  const rb = r24(Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h));
+  const at = `at ${r24(c.x * size.w)}px ${r24(c.y * size.h)}px, `;
+  const angle = Math.atan2(vy, vx) * 180 / Math.PI;
+  const off = (angle % 180 + 180) % 180;
+  if (Math.min(off, 180 - off) <= 2)
+    return { shape: `${ra}px ${rb}px ${at}`, rotated: null };
+  if (Math.abs(off - 90) <= 2)
+    return { shape: `${rb}px ${ra}px ${at}`, rotated: null };
+  return { shape: `${ra}px ${rb}px ${at}`, rotated: r24(angle) };
+}
+function paint(p, size = { w: 1, h: 1 }) {
+  if (p.visible === false)
+    return null;
+  const op = p.opacity ?? 1;
+  switch (p.type) {
+    case "SOLID":
+      return color(p.color, op);
+    case "GRADIENT_LINEAR":
+    case "GRADIENT_RADIAL":
+    case "GRADIENT_ANGULAR":
+    case "GRADIENT_DIAMOND": {
+      const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${Math.round(s.position * 100)}%`).join(", ");
+      if (p.type === "GRADIENT_LINEAR")
+        return linearGradient(p, size, op) ?? `linear-gradient(180deg, ${stops})`;
+      if (p.type === "GRADIENT_RADIAL" || p.type === "GRADIENT_DIAMOND") {
+        const { shape, rotated } = gradientShape(p.gradientHandlePositions, size);
+        const css = `${p.type === "GRADIENT_RADIAL" ? "radial" : "diamond"}-gradient(${shape}${stops})`;
+        return rotated === null ? css : `${css} ROTATED ${rotated}deg`;
+      }
+      if (p.type === "GRADIENT_ANGULAR") {
+        const h = p.gradientHandlePositions;
+        const at = h?.[0] ? `from ${gradientAngle(h, size) ?? 0}deg at ${r24(h[0].x * size.w)}px ${r24(h[0].y * size.h)}px, ` : "";
+        return `conic-gradient(${at}${stops})`;
+      }
+      return null;
+    }
+    case "IMAGE":
+      return `image(${p.imageRef}, ${p.scaleMode ?? "FILL"}${op < 1 ? `, opacity ${r24(op)}` : ""})`;
+    default:
+      return p.type.toLowerCase();
+  }
+}
+function effects(n) {
+  const outList = [];
+  for (const e of n.effects ?? []) {
+    if (e.visible === false)
+      continue;
+    if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
+      outList.push(`${e.type === "INNER_SHADOW" ? "inset-" : ""}shadow(${r24(e.offset?.x ?? 0)} ${r24(e.offset?.y ?? 0)} ${r24(e.radius ?? 0)} ${r24(e.spread ?? 0)} ${color(e.color)})`);
+    } else if (e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR") {
+      outList.push(`${e.type === "LAYER_BLUR" ? "blur" : "backdrop-blur"}(${r24(e.radius ?? 0)})`);
+    }
+  }
+  return outList;
+}
+function layout(n) {
+  const parts = [];
+  if (n.layoutMode && n.layoutMode !== "NONE") {
+    parts.push(`flex-${n.layoutMode === "HORIZONTAL" ? "row" : "col"}${n.layoutWrap === "WRAP" ? " wrap" : ""}`);
+    if (n.itemSpacing)
+      parts.push(`gap ${r24(n.itemSpacing)}`);
+    const pad = [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0].map(r24);
+    if (pad.some((v) => v))
+      parts.push(`pad ${pad.join(" ")}`);
+    if (n.primaryAxisAlignItems && n.primaryAxisAlignItems !== "MIN")
+      parts.push(`justify ${n.primaryAxisAlignItems.toLowerCase()}`);
+    if (n.counterAxisAlignItems && n.counterAxisAlignItems !== "MIN")
+      parts.push(`align ${n.counterAxisAlignItems.toLowerCase()}`);
+  }
+  const sizing = [n.layoutSizingHorizontal, n.layoutSizingVertical];
+  if (sizing.some((s) => s && s !== "FIXED"))
+    parts.push(`size ${sizing.map((s) => (s ?? "FIXED").toLowerCase()).join("/")}`);
+  if (n.layoutPositioning === "ABSOLUTE")
+    parts.push("absolute");
+  return parts;
+}
+function layoutDrift(n) {
+  if (!n.layoutMode || n.layoutMode === "NONE" || !n.absoluteBoundingBox)
+    return null;
+  const row = n.layoutMode === "HORIZONTAL";
+  const kids = (n.children ?? []).filter((c) => c.visible !== false && c.layoutPositioning !== "ABSOLUTE" && c.absoluteBoundingBox && !c.rotation);
+  if (!kids.length || n.layoutWrap === "WRAP")
+    return null;
+  const pos = (b) => row ? b.x : b.y;
+  const len = (b) => row ? b.width : b.height;
+  const gap = n.itemSpacing ?? 0;
+  const between = n.primaryAxisAlignItems === "SPACE_BETWEEN";
+  for (let i = 1;i < kids.length; i++) {
+    const a = kids[i - 1].absoluteBoundingBox;
+    const b = kids[i].absoluteBoundingBox;
+    const got = pos(b) - (pos(a) + len(a));
+    if (!between && Math.abs(got - gap) > 1)
+      return `${JSON.stringify(kids[i].name)} is ${r24(got)} after the previous item, gap is ${r24(gap)}`;
+  }
+  const hug = (row ? n.layoutSizingHorizontal : n.layoutSizingVertical) === "HUG";
+  if (hug && !between) {
+    const pads = row ? (n.paddingLeft ?? 0) + (n.paddingRight ?? 0) : (n.paddingTop ?? 0) + (n.paddingBottom ?? 0);
+    const need = pads + kids.reduce((t, c) => t + len(c.absoluteBoundingBox), 0) + gap * (kids.length - 1);
+    const has = len(n.absoluteBoundingBox);
+    if (Math.abs(need - has) > 1)
+      return `hugs ${r24(has)} but its stored items add up to ${r24(need)}`;
+  }
+  const cross = (b) => row ? b.height : b.width;
+  const inner = cross(n.absoluteBoundingBox) - (row ? (n.paddingTop ?? 0) + (n.paddingBottom ?? 0) : (n.paddingLeft ?? 0) + (n.paddingRight ?? 0));
+  for (const c of kids) {
+    const fills = (row ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL" || c.layoutAlign === "STRETCH";
+    const got = cross(c.absoluteBoundingBox);
+    if (fills && Math.abs(got - inner) > 1)
+      return `${JSON.stringify(c.name)} fills ${r24(inner)} but is stored ${r24(got)} ${row ? "high" : "wide"}`;
+  }
+  return null;
+}
+function textInfo(n) {
+  const s = n.style ?? {};
+  const parts = [`"${String(n.characters ?? "").replace(/[\n\u2028\u2029]/g, "\\n").slice(0, 300)}"`];
+  const lh = s.lineHeightPx ? `/${r24(s.lineHeightPx)}` : "";
+  parts.push(`font ${s.fontFamily} ${s.fontWeight} ${r24(s.fontSize)}${lh}`);
+  if (s.italic)
+    parts.push("italic");
+  if (s.letterSpacing)
+    parts.push(`ls ${r24(s.letterSpacing)}`);
+  if (s.textAlignHorizontal && s.textAlignHorizontal !== "LEFT")
+    parts.push(`text-${s.textAlignHorizontal.toLowerCase()}`);
+  if (s.textCase && s.textCase !== "ORIGINAL")
+    parts.push(`case ${s.textCase.toLowerCase()}`);
+  if (s.textDecoration && s.textDecoration !== "NONE")
+    parts.push(s.textDecoration.toLowerCase());
+  if (s.textAutoResize)
+    parts.push(`resize ${s.textAutoResize.toLowerCase()}`);
+  const fixedHeight = s.textAutoResize !== "HEIGHT" && s.textAutoResize !== "WIDTH_AND_HEIGHT";
+  if (fixedHeight && s.textAlignVertical && s.textAlignVertical !== "TOP")
+    parts.push(`valign ${s.textAlignVertical.toLowerCase()}`);
+  const runs = textRuns(n);
+  if (runs)
+    parts.push(runs);
+  return parts;
+}
+function textRuns(n) {
+  const table = n.styleOverrideTable ?? {};
+  const ids = n.characterStyleOverrides ?? [];
+  if (!Object.keys(table).length || !ids.length)
+    return null;
+  const chars = Array.from(String(n.characters ?? ""));
+  const runs = [];
+  chars.forEach((ch, i) => {
+    const id = ids[i] ?? 0;
+    const last = runs[runs.length - 1];
+    if (last && last.id === id)
+      last.text += ch;
+    else
+      runs.push({ id, text: ch });
+  });
+  const describe = (id) => {
+    const o = table[id];
+    if (!id || !o)
+      return "base";
+    const d = [];
+    if (o.fontFamily || o.fontWeight || o.fontSize)
+      d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ? r24(o.fontSize) : ""}${o.lineHeightPx ? `/${r24(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
+    if (o.fills?.length)
+      d.push(`color ${o.fills.map(paint).filter(Boolean).join(" + ")}`);
+    if (o.textDecoration && o.textDecoration !== "NONE")
+      d.push(o.textDecoration.toLowerCase());
+    if (o.italic)
+      d.push("italic");
+    if (o.letterSpacing)
+      d.push(`ls ${r24(o.letterSpacing)}`);
+    return d.join(" ") || "base";
+  };
+  return `runs[ ${runs.map((r) => `${JSON.stringify(r.text)}: ${describe(r.id)}`).join(" | ")} ]`;
+}
+function vectorOnly(n) {
+  if (["VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON", "REGULAR_POLYGON"].includes(n.type))
+    return true;
+  if (n.type === "TEXT")
+    return false;
+  if ((n.fills ?? []).some((f) => f.type === "IMAGE" && f.visible !== false))
+    return false;
+  const kids = (n.children ?? []).filter((c) => c.visible !== false);
+  return kids.length > 0 && kids.every(vectorOnly);
+}
+function walk(n, depth, ctx) {
+  if (n.visible === false)
+    return;
+  const b = n.absoluteBoundingBox;
+  const parts = [n.type, JSON.stringify(n.name), n.id];
+  if (b)
+    parts.push(`[${r24(b.x - ctx.ox)},${r24(b.y - ctx.oy)} ${r24(b.width)}x${r24(b.height)}]`);
+  const rb = n.absoluteRenderBounds;
+  if (b && rb && [rb.x - b.x, rb.y - b.y, rb.width - b.width, rb.height - b.height].some((d) => Math.abs(d) > 0.5)) {
+    parts.push(`render[${r24(rb.x - ctx.ox)},${r24(rb.y - ctx.oy)} ${r24(rb.width)}x${r24(rb.height)}]`);
+  }
+  if (n.rotation && Math.abs(n.rotation) > 0.01)
+    parts.push(`rot ${r24(-n.rotation * 180 / Math.PI)}deg`);
+  if (n.opacity !== undefined && n.opacity < 1)
+    parts.push(`opacity ${r24(n.opacity)}`);
+  if (n.blendMode && !["PASS_THROUGH", "NORMAL"].includes(n.blendMode))
+    parts.push(`blend ${n.blendMode.toLowerCase()}`);
+  if (n.isMask)
+    parts.push("MASK");
+  if (n.clipsContent)
+    parts.push("clip");
+  if (n.componentId)
+    parts.push(`component ${n.componentId}`);
+  const icon = n.type !== "TEXT" && depth > 0 && vectorOnly(n);
+  const masked = !icon && depth > 0 && (n.children ?? []).some((c) => c.visible !== false && c.isMask);
+  if (n.type === "TEXT")
+    parts.push(...textInfo(n));
+  const size = { w: n.size?.x ?? n.absoluteBoundingBox?.width ?? 1, h: n.size?.y ?? n.absoluteBoundingBox?.height ?? 1 };
+  const fills = (n.fills ?? []).map((p) => paint(p, size)).filter(Boolean).reverse();
+  if (fills.length)
+    parts.push(`${n.type === "TEXT" ? "color" : "bg"} ${fills.join(", ")}`);
+  const strokes = (n.strokes ?? []).map((p) => paint(p, size)).filter(Boolean);
+  if (strokes.length && n.strokeWeight) {
+    const sides = n.individualStrokeWeights;
+    const w = sides ? `${sides.top} ${sides.right} ${sides.bottom} ${sides.left}` : r24(n.strokeWeight);
+    parts.push(`border ${w} ${(n.strokeAlign ?? "INSIDE").toLowerCase()} ${strokes.join(" + ")}${n.strokeDashes?.length ? " dashed" : ""}`);
+  }
+  if (n.rectangleCornerRadii)
+    parts.push(`radius ${n.rectangleCornerRadii.map(r24).join(" ")}`);
+  else if (n.cornerRadius)
+    parts.push(`radius ${r24(n.cornerRadius)}`);
+  parts.push(...effects(n), ...layout(n));
+  const drift = layoutDrift(n);
+  if (drift)
+    parts.push(`LAYOUT DRIFT (${drift}) \u2192 trust the render`);
+  if (icon || masked) {
+    const e = exportBounds(n);
+    if (e && b && [e.x - b.x, e.y - b.y, e.w - b.width, e.h - b.height].some((d) => Math.abs(d) > 0.5)) {
+      parts.push(`export[${r24(e.x - ctx.ox)},${r24(e.y - ctx.oy)} ${r24(e.w)}x${r24(e.h)}]`);
+    }
+  }
+  if (icon) {
+    parts.push("ICON \u2192 render as svg");
+    ctx.icons++;
+  }
+  if (masked) {
+    parts.push("MASKED \u2192 render as svg or png");
+    ctx.icons++;
+  }
+  ctx.lines.push("  ".repeat(depth) + parts.join(" "));
+  if (icon || masked)
+    return;
+  const kids = (n.children ?? []).filter((c) => c.visible !== false);
+  if (depth >= ctx.maxDepth) {
+    if (kids.length)
+      ctx.lines.push("  ".repeat(depth + 1) + `\u2026 ${kids.length} children (raise --depth or run spec on ${n.id})`);
+    return;
+  }
+  for (const c of kids)
+    walk(c, depth + 1, ctx);
+}
+function findNode(nodes, id) {
+  const search = (n) => n.id === id ? n : (n.children ?? []).reduce((hit, c) => hit ?? search(c), null);
+  for (const v of Object.values(nodes ?? {})) {
+    const hit = v?.document && search(v.document);
+    if (hit)
+      return hit;
+  }
+  return null;
+}
+async function spec(argv) {
+  const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "origin", "from", "html"], bool: ["help", "refresh"], alias: { h: "help", o: "out" } });
+  if (flags.help || !positionals[0])
+    showHelp("spec");
+  const target = parseTarget(positionals[0]);
+  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
+  if (!ids.length && target.nodeId)
+    ids.push(target.nodeId);
+  if (!ids.length)
+    fail(EXIT_USAGE, "Name the node: a URL with node-id, or node ids after the file.");
+  let body;
+  const fromFile = str(flags.from);
+  if (fromFile) {
+    if (!existsSync4(fromFile))
+      fail(EXIT_USAGE, `File not found: ${fromFile}`);
+    body = readData(fromFile);
+  } else {
+    body = await getJson(`/v1/files/${target.fileKey}/nodes?${new URLSearchParams({ ids: ids.join(",") })}`, { cache: true, refresh: !!flags.refresh });
+  }
+  if (flags.html)
+    return writeHtml(target.fileKey, ids, body, resolve5(str(flags.html)), !!flags.refresh);
+  const maxDepth = Number(str(flags.depth) ?? 99);
+  const lines = [];
+  let icons = 0;
+  let originRoot = null;
+  if (flags.origin) {
+    const o = /^(-?[\d.]+),(-?[\d.]+)$/.exec(String(flags.origin));
+    if (!o)
+      fail(EXIT_USAGE, "--origin takes x,y, e.g. --origin 0,80");
+    originRoot = { x: Number(o[1]), y: Number(o[2]) };
+  }
+  for (const id of ids) {
+    const doc = body.nodes?.[id]?.document ?? findNode(body.nodes, id);
+    if (!doc) {
+      lines.push(`# ${id}: not found`);
+      continue;
+    }
+    const b = doc.absoluteBoundingBox ?? { x: 0, y: 0 };
+    const ctx = { ox: originRoot?.x ?? b.x, oy: originRoot?.y ?? b.y, lines, maxDepth, icons: 0 };
+    lines.push(`# ${doc.name} (${id}); boxes are [x,y wxh] relative to ${originRoot ? `canvas point ${originRoot.x},${originRoot.y}` : "this node"}`);
+    walk(doc, 0, ctx);
+    icons += ctx.icons;
+  }
+  const text = lines.join(`
+`) + `
+`;
+  const outPath = str(flags.out);
+  if (outPath) {
+    const p = resolve5(outPath);
+    mkdirSync6(dirname4(p), { recursive: true });
+    writeFileSync7(p, text);
+    out({ ok: true, path: p, lines: lines.length, icons });
+  } else {
+    process.stdout.write(text);
+  }
+}
+async function writeHtml(fileKey, ids, body, dir, refresh) {
+  if (ids.length !== 1)
+    fail(EXIT_USAGE, "--html builds one page: name one node.");
+  const doc = body.nodes?.[ids[0]]?.document ?? findNode(body.nodes, ids[0]);
+  if (!doc)
+    fail(EXIT_USAGE, `Node ${ids[0]} is not in the data.`);
+  if (!doc.absoluteBoundingBox)
+    fail(EXIT_USAGE, `${doc.name} has no box: pick a frame, not a page.`);
+  const page = emitHtml(doc, doc.name);
+  const assets = join6(dir, "assets");
+  const keep = !refresh;
+  const svgFiles = await renderNodes(fileKey, page.svg, { format: "svg", scale: 1, name: (id) => join6(assets, "svg", `${safeId(id)}.svg`), keep });
+  const pngFiles = await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join6(assets, "png", `${safeId(id)}.png`), keep });
+  const fillFiles = page.fills.length ? await downloadFills(fileKey, page.fills, join6(assets, "fills"), keep) : {};
+  const rel = (p) => p ? relative(dir, p).split("\\").join("/") : undefined;
+  const byId = (list) => new Map(list.map((f) => [f.id, f.path]));
+  const svgs = byId(svgFiles), pngs = byId(pngFiles);
+  const notes = [...page.notes];
+  let html = linkAssets(page.html, { svg: (id) => rel(svgs.get(id)), png: (id) => rel(pngs.get(id)), fill: (ref) => rel(fillFiles[ref]) }, notes);
+  const fonts = {};
+  for (const family of page.fonts) {
+    const has = await googleHas(family);
+    if (has) {
+      fonts[family] = "Google Fonts";
+      continue;
+    }
+    if (has === undefined) {
+      fonts[family] = "not checked: Google Fonts could not be reached";
+      continue;
+    }
+    const list = samples(doc, family);
+    if (!list.length) {
+      fonts[family] = "not on Google Fonts; no one-line text to measure a stand-in by: add its files with @font-face";
+      continue;
+    }
+    process.stderr.write(`figma-access: "${family}" is not on Google Fonts; measuring stand-ins against ${list.length} of its texts
+`);
+    const best = closest(await measureCandidates(list) ?? {});
+    if (!best) {
+      fonts[family] = "not on Google Fonts; no stand-in measured (no Chrome found, or the fonts did not load): add its files with @font-face";
+      continue;
+    }
+    html = useStandIn(html, family, best.family, best.ratio);
+    fonts[family] = `not on Google Fonts: stand-in ${best.family}, texts ${Math.round(Math.abs(best.ratio - 1) * 1000) / 10}% ${best.ratio >= 1 ? "wider" : "narrower"} over ${list.length} texts; add its files with @font-face and they take over`;
+  }
+  mkdirSync6(dir, { recursive: true });
+  const path = join6(dir, "index.html");
+  writeFileSync7(path, html);
+  const grouped = new Map;
+  for (const n of notes) {
+    const key = n.note.replace(/\(.*\)/, "(...)");
+    grouped.set(key, [...grouped.get(key) ?? [], n]);
+  }
+  out({
+    ok: true,
+    path,
+    assets: { svg: svgFiles.filter((f) => f.path).length, png: pngFiles.filter((f) => f.path).length, fills: Object.keys(fillFiles).length },
+    fonts,
+    notes: [...grouped.entries()].map(([note, list]) => ({ note, count: list.length, nodes: list.slice(0, 6).map((n) => `${n.id}${n.name ? ` ${n.name}` : ""}`) })),
+    next: "Measure with `compare <reference.png> <index.html> --nodes <node file> --apply-css`, then refine section by section until each differs by less than 5%."
+  });
+}
+var union = (a, b) => {
+  if (!a)
+    return b;
+  if (!b)
+    return a;
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+};
+var intersect = (a, b) => {
+  if (!a || !b)
+    return null;
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const w = Math.min(a.x + a.w, b.x + b.w) - x;
+  const h = Math.min(a.y + a.h, b.y + b.h) - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+};
+function grow(r, d) {
+  return { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d };
+}
+function withEffects(n, r) {
+  let out = r;
+  const strokes = (n.strokes ?? []).some((s) => s.visible !== false) && n.strokeWeight;
+  if (strokes && n.strokeAlign === "OUTSIDE")
+    out = grow(out, n.strokeWeight);
+  else if (strokes && n.strokeAlign === "CENTER")
+    out = grow(out, n.strokeWeight / 2);
+  let total = out;
+  for (const e of n.effects ?? []) {
+    if (e.visible === false)
+      continue;
+    if (e.type === "DROP_SHADOW") {
+      const s = grow({ x: out.x + (e.offset?.x ?? 0), y: out.y + (e.offset?.y ?? 0), w: out.w, h: out.h }, (e.radius ?? 0) + (e.spread ?? 0));
+      total = union(total, s);
+    } else if (e.type === "LAYER_BLUR") {
+      total = union(total, grow(out, e.radius ?? 0));
+    }
+  }
+  return total;
+}
+function exportBounds(n) {
+  if (n.visible === false)
+    return null;
+  const b = n.absoluteBoundingBox;
+  let r = b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
+  const kids = (n.children ?? []).filter((c) => c.visible !== false);
+  if (kids.length && !n.clipsContent) {
+    const own = n.type === "GROUP" || n.type === "BOOLEAN_OPERATION" ? null : r;
+    const maskAt = kids.findIndex((c) => c.isMask);
+    if (maskAt >= 0) {
+      let content = null;
+      for (const c of kids.slice(maskAt + 1))
+        content = union(content, exportBounds(c));
+      const before = kids.slice(0, maskAt).reduce((acc, c) => union(acc, exportBounds(c)), own);
+      r = union(before, intersect(exportBounds({ ...kids[maskAt], effects: [] }), content));
+    } else {
+      r = kids.reduce((acc, c) => union(acc, exportBounds(c)), own);
+    }
+  }
+  return r ? withEffects(n, r) : null;
 }
 
 // src/main.ts

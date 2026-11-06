@@ -139,7 +139,7 @@ export function emitHtml(root: any, title: string): Emitted {
   }
 
   /** Fills, strokes, radii, effects, opacity and blend of a box. */
-  function paintProps(n: any, layers: string[]): string[] {
+  function paintProps(n: any, layers: string[], over: string[] = []): string[] {
     const p: string[] = [];
     const size = { w: n.size?.x ?? n.absoluteBoundingBox.width, h: n.size?.y ?? n.absoluteBoundingBox.height };
     const bg: { image: string; size?: string; pos?: string; repeat?: string }[] = [];
@@ -187,7 +187,9 @@ export function emitHtml(root: any, title: string): Emitted {
     if (strokes.length && n.strokeWeight) {
       const top = strokes[strokes.length - 1];
       let c = top.type === "SOLID" ? color(top.color, top.opacity ?? 1) : null;
-      if (!c && top.gradientStops?.length) {
+      const ring = !c && !n.strokeDashes?.length ? strokeLayer(n, top, size) : undefined;
+      if (ring) over.push(ring);
+      else if (!c && top.gradientStops?.length) {
         c = color(top.gradientStops[0].color, top.opacity ?? 1);
         note(n, "gradient stroke: drawn in its first colour");
       }
@@ -220,6 +222,27 @@ export function emitHtml(root: any, title: string): Emitted {
     if (shadows.length) p.push(`box-shadow:${shadows.join(",")}`);
     if (filters.length) p.push(`filter:${filters.join(" ")}`);
     return p.concat(common(n));
+  }
+
+  /** A gradient stroke: a ring of the gradient over the box, cut out with a mask; it takes no space. */
+  function strokeLayer(n: any, f: any, size: { w: number; h: number }): string | undefined {
+    let g = paint(f, size);
+    if (!g || g.includes(" ROTATED ")) return undefined;
+    g = g.replace("diamond-gradient", "radial-gradient");
+    const w = n.strokeWeight;
+    const align = n.strokeAlign ?? "INSIDE";
+    const out = align === "INSIDE" ? 0 : align === "CENTER" ? w / 2 : w;
+    const s = n.individualStrokeWeights;
+    const pad = s ? [s.top, s.right, s.bottom, s.left].map((v: number) => px(v ?? 0)).join(" ") : px(w);
+    const radius = n.type === "ELLIPSE" ? "50%"
+      : n.rectangleCornerRadii ? n.rectangleCornerRadii.map((r: number) => px(r ? r + out : 0)).join(" ")
+      : n.cornerRadius ? px(n.cornerRadius + out) : "0";
+    const style = [
+      "position:absolute", `inset:${px(-out)}`, `padding:${pad}`, `border-radius:${radius}`, `background:${g}`,
+      "-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0)", "-webkit-mask-composite:xor",
+      "mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)", "pointer-events:none",
+    ].join(";");
+    return `<div style="${style}"></div>`;
   }
 
   function common(n: any): string[] {
@@ -368,11 +391,11 @@ export function emitHtml(root: any, title: string): Emitted {
     }
 
     // A box: frame, group, component, instance, section or plain shape.
-    const layers: string[] = [];
+    const layers: string[] = [], over: string[] = [];
     const fluid = place.kind === "root" || ((place.kind === "stack" || place.kind === "flex") && place.fluid);
     const props = placement(n, place, {});
     const isRoot = place.kind === "root";
-    const own = paintProps(isRoot ? { ...n, effects: [] } : n, layers);
+    const own = paintProps(isRoot ? { ...n, effects: [] } : n, layers, over);
     props.push(...own, "box-sizing:border-box");
     if (n.clipsContent) props.push("overflow:hidden");
     const kids = shown(n);
@@ -446,7 +469,7 @@ export function emitHtml(root: any, title: string): Emitted {
     }
     if (n.type === "ELLIPSE") props.push("border-radius:50%");
     rule(c, props);
-    return `<div class="${c}">${layers.join("")}${body}</div>`;
+    return `<div class="${c}">${layers.join("")}${body}${over.join("")}</div>`;
   }
 
   const pageW: number = root.absoluteBoundingBox.width;

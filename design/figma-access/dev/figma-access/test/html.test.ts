@@ -163,3 +163,19 @@ test("a truncated text wraps and is cut at the last line its box holds", () => {
   expect(r).toContain("clip-path:inset(0 0 8px 0)");
   expect(rule(html, "box__one-line-only")).toContain("white-space:nowrap");
 });
+
+test("a gradient stroke is a masked ring over the box, outside strokes grow it", () => {
+  const root = {
+    id: "1:1", name: "Card", type: "FRAME", ...box(0, 0, 200, 100), cornerRadius: 16, strokeWeight: 2, strokeAlign: "OUTSIDE",
+    strokes: [{
+      type: "GRADIENT_LINEAR", gradientHandlePositions: [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }],
+      gradientStops: [{ position: 0, color: { r: 1, g: 1, b: 1, a: 0.5 } }, { position: 1, color: { r: 1, g: 1, b: 1, a: 0 } }],
+    }],
+    children: [text("2:1", "Hi", 10, 10)],
+  };
+  const e = emitHtml(root, "t");
+  expect(rule(e.html, "card__card")).not.toContain("box-shadow");
+  expect(e.html).toMatch(/<div style="position:absolute;inset:-2px;padding:2px;border-radius:18px;background:linear-gradient\([^"]*mask-composite:xor[^"]*"><\/div><\/div>/);
+  expect(e.html.indexOf("Hi<")).toBeLessThan(e.html.indexOf("inset:-2px"));
+  expect(e.notes.some((n) => n.note.includes("gradient stroke"))).toBe(false);
+});

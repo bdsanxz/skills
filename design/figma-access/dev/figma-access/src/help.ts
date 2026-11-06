@@ -200,11 +200,14 @@ Hidden layers are skipped. Each line holds, in this order, the fields that apply
 With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/assets/. Auto
 layout becomes flex from its rules, children of groups and frames without auto layout sit at
 their boxes, the frame and its page-wide sections span the window while narrower parts stay
-centred, text is live and its fonts are asked from Google Fonts, and icons, masks and image layers
+centred, text is live, gradient strokes are masked rings, and icons, masks and image layers
 are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
 image file. The first run asks Figma to render every asset and downloads them (about a minute for
 two hundred; progress goes to stderr). Assets already in <dir>/assets are kept unless --refresh is
-given. It prints the fonts and notes on what it could only approximate. Measure the page with
+given. It checks each font family with Google Fonts; for a family Google does not have, it measures
+its one-line texts in a set of Google sans families in headless Chrome, and puts the closest in
+width behind it in every font-family list (add the real files with @font-face and they take over).
+It prints the fonts, with the stand-ins, and notes on what it could only approximate. Measure the page with
 \`compare --apply-css\` and refine it.
 
   --depth <n>       Stop after n levels (default: all).

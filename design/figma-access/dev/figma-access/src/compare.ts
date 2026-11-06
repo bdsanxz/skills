@@ -23,7 +23,8 @@ const CHROME_PATHS = [
 ];
 const CHROME_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "microsoft-edge"];
 
-function findChrome(): string {
+/** The Chrome, Chromium or Edge to run headless, if one is installed. */
+export function chromePath(): string | undefined {
   const env = process.env.CHROME_PATH;
   if (env && existsSync(env)) return env;
   for (const p of CHROME_PATHS) if (existsSync(p)) return p;
@@ -31,6 +32,12 @@ function findChrome(): string {
     const p = Bun.which(n);
     if (p) return p;
   }
+  return undefined;
+}
+
+function findChrome(): string {
+  const found = chromePath();
+  if (found) return found;
   fail(EXIT_UNAVAILABLE, "No Chrome, Chromium or Edge found to capture the page.", {
     hint: "Install one, or set CHROME_PATH to its executable. Or capture the page yourself and pass the PNG instead of the page.",
   });
