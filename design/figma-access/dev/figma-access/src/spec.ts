@@ -226,7 +226,7 @@ interface Ctx {
 }
 
 // Nodes that are only vectors underneath are icons or illustrations: one line, export them whole.
-function vectorOnly(n: any): boolean {
+export function vectorOnly(n: any): boolean {
   if (["VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON", "REGULAR_POLYGON"].includes(n.type)) return true;
   if (n.type === "TEXT") return false;
   if ((n.fills ?? []).some((f: any) => f.type === "IMAGE" && f.visible !== false)) return false;

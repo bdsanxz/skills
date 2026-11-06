@@ -125,3 +125,38 @@ test("compare --wide: a page pinned to the left and a short background are both 
   expect(b.json.whole.differing).toBe(0);
   expect(b.json.wide.edgeDiffering).toBe(0);
 });
+
+test("compare --nodes: text sitting 1 px higher is reported per style, a missing node too", async () => {
+  // Frame at canvas (1000,2000), 200x120. Two text nodes of one style and an icon.
+  const text = (id: string, x: number, y: number) => ({
+    id, name: id, type: "TEXT", characters: "Label", style: { fontFamily: "Inter", fontWeight: 400, fontSize: 14, lineHeightPx: 20 },
+    absoluteBoundingBox: { x: 1000 + x, y: 2000 + y, width: 40, height: 10 },
+    absoluteRenderBounds: { x: 1000 + x, y: 2000 + y, width: 40, height: 10 },
+  });
+  const icon = {
+    id: "9:1", name: "icon", type: "VECTOR",
+    absoluteBoundingBox: { x: 1150, y: 2080, width: 12, height: 12 }, absoluteRenderBounds: { x: 1150, y: 2080, width: 12, height: 12 },
+  };
+  const frame = {
+    id: "1:1", name: "Frame", type: "FRAME", clipsContent: true,
+    absoluteBoundingBox: { x: 1000, y: 2000, width: 200, height: 120 }, absoluteRenderBounds: { x: 1000, y: 2000, width: 200, height: 120 },
+    children: [text("2:1", 20, 30), text("2:2", 120, 30), icon],
+  };
+  const nodeFile = join(DIR, "nodes.json");
+  writeFileSync(nodeFile, JSON.stringify({ nodes: { "1:1": { document: frame } } }));
+  const draw = (blocks: [number, number, number, number][]) => {
+    const img = page(200, 120, 0, 0, 0, 0);
+    for (const [bx, by, bw, bh] of blocks) for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) img.data.set([20, 40, 60, 255], (y * 200 + x) * 4);
+    return img;
+  };
+  const ref = join(DIR, "n-ref.png"), cap = join(DIR, "n-cap.png");
+  writeFileSync(ref, encodePng(draw([[20, 30, 40, 10], [120, 30, 40, 10], [150, 80, 12, 12]])));
+  writeFileSync(cap, encodePng(draw([[20, 29, 40, 10], [120, 29, 40, 10]]))); // texts 1 px up, icon gone
+  const { code, json } = await run([ref, cap, "--nodes", nodeFile]);
+  expect(code).toBe(0);
+  const style = json.nodes.styles.find((s: any) => s.style === "Inter 400 14/20");
+  expect(style).toMatchObject({ count: 2, dy: -1, dx: 0, widthRatio: 1 });
+  expect(style.hint).toContain("1 px higher");
+  expect(json.nodes.list.find((n: any) => n.id === "9:1").missing).toBe(true);
+  expect((await run([ref, cap, "--nodes", nodeFile, "--node", "7:7"])).code).toBe(2);
+});

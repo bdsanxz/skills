@@ -2825,7 +2825,8 @@ entries in \`spec\` name the ones the visible design uses.
 
   -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/image-fills/).`,
   compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
-                          [--crop x,y,w,h] [--width n] [--shift n] [--threshold n] [--wide n] [--wait ms] [-o dir]
+                          [--nodes file.kdl [--node id]] [--crop x,y,w,h] [--width n] [--shift n]
+                          [--threshold n] [--wide n] [--wait ms] [-o dir]
 
 Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
 then prints, for the whole page and each section, the share of differing pixels (a channel off by
@@ -2840,6 +2841,14 @@ differing pixels red) to the output directory; open diff.png to see where the pi
   --sections <spec>     Named areas in page pixels, separated by ";": name=x,y,w,h, or
                         name=top-bottom for a full-width band ("nav=0-48;cards=399,289,602,496").
                         Default: full-width bands of --band pixels (default 100).
+  --nodes <file.kdl>     The node file of the rendered node (from \`node ... -o\`): also measure each
+                        text, icon and image of the design on both images. Prints, per text style,
+                        how far its copies sit off (dy, dx) and how wide they are against the design
+                        (widthRatio), then the nodes that are off by half a pixel or more, or missing.
+                        Positive dx and dy: the page draws it further right or lower. On a busy
+                        background (a photo) a node is matched as a whole: whole-pixel dx and dy,
+                        no widthRatio.
+  --node <id>           The rendered node inside that file, when it is not the file's first node.
   --crop x,y,w,h        Use only this part of the reference, e.g. to leave out browser chrome.
   --width <px>          The page width in CSS pixels when the reference is not at scale 1
                         (a 2880 px wide render of a 1440 frame: --width 1440).
@@ -4314,6 +4323,214 @@ function encodePng(img) {
   return Buffer.concat([SIGNATURE, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
+// src/nodes.ts
+var r22 = (n) => Math.round(n * 100) / 100;
+function clipTo(a, b) {
+  if (!b)
+    return a;
+  const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+  const w = Math.min(a.x + a.w, b.x + b.w) - x, h = Math.min(a.y + a.h, b.y + b.h) - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+}
+function textStyle(n) {
+  const s = n.style ?? {};
+  const lh = s.lineHeightPx ? `/${r22(s.lineHeightPx)}` : "";
+  return `${s.fontFamily} ${s.fontWeight} ${r22(s.fontSize)}${lh}`;
+}
+function targets(root) {
+  const list = [];
+  const walk = (n, depth, clip) => {
+    if (n.visible === false)
+      return;
+    const b = n.absoluteRenderBounds ?? n.absoluteBoundingBox;
+    const own = b ? clipTo({ x: b.x, y: b.y, w: b.width, h: b.height }, clip) : null;
+    const image = (n.fills ?? []).some((f) => f.type === "IMAGE" && f.visible !== false);
+    if (depth > 0 && own) {
+      if (n.type === "TEXT" && String(n.characters ?? "").trim())
+        list.push({ node: n, kind: "text", rect: own, clip });
+      else if (image)
+        list.push({ node: n, kind: "image", rect: own, clip });
+      else if (vectorOnly(n)) {
+        list.push({ node: n, kind: "icon", rect: own, clip });
+        return;
+      }
+    }
+    if (n.clipsContent && n.absoluteBoundingBox) {
+      const c = n.absoluteBoundingBox;
+      clip = clipTo({ x: c.x, y: c.y, w: c.width, h: c.height }, clip) ?? { x: 0, y: 0, w: 0, h: 0 };
+    }
+    for (const c of n.children ?? [])
+      walk(c, depth + 1, clip);
+  };
+  walk(root, 0, null);
+  return list;
+}
+function renderOrigin(root) {
+  const e = exportBounds(root);
+  const b = root.absoluteBoundingBox ?? { x: 0, y: 0 };
+  return e ? { x: e.x, y: e.y } : { x: b.x, y: b.y };
+}
+function ink(rgb, W, H, r, threshold) {
+  const x0 = Math.max(0, Math.floor(r.x)), y0 = Math.max(0, Math.floor(r.y));
+  const x1 = Math.min(W, Math.ceil(r.x + r.w)), y1 = Math.min(H, Math.ceil(r.y + r.h));
+  if (x1 - x0 < 2 || y1 - y0 < 2)
+    return null;
+  const counts = new Map;
+  const edge = (x, y) => {
+    const i = (y * W + x) * 3;
+    const k = rgb[i] >> 2 << 12 | rgb[i + 1] >> 2 << 6 | rgb[i + 2] >> 2;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  };
+  for (let x = x0;x < x1; x++) {
+    edge(x, y0);
+    edge(x, y1 - 1);
+  }
+  for (let y = y0;y < y1; y++) {
+    edge(x0, y);
+    edge(x1 - 1, y);
+  }
+  let key = 0, best = -1, total = 0;
+  for (const [k, c] of counts) {
+    total += c;
+    if (c > best) {
+      best = c;
+      key = k;
+    }
+  }
+  const bg = [(key >> 12 & 63) * 4 + 2, (key >> 6 & 63) * 4 + 2, (key & 63) * 4 + 2];
+  let sw = 0, sx = 0, sy = 0;
+  const cols = new Float64Array(x1 - x0);
+  for (let y = y0;y < y1; y++) {
+    for (let x = x0;x < x1; x++) {
+      const i = (y * W + x) * 3;
+      const d = Math.max(Math.abs(rgb[i] - bg[0]), Math.abs(rgb[i + 1] - bg[1]), Math.abs(rgb[i + 2] - bg[2]));
+      if (d <= threshold)
+        continue;
+      sw += d;
+      sx += d * (x + 0.5);
+      sy += d * (y + 0.5);
+      cols[x - x0] = cols[x - x0] + d;
+    }
+  }
+  if (!sw)
+    return null;
+  const at = (share) => {
+    let acc = 0;
+    for (let i = 0;i < cols.length; i++) {
+      acc += cols[i];
+      if (acc >= share * sw)
+        return x0 + i + (share * sw - (acc - cols[i])) / cols[i];
+    }
+    return x1;
+  };
+  return { cx: sx / sw, cy: sy / sw, x0: at(0.02), x1: at(0.98), weight: sw, flat: best / total };
+}
+function bestShift(ref, cap, W, H, r, max) {
+  const x0 = Math.max(0, Math.round(r.x)), y0 = Math.max(0, Math.round(r.y));
+  const x1 = Math.min(W, Math.round(r.x + r.w)), y1 = Math.min(H, Math.round(r.y + r.h));
+  let best = { dx: 0, dy: 0, err: Infinity };
+  for (let dy = -max;dy <= max; dy++) {
+    for (let dx = -max;dx <= max; dx++) {
+      let sum = 0, n = 0;
+      for (let y = y0;y < y1; y++) {
+        const cy = y + dy;
+        if (cy < 0 || cy >= H)
+          continue;
+        for (let x = x0;x < x1; x++) {
+          const cx = x + dx;
+          if (cx < 0 || cx >= W)
+            continue;
+          const i = (y * W + x) * 3, j = (cy * W + cx) * 3;
+          sum += Math.abs(ref[i] - cap[j]) + Math.abs(ref[i + 1] - cap[j + 1]) + Math.abs(ref[i + 2] - cap[j + 2]);
+          n++;
+        }
+      }
+      const err = n ? sum / n : Infinity;
+      if (err < best.err - 0.05 || Math.abs(err - best.err) <= 0.05 && Math.abs(dx) + Math.abs(dy) < Math.abs(best.dx) + Math.abs(best.dy))
+        best = { dx, dy, err };
+    }
+  }
+  return best;
+}
+function measureNodes(root, origin, ref, cap, W, H, scale, threshold) {
+  const out = [];
+  for (const t of targets(root)) {
+    const css = { x: t.rect.x - origin.x, y: t.rect.y - origin.y, w: t.rect.w, h: t.rect.h };
+    const px = { x: css.x * scale, y: css.y * scale, w: css.w * scale, h: css.h * scale };
+    if (px.x + px.w <= 0 || px.y + px.h <= 0 || px.x >= W || px.y >= H)
+      continue;
+    const m = { id: t.node.id, name: t.node.name, kind: t.kind, box: [r22(css.x), r22(css.y), r22(css.w), r22(css.h)] };
+    if (t.kind === "text")
+      m.style = textStyle(t.node);
+    if (t.kind === "image") {
+      const s = bestShift(ref, cap, W, H, px, Math.round(4 * scale));
+      m.dx = r22(s.dx / scale);
+      m.dy = r22(s.dy / scale);
+      out.push(m);
+      continue;
+    }
+    const padX = (4 + (t.kind === "text" ? css.w * 0.2 : 0)) * scale, padY = 4 * scale;
+    const clip = t.clip && { x: (t.clip.x - origin.x) * scale, y: (t.clip.y - origin.y) * scale, w: t.clip.w * scale, h: t.clip.h * scale };
+    const area = clipTo({ x: px.x - padX, y: px.y - padY, w: px.w + 2 * padX, h: px.h + 2 * padY }, clip);
+    if (!area)
+      continue;
+    const a = ink(ref, W, H, area, threshold);
+    if (!a)
+      continue;
+    if (a.flat < 0.5) {
+      const s = bestShift(ref, cap, W, H, area, Math.round(4 * scale));
+      m.dx = r22(s.dx / scale);
+      m.dy = r22(s.dy / scale);
+      out.push(m);
+      continue;
+    }
+    const b = ink(cap, W, H, area, threshold);
+    if (!b || b.weight < a.weight * 0.1) {
+      m.missing = true;
+      out.push(m);
+      continue;
+    }
+    m.dx = r22((b.cx - a.cx) / scale);
+    m.dy = r22((b.cy - a.cy) / scale);
+    if (t.kind === "text")
+      m.widthRatio = r22((b.x1 - b.x0) / (a.x1 - a.x0));
+    out.push(m);
+  }
+  return out;
+}
+var median = (v) => {
+  const s = [...v].sort((a, b) => a - b);
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+};
+function styleSummary(nodes) {
+  const groups = new Map;
+  for (const n of nodes)
+    if (n.kind === "text" && !n.missing)
+      groups.set(n.style, [...groups.get(n.style) ?? [], n]);
+  return [...groups.entries()].map(([style, list]) => {
+    const dy = median(list.map((n) => n.dy)), dx = median(list.map((n) => n.dx));
+    const widths = list.filter((n) => n.widthRatio !== undefined).map((n) => n.widthRatio);
+    const wr = widths.length ? median(widths) : 1;
+    const same = list.filter((n) => Math.abs(n.dy - dy) <= 0.3).length / list.length;
+    const s = { style, count: list.length, dy: r22(dy), dx: r22(dx) };
+    if (widths.length)
+      s.widthRatio = r22(wr);
+    const hints = [];
+    if (Math.abs(dy) >= 0.5 && same >= 0.75) {
+      hints.push(`Every copy sits ${r22(Math.abs(dy))} px ${dy > 0 ? "lower" : "higher"}: correct it once for this style, if the boxes around it match.`);
+    }
+    if (Math.abs(wr - 1) > 0.02)
+      hints.push(`Text is ${r22(Math.abs(wr - 1) * 100)}% ${wr > 1 ? "wider" : "narrower"}: check the font file, weight and letter spacing.`);
+    if (hints.length)
+      s.hint = hints.join(" ");
+    return s;
+  }).sort((a, b) => Math.abs(b.dy) - Math.abs(a.dy));
+}
+function offNodes(nodes) {
+  const size = (n) => n.missing ? 1000 : Math.hypot(n.dx ?? 0, n.dy ?? 0) + Math.abs((n.widthRatio ?? 1) - 1) * 20;
+  return nodes.filter((n) => n.missing || Math.abs(n.dx ?? 0) >= 0.5 || Math.abs(n.dy ?? 0) >= 0.5 || Math.abs((n.widthRatio ?? 1) - 1) > 0.02).sort((a, b) => size(b) - size(a));
+}
+
 // src/compare.ts
 var CHROME_PATHS = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -4414,7 +4631,7 @@ function parseSections(text, width) {
     return { name: m[1].trim(), x, y, w, h };
   });
 }
-var r22 = (n) => Math.round(n * 100) / 100;
+var r23 = (n) => Math.round(n * 100) / 100;
 function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
   let n = 0, diff = 0, sum = 0;
   for (let y = r.y;y < r.y + r.h; y++) {
@@ -4440,7 +4657,7 @@ function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
 }
 async function compare(argv) {
   const { flags, positionals } = parseArgs(argv, {
-    value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out"],
+    value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out", "nodes", "node"],
     bool: ["help"],
     alias: { h: "help", o: "out" }
   });
@@ -4448,9 +4665,24 @@ async function compare(argv) {
     showHelp("compare");
   const [refPath, page] = positionals;
   let ref = readPng(resolve5(refPath), "reference image");
+  let cropAt = { x: 0, y: 0 };
   if (flags.crop) {
     const [x, y, w, h] = parseNumbers(str(flags.crop), 4, "--crop");
     ref = crop(ref, { x, y, w, h });
+    cropAt = { x, y };
+  }
+  let root = null;
+  if (flags.nodes) {
+    const file = resolve5(str(flags.nodes));
+    if (!existsSync4(file))
+      fail(EXIT_USAGE, `No such node file: ${file}`);
+    const body = readData(file);
+    const want = str(flags.node)?.replace(/-/g, ":");
+    const search = (n) => n.id === want ? n : (n.children ?? []).reduce((hit, c) => hit ?? search(c), null);
+    const docs = Object.values(body.nodes ?? {}).map((v) => v?.document).filter(Boolean);
+    root = want ? docs.reduce((hit, d) => hit ?? search(d), null) : docs[0];
+    if (!root)
+      fail(EXIT_USAGE, want ? `Node ${want} is not in ${file}.` : `${file} holds no node; save one with \`node <key> <id> -o <file>\`.`);
   }
   const cssWidth = Number(str(flags.width) ?? ref.width);
   const scale = ref.width / cssWidth;
@@ -4495,7 +4727,7 @@ async function compare(argv) {
       fail(EXIT_USAGE, `Section "${s.name}" (${s.x},${s.y},${s.w},${s.h}) falls outside the ${cssWidth}x${cssHeight} page.`);
     }
     const base = measure(refRgb, capRgb, W, H, r, 0, 0, threshold);
-    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r22(base.differing), mean: r22(base.mean) };
+    const entry = { name: s.name, box: [s.x, s.y, s.w, s.h], differing: r23(base.differing), mean: r23(base.mean) };
     let best = { dx: 0, dy: 0, differing: base.differing };
     const step = Math.max(1, Math.round(scale));
     for (let dy = -maxShift * step;dy <= maxShift * step; dy += step) {
@@ -4508,8 +4740,8 @@ async function compare(argv) {
       }
     }
     if (best.differing < base.differing * 0.5 && base.differing > 0.5) {
-      const dxCss = r22(best.dx / scale), dyCss = r22(best.dy / scale);
-      entry.shift = { dx: dxCss, dy: dyCss, differing: r22(best.differing) };
+      const dxCss = r23(best.dx / scale), dyCss = r23(best.dy / scale);
+      entry.shift = { dx: dxCss, dy: dyCss, differing: r23(best.differing) };
       entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
     }
     return entry;
@@ -4532,12 +4764,26 @@ async function compare(argv) {
     capture: capPath,
     diff: diffPath,
     page: [cssWidth, cssHeight],
-    scale: r22(scale),
+    scale: r23(scale),
     threshold,
-    whole: { differing: r22(whole.differing), mean: r22(whole.mean) },
+    whole: { differing: r23(whole.differing), mean: r23(whole.mean) },
     sections: results,
     worst: [...results].sort((a, b) => b.differing - a.differing)[0]?.name
   };
+  if (root) {
+    const o = renderOrigin(root);
+    const origin = { x: o.x + cropAt.x / scale, y: o.y + cropAt.y / scale };
+    const measured = measureNodes(root, origin, refRgb, capRgb, W, H, scale, threshold);
+    const off = offNodes(measured);
+    report.nodes = {
+      root: root.id,
+      measured: measured.length,
+      off: off.length,
+      styles: styleSummary(measured),
+      list: off.slice(0, 40),
+      ...off.length > 40 ? { more: `${off.length - 40} more nodes are off; fix the styles and sections above first, then compare again.` } : {}
+    };
+  }
   if (flags.wide) {
     const wide = Number(str(flags.wide));
     if (!(wide > cssWidth))
@@ -4565,15 +4811,15 @@ async function compare(argv) {
     const w = {
       width: wide,
       capture: widePath,
-      centredDiffering: r22(centred.differing),
-      leftDiffering: r22(left.differing),
-      edgeDiffering: r22(edge)
+      centredDiffering: r23(centred.differing),
+      leftDiffering: r23(left.differing),
+      edgeDiffering: r23(edge)
     };
     const hints = [];
     if (left.differing < centred.differing)
       hints.push("The content stays at the left edge of a wider window. Centre the content column (margin: 0 auto) unless the user asked for a fixed width.");
     if (edge > 2)
-      hints.push(`The window's edges differ from the design's edges in ${r22(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
+      hints.push(`The window's edges differ from the design's edges in ${r23(edge)}% of rows: backgrounds, bars or dividers stop short of the window. Let them span its full width.`);
     w.hint = hints.length ? hints.join(" ") : "The content stays centred and the backgrounds reach the window's edges.";
     report.wide = w;
   }

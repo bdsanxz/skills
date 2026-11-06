@@ -210,7 +210,8 @@ entries in \`spec\` name the ones the visible design uses.
   -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/image-fills/).`,
 
   compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
-                          [--crop x,y,w,h] [--width n] [--shift n] [--threshold n] [--wide n] [--wait ms] [-o dir]
+                          [--nodes file.kdl [--node id]] [--crop x,y,w,h] [--width n] [--shift n]
+                          [--threshold n] [--wide n] [--wait ms] [-o dir]
 
 Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
 then prints, for the whole page and each section, the share of differing pixels (a channel off by
@@ -225,6 +226,14 @@ differing pixels red) to the output directory; open diff.png to see where the pi
   --sections <spec>     Named areas in page pixels, separated by ";": name=x,y,w,h, or
                         name=top-bottom for a full-width band ("nav=0-48;cards=399,289,602,496").
                         Default: full-width bands of --band pixels (default 100).
+  --nodes <file.kdl>     The node file of the rendered node (from \`node ... -o\`): also measure each
+                        text, icon and image of the design on both images. Prints, per text style,
+                        how far its copies sit off (dy, dx) and how wide they are against the design
+                        (widthRatio), then the nodes that are off by half a pixel or more, or missing.
+                        Positive dx and dy: the page draws it further right or lower. On a busy
+                        background (a photo) a node is matched as a whole: whole-pixel dx and dy,
+                        no widthRatio.
+  --node <id>           The rendered node inside that file, when it is not the file's first node.
   --crop x,y,w,h        Use only this part of the reference, e.g. to leave out browser chrome.
   --width <px>          The page width in CSS pixels when the reference is not at scale 1
                         (a 2880 px wide render of a 1440 frame: --width 1440).

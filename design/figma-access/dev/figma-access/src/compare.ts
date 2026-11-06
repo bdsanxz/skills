@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url";
 import { EXIT_FAILED, EXIT_UNAVAILABLE, EXIT_USAGE } from "./config";
 import { showHelp } from "./help";
 import { decodePng, encodePng, type Image } from "./png";
-import { fail, out, parseArgs, str } from "./util";
+import { measureNodes, offNodes, renderOrigin, styleSummary } from "./nodes";
+import { fail, out, parseArgs, readData, str } from "./util";
 
 interface Rect { x: number; y: number; w: number; h: number }
 interface Section extends Rect { name: string }
@@ -129,16 +130,30 @@ function measure(ref: Uint8Array, cap: Uint8Array, W: number, H: number, r: Rect
 
 export async function compare(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, {
-    value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out"],
+    value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out", "nodes", "node"],
     bool: ["help"],
     alias: { h: "help", o: "out" },
   });
   if (flags.help || positionals.length < 2) showHelp("compare");
   const [refPath, page] = positionals as [string, string];
   let ref = readPng(resolve(refPath), "reference image");
+  let cropAt = { x: 0, y: 0 };
   if (flags.crop) {
     const [x, y, w, h] = parseNumbers(str(flags.crop)!, 4, "--crop");
     ref = crop(ref, { x: x!, y: y!, w: w!, h: h! });
+    cropAt = { x: x!, y: y! };
+  }
+  // The design's nodes, for per-node measurement: a file saved by `node`, and the rendered node.
+  let root: any = null;
+  if (flags.nodes) {
+    const file = resolve(str(flags.nodes)!);
+    if (!existsSync(file)) fail(EXIT_USAGE, `No such node file: ${file}`);
+    const body = readData(file);
+    const want = str(flags.node)?.replace(/-/g, ":");
+    const search = (n: any): any => (n.id === want ? n : (n.children ?? []).reduce((hit: any, c: any) => hit ?? search(c), null));
+    const docs = Object.values(body.nodes ?? {}).map((v: any) => v?.document).filter(Boolean);
+    root = want ? docs.reduce((hit: any, d: any) => hit ?? search(d), null) : docs[0];
+    if (!root) fail(EXIT_USAGE, want ? `Node ${want} is not in ${file}.` : `${file} holds no node; save one with \`node <key> <id> -o <file>\`.`);
   }
   const cssWidth = Number(str(flags.width) ?? ref.width);
   const scale = ref.width / cssWidth;
@@ -228,6 +243,21 @@ export async function compare(argv: string[]) {
     sections: results,
     worst: [...results].sort((a, b) => (b.differing as number) - (a.differing as number))[0]?.name,
   };
+
+  if (root) {
+    const o = renderOrigin(root);
+    const origin = { x: o.x + cropAt.x / scale, y: o.y + cropAt.y / scale };
+    const measured = measureNodes(root, origin, refRgb, capRgb, W, H, scale, threshold);
+    const off = offNodes(measured);
+    report.nodes = {
+      root: root.id,
+      measured: measured.length,
+      off: off.length,
+      styles: styleSummary(measured),
+      list: off.slice(0, 40),
+      ...(off.length > 40 ? { more: `${off.length - 40} more nodes are off; fix the styles and sections above first, then compare again.` } : {}),
+    };
+  }
 
   if (flags.wide) {
     const wide = Number(str(flags.wide));
