@@ -7,6 +7,7 @@ import { EXIT_USAGE } from "./config";
 import { showHelp } from "./help";
 import { emitHtml, linkAssets, type Note } from "./html";
 import { downloadFills, getJson, parseTarget, renderNodes, safeId } from "./rest";
+import { blurs } from "./html";
 import { closest, googleHas, measureCandidates, samples, useStandIn } from "./fonts";
 import { fail, out, parseArgs, readData, str } from "./util";
 
@@ -291,7 +292,7 @@ function walk(n: any, depth: number, ctx: Ctx) {
     }
   }
   if (icon) {
-    parts.push("ICON → render as svg");
+    parts.push(blurs(n) ? "ICON → render as png (blurred: an SVG blur draws in another tone)" : "ICON → render as svg");
     ctx.icons++;
   }
   if (masked) {
@@ -377,7 +378,10 @@ async function writeHtml(fileKey: string, ids: string[], body: any, dir: string,
   const assets = join(dir, "assets");
   const keep = !refresh;
   const svgFiles = await renderNodes(fileKey, page.svg, { format: "svg", scale: 1, name: (id) => join(assets, "svg", `${safeId(id)}.svg`), keep });
-  const pngFiles = await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join(assets, "png", `${safeId(id)}.png`), keep });
+  const pngFiles = [
+    ...(await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join(assets, "png", `${safeId(id)}.png`), keep })),
+    ...(await renderNodes(fileKey, page.soft, { format: "png", scale: 1, name: (id) => join(assets, "png", `${safeId(id)}.png`), keep })),
+  ];
   const fillFiles = page.fills.length ? await downloadFills(fileKey, page.fills, join(assets, "fills"), keep) : {};
   const rel = (p: string | undefined) => (p ? relative(dir, p).split("\\").join("/") : undefined);
   const byId = (list: { id: string; path?: string }[]) => new Map(list.map((f) => [f.id, f.path]));
@@ -468,10 +472,31 @@ function withEffects(n: any, r: Rect): Rect {
   return total;
 }
 
+/**
+ * The box a turned ellipse's own outline covers: smaller than its stored box, which bounds the
+ * turned rectangle around it. At 45 degrees its width and height cannot be told apart: a circle.
+ */
+function ellipseBox(n: any, b: any): Rect {
+  const t = n.rotation ?? 0;
+  const c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t));
+  if (s < 1e-3 || c < 1e-3) return { x: b.x, y: b.y, w: b.width, h: b.height };
+  const det = c * c - s * s;
+  let w: number, h: number;
+  if (Math.abs(det) < 0.05 || Math.abs(b.width - b.height) < 0.5) w = h = b.width / (c + s);
+  else {
+    w = (b.width * c - b.height * s) / det;
+    h = (b.height * c - b.width * s) / det;
+    if (!(w > 0 && h > 0)) w = h = b.width / (c + s);
+  }
+  const hw = Math.hypot((w / 2) * c, (h / 2) * s), hh = Math.hypot((w / 2) * s, (h / 2) * c);
+  const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+  return { x: cx - hw, y: cy - hh, w: 2 * hw, h: 2 * hh };
+}
+
 export function exportBounds(n: any): Rect | null {
   if (n.visible === false) return null;
   const b = n.absoluteBoundingBox;
-  let r: Rect | null = b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
+  let r: Rect | null = b ? (n.type === "ELLIPSE" ? ellipseBox(n, b) : { x: b.x, y: b.y, w: b.width, h: b.height }) : null;
   const kids: any[] = (n.children ?? []).filter((c: any) => c.visible !== false);
   if (kids.length && !n.clipsContent) {
     // A frame always covers its own box; a group or boolean only covers its children.

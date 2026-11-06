@@ -194,8 +194,9 @@ Hidden layers are skipped. Each line holds, in this order, the fields that apply
                            counted): lay it out from its rules, not its boxes, and check the render.
   export[x,y wxh]          The area an exported file covers, where it differs from the box (clipping
                            by parents does not shrink an export: place the file there, clip it in code).
-  ICON → render as svg     A subtree of vectors only; MASKED → render as svg or png: a node holding a
-                           mask. Export those with \`render\` instead of rebuilding them.
+  ICON → render as svg     A subtree of vectors only (png when blurred: Chrome draws an SVG blur in
+                           another tone); MASKED → render as svg or png: a node holding a mask.
+                           Export those with \`render\` instead of rebuilding them.
 
 With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/assets/. Auto
 layout becomes flex from its rules, children of groups and frames without auto layout sit at

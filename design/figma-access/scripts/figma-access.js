@@ -2812,8 +2812,9 @@ Hidden layers are skipped. Each line holds, in this order, the fields that apply
                            counted): lay it out from its rules, not its boxes, and check the render.
   export[x,y wxh]          The area an exported file covers, where it differs from the box (clipping
                            by parents does not shrink an export: place the file there, clip it in code).
-  ICON \u2192 render as svg     A subtree of vectors only; MASKED \u2192 render as svg or png: a node holding a
-                           mask. Export those with \`render\` instead of rebuilding them.
+  ICON \u2192 render as svg     A subtree of vectors only (png when blurred: Chrome draws an SVG blur in
+                           another tone); MASKED \u2192 render as svg or png: a node holding a mask.
+                           Export those with \`render\` instead of rebuilding them.
 
 With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/assets/. Auto
 layout becomes flex from its rules, children of groups and frames without auto layout sit at
@@ -4121,7 +4122,7 @@ function emitHtml(root, title) {
   const block = slug(root.name) || "page";
   const css = [];
   const used = new Map([[`${block}__text`, 1]]);
-  const svg = new Set, png = new Set, fills = new Set, fonts = new Set;
+  const svg = new Set, png = new Set, soft = new Set, fills = new Set, fonts = new Set;
   const weights = new Map;
   const useFont = (family, weight) => {
     fonts.add(family);
@@ -4464,8 +4465,9 @@ function emitHtml(root, title) {
     const icon = depth > 0 && n.type !== "TEXT" && vectorOnly(n);
     const turned = depth > 0 && n.type !== "TEXT" && rotated(n);
     if (icon || masked || leafImage || turned) {
-      const kind = icon ? "svg" : "png";
-      (kind === "svg" ? svg : png).add(n.id);
+      const blurred = icon && blurs(n);
+      const kind = icon && !blurred ? "svg" : "png";
+      (blurred ? soft : kind === "svg" ? svg : png).add(n.id);
       const e = exportBounds(n) ?? { x: b.x, y: b.y, w: b.width, h: b.height };
       rule(c, placement(n, place, { frozen: true }));
       const img = `<img src="${ASSET_MARK}${kind}:${n.id}" alt="" style="position:absolute;left:${px(e.x - b.x)};top:${px(e.y - b.y)};width:${px(e.w)};height:${px(e.h)};max-width:none">`;
@@ -4606,7 +4608,14 @@ ${bodyHtml}
 </body>
 </html>
 `;
-  return { html, svg: [...svg], png: [...png], fills: [...fills], fonts: [...fonts], notes };
+  return { html, svg: [...svg], png: [...png], soft: [...soft], fills: [...fills], fonts: [...fonts], notes };
+}
+function blurs(n) {
+  if (n.visible === false)
+    return false;
+  if ((n.effects ?? []).some((e) => e.visible !== false && e.type === "LAYER_BLUR" && (e.radius ?? 0) > 0))
+    return true;
+  return (n.children ?? []).some(blurs);
 }
 var ASSET_MARK = "figma-asset:";
 var FILL_MARK = "figma-fill:";
@@ -4876,6 +4885,20 @@ function childSections(root, width, height) {
   }).filter((s) => s.h > 0).sort((a, z) => a.y - z.y);
 }
 var r23 = (n) => Math.round(n * 100) / 100;
+var hex = (c) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase();
+function meanColor(rgb, W, r) {
+  let n = 0, r0 = 0, g0 = 0, b0 = 0;
+  for (let y = r.y;y < r.y + r.h; y += 2) {
+    for (let x = r.x;x < r.x + r.w; x += 2) {
+      const i = (y * W + x) * 3;
+      r0 += rgb[i];
+      g0 += rgb[i + 1];
+      b0 += rgb[i + 2];
+      n++;
+    }
+  }
+  return [r0, g0, b0].map((v) => n ? v / n : 0);
+}
 function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
   let n = 0, diff = 0, sum = 0;
   for (let y = r.y;y < r.y + r.h; y++) {
@@ -5004,6 +5027,12 @@ async function compare(argv) {
       entry.shift = { dx: dxCss, dy: dyCss, differing: r23(best.differing) };
       entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
     }
+    if (base.differing >= 5 && !entry.shift) {
+      const a = meanColor(refRgb, W, r), b = meanColor(capRgb, W, r);
+      if (Math.max(...a.map((v, k) => Math.abs(v - b[k]))) >= 6) {
+        entry.tone = `The design averages ${hex(a)} here and the page ${hex(b)}: a background, gradient, blur or image is off in tone. Look at where diff.png is red over large areas.`;
+      }
+    }
     return entry;
   });
   const diffImg = { width: W, height: H, data: new Uint8Array(W * H * 4) };
@@ -5031,6 +5060,13 @@ async function compare(argv) {
     sections: results,
     worst: [...results].sort((a, b) => b.differing - a.differing)[0]?.name
   };
+  const todo = results.filter((e) => e.differing >= 5).sort((a, b) => b.differing - a.differing);
+  if (todo.length) {
+    report.todo = todo.map((e) => `${e.name}: ${e.differing}%`);
+    report.next = `${todo.length} section(s) still differ by 5% or more. Crop the worst one from the capture and diff.png, fix it, and compare again; the page is not done until each is under 5% or you can name what is left and why.`;
+  } else {
+    report.next = "Every section differs by less than 5%. Check the capture by eye for anything the numbers miss.";
+  }
   if (root) {
     const o = renderOrigin(root);
     const origin = { x: o.x + cropAt.x / scale, y: o.y + cropAt.y / scale };
@@ -5043,8 +5079,12 @@ async function compare(argv) {
       const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
       return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r23(dx)}px ${r23(-st.dy)}px; }` };
     });
-    if (applyTo)
-      report.applied = applyCss(applyTo, styles);
+    if (applyTo) {
+      const applied = applyCss(applyTo, styles);
+      report.applied = applied;
+      if (applied.styles)
+        report.next = `Text offsets for ${applied.styles} style(s) were written into the page: compare again to measure them. ${report.next}`;
+    }
     report.nodes = {
       root: root.id,
       measured: measured.length,
@@ -5104,12 +5144,14 @@ async function compare(argv) {
   const reportPath = join4(dir, "report.kdl");
   report.report = reportPath;
   writeData(reportPath, report);
+  const { todo: todoList, next, ...rest } = report;
+  const tail = { ...todoList ? { todo: todoList } : {}, next };
   if (flags.full || !report.nodes)
-    return out(report);
+    return out({ ...rest, ...tail });
   const nodes = report.nodes;
   const styleRank = (st) => (st.css ? 1e6 + st.count : 0) + (st.hint ? 1000 : 0) + Math.abs(st.dy) + Math.abs((st.widthRatio ?? 1) - 1) * 20;
   out({
-    ...report,
+    ...rest,
     nodes: {
       root: nodes.root,
       measured: nodes.measured,
@@ -5117,7 +5159,8 @@ async function compare(argv) {
       styles: [...nodes.styles].sort((a, b) => styleRank(b) - styleRank(a)).slice(0, 12),
       list: nodes.list.slice(0, 10),
       more: `${Math.max(0, nodes.styles.length - 12)} more styles and ${Math.max(0, nodes.off - 10)} more nodes in ${reportPath} (or pass --full).`
-    }
+    },
+    ...tail
   });
 }
 function localHtml(page) {
@@ -5573,7 +5616,7 @@ function walk(n, depth, ctx) {
     }
   }
   if (icon) {
-    parts.push("ICON \u2192 render as svg");
+    parts.push(blurs(n) ? "ICON \u2192 render as png (blurred: an SVG blur draws in another tone)" : "ICON \u2192 render as svg");
     ctx.icons++;
   }
   if (masked) {
@@ -5669,7 +5712,10 @@ async function writeHtml(fileKey, ids, body, dir, refresh) {
   const assets = join6(dir, "assets");
   const keep = !refresh;
   const svgFiles = await renderNodes(fileKey, page.svg, { format: "svg", scale: 1, name: (id) => join6(assets, "svg", `${safeId(id)}.svg`), keep });
-  const pngFiles = await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join6(assets, "png", `${safeId(id)}.png`), keep });
+  const pngFiles = [
+    ...await renderNodes(fileKey, page.png, { format: "png", scale: 2, name: (id) => join6(assets, "png", `${safeId(id)}.png`), keep }),
+    ...await renderNodes(fileKey, page.soft, { format: "png", scale: 1, name: (id) => join6(assets, "png", `${safeId(id)}.png`), keep })
+  ];
   const fillFiles = page.fills.length ? await downloadFills(fileKey, page.fills, join6(assets, "fills"), keep) : {};
   const rel = (p) => p ? relative(dir, p).split("\\").join("/") : undefined;
   const byId = (list) => new Map(list.map((f) => [f.id, f.path]));
@@ -5760,11 +5806,30 @@ function withEffects(n, r) {
   }
   return total;
 }
+function ellipseBox(n, b) {
+  const t = n.rotation ?? 0;
+  const c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t));
+  if (s < 0.001 || c < 0.001)
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  const det = c * c - s * s;
+  let w, h;
+  if (Math.abs(det) < 0.05 || Math.abs(b.width - b.height) < 0.5)
+    w = h = b.width / (c + s);
+  else {
+    w = (b.width * c - b.height * s) / det;
+    h = (b.height * c - b.width * s) / det;
+    if (!(w > 0 && h > 0))
+      w = h = b.width / (c + s);
+  }
+  const hw = Math.hypot(w / 2 * c, h / 2 * s), hh = Math.hypot(w / 2 * s, h / 2 * c);
+  const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+  return { x: cx - hw, y: cy - hh, w: 2 * hw, h: 2 * hh };
+}
 function exportBounds(n) {
   if (n.visible === false)
     return null;
   const b = n.absoluteBoundingBox;
-  let r = b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
+  let r = b ? n.type === "ELLIPSE" ? ellipseBox(n, b) : { x: b.x, y: b.y, w: b.width, h: b.height } : null;
   const kids = (n.children ?? []).filter((c) => c.visible !== false);
   if (kids.length && !n.clipsContent) {
     const own = n.type === "GROUP" || n.type === "BOOLEAN_OPERATION" ? null : r;

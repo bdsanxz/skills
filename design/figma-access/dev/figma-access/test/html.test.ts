@@ -179,3 +179,22 @@ test("a gradient stroke is a masked ring over the box, outside strokes grow it",
   expect(e.html.indexOf("Hi<")).toBeLessThan(e.html.indexOf("inset:-2px"));
   expect(e.notes.some((n) => n.note.includes("gradient stroke"))).toBe(false);
 });
+
+test("a blurred icon is a PNG at scale 1, and a turned ellipse is placed at its own outline", () => {
+  const blur = [{ type: "LAYER_BLUR", radius: 100 }];
+  const root = {
+    id: "1:1", name: "Section", type: "FRAME", ...box(0, 0, 1000, 600),
+    children: [
+      { id: "2:1", name: "Glow", type: "ELLIPSE", ...box(100, 100, 200, 200), fills: solid(1, 0, 0), effects: blur },
+      // A 300 px circle turned 45 degrees: its stored box bounds the turned square, 300 * sqrt(2) wide.
+      { id: "2:2", name: "Turned", type: "ELLIPSE", ...box(400, 100, 424.26, 424.26), rotation: Math.PI / 4, fills: solid(0, 0, 1), effects: blur },
+      { id: "2:3", name: "Icon", type: "VECTOR", ...box(10, 10, 20, 20), fills: solid(0, 0, 0) },
+    ],
+  };
+  const e = emitHtml(root, "t");
+  expect(e.soft.sort()).toEqual(["2:1", "2:2"]);
+  expect(e.svg).toEqual(["2:3"]);
+  expect(e.png).toEqual([]);
+  // 300 px of circle plus 100 px of blur on every side, centred on the stored box.
+  expect(e.html).toContain('src="figma-asset:png:2:2" alt="" style="position:absolute;left:-37.87px;top:-37.87px;width:500px;height:500px');
+});

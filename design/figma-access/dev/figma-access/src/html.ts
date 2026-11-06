@@ -21,6 +21,8 @@ export interface Emitted {
   /** Node ids to render as SVG, and as PNG at scale 2. */
   svg: string[];
   png: string[];
+  /** Blurred icons: Figma's PNG at scale 1, since Chrome draws an exported SVG blur in another tone. */
+  soft: string[];
   /** Image fills (by imageRef) drawn as CSS backgrounds from the original files. */
   fills: string[];
   fonts: string[];
@@ -68,7 +70,7 @@ export function emitHtml(root: any, title: string): Emitted {
   const css: string[] = [];
   // \`__text\` is the shared class of every text (with a modifier per style): no layer may take it.
   const used = new Map<string, number>([[`${block}__text`, 1]]);
-  const svg = new Set<string>(), png = new Set<string>(), fills = new Set<string>(), fonts = new Set<string>();
+  const svg = new Set<string>(), png = new Set<string>(), soft = new Set<string>(), fills = new Set<string>(), fonts = new Set<string>();
   const weights = new Map<string, Set<number>>();
   const useFont = (family: string, weight: number) => {
     fonts.add(family);
@@ -363,8 +365,9 @@ export function emitHtml(root: any, title: string): Emitted {
     const icon = depth > 0 && n.type !== "TEXT" && vectorOnly(n);
     const turned = depth > 0 && n.type !== "TEXT" && rotated(n);
     if (icon || masked || leafImage || turned) {
-      const kind = icon ? "svg" : "png";
-      (kind === "svg" ? svg : png).add(n.id);
+      const blurred = icon && blurs(n);
+      const kind = icon && !blurred ? "svg" : "png";
+      (blurred ? soft : kind === "svg" ? svg : png).add(n.id);
       const e = exportBounds(n) ?? { x: b.x, y: b.y, w: b.width, h: b.height };
       rule(c, placement(n, place, { frozen: true }));
       const img = `<img src="${ASSET_MARK}${kind}:${n.id}" alt="" style="position:absolute;left:${px(e.x - b.x)};top:${px(e.y - b.y)};width:${px(e.w)};height:${px(e.h)};max-width:none">`;
@@ -498,7 +501,14 @@ ${bodyHtml}
 </body>
 </html>
 `;
-  return { html, svg: [...svg], png: [...png], fills: [...fills], fonts: [...fonts], notes };
+  return { html, svg: [...svg], png: [...png], soft: [...soft], fills: [...fills], fonts: [...fonts], notes };
+}
+
+/** Whether the node or anything in it has a visible layer blur. */
+export function blurs(n: any): boolean {
+  if (n.visible === false) return false;
+  if ((n.effects ?? []).some((e: any) => e.visible !== false && e.type === "LAYER_BLUR" && (e.radius ?? 0) > 0)) return true;
+  return (n.children ?? []).some(blurs);
 }
 
 const ASSET_MARK = "figma-asset:";

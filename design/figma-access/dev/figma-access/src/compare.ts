@@ -138,6 +138,20 @@ function childSections(root: any, width: number, height: number): Section[] {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const hex = (c: number[]) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase();
+
+/** Mean RGB of an area. */
+function meanColor(rgb: Uint8Array, W: number, r: { x: number; y: number; w: number; h: number }): number[] {
+  let n = 0, r0 = 0, g0 = 0, b0 = 0;
+  for (let y = r.y; y < r.y + r.h; y += 2) {
+    for (let x = r.x; x < r.x + r.w; x += 2) {
+      const i = (y * W + x) * 3;
+      r0 += rgb[i]!; g0 += rgb[i + 1]!; b0 += rgb[i + 2]!;
+      n++;
+    }
+  }
+  return [r0, g0, b0].map((v) => (n ? v / n : 0));
+}
 
 /** Share of differing pixels (in %) and mean channel difference over a rect, with the capture shifted by dx,dy. */
 function measure(ref: Uint8Array, cap: Uint8Array, W: number, H: number, r: Rect, dx: number, dy: number, threshold: number, mask?: Uint8Array) {
@@ -268,6 +282,12 @@ export async function compare(argv: string[]) {
       entry.shift = { dx: dxCss, dy: dyCss, differing: r2(best.differing) };
       entry.hint = `Matches when shifted: the page draws it ${Math.abs(dxCss) ? `${Math.abs(dxCss)} px ${dxCss > 0 ? "right" : "left"}` : ""}${Math.abs(dxCss) && Math.abs(dyCss) ? " and " : ""}${Math.abs(dyCss) ? `${Math.abs(dyCss)} px ${dyCss > 0 ? "lower" : "higher"}` : ""}. Fix the size of what lies before it, not the section.`;
     }
+    if (base.differing >= 5 && !entry.shift) {
+      const a = meanColor(refRgb, W, r), b = meanColor(capRgb, W, r);
+      if (Math.max(...a.map((v, k) => Math.abs(v - b[k]!))) >= 6) {
+        entry.tone = `The design averages ${hex(a)} here and the page ${hex(b)}: a background, gradient, blur or image is off in tone. Look at where diff.png is red over large areas.`;
+      }
+    }
     return entry;
   });
 
@@ -295,6 +315,13 @@ export async function compare(argv: string[]) {
     sections: results,
     worst: [...results].sort((a, b) => (b.differing as number) - (a.differing as number))[0]?.name,
   };
+  const todo = results.filter((e) => (e.differing as number) >= 5).sort((a, b) => (b.differing as number) - (a.differing as number));
+  if (todo.length) {
+    report.todo = todo.map((e) => `${e.name}: ${e.differing}%`);
+    report.next = `${todo.length} section(s) still differ by 5% or more. Crop the worst one from the capture and diff.png, fix it, and compare again; the page is not done until each is under 5% or you can name what is left and why.`;
+  } else {
+    report.next = "Every section differs by less than 5%. Check the capture by eye for anything the numbers miss.";
+  }
 
   if (root) {
     const o = renderOrigin(root);
@@ -309,7 +336,11 @@ export async function compare(argv: string[]) {
       const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
       return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r2(dx)}px ${r2(-st.dy)}px; }` };
     });
-    if (applyTo) report.applied = applyCss(applyTo, styles);
+    if (applyTo) {
+      const applied = applyCss(applyTo, styles);
+      report.applied = applied;
+      if (applied.styles) report.next = `Text offsets for ${applied.styles} style(s) were written into the page: compare again to measure them. ${report.next}`;
+    }
     report.nodes = {
       root: root.id,
       measured: measured.length,
@@ -367,12 +398,15 @@ export async function compare(argv: string[]) {
   const reportPath = join(dir, "report.kdl");
   report.report = reportPath;
   writeData(reportPath, report);
-  if (flags.full || !report.nodes) return out(report);
+  // What to do next goes last, where it is read.
+  const { todo: todoList, next, ...rest } = report;
+  const tail = { ...(todoList ? { todo: todoList } : {}), next };
+  if (flags.full || !report.nodes) return out({ ...rest, ...tail });
   const nodes = report.nodes as any;
   // Styles with a ready fix first, by how many texts it moves; then the rest by how far off they are.
   const styleRank = (st: any) => (st.css ? 1e6 + st.count : 0) + (st.hint ? 1000 : 0) + Math.abs(st.dy) + Math.abs((st.widthRatio ?? 1) - 1) * 20;
   out({
-    ...report,
+    ...rest,
     nodes: {
       root: nodes.root,
       measured: nodes.measured,
@@ -381,6 +415,7 @@ export async function compare(argv: string[]) {
       list: nodes.list.slice(0, 10),
       more: `${Math.max(0, nodes.styles.length - 12)} more styles and ${Math.max(0, nodes.off - 10)} more nodes in ${reportPath} (or pass --full).`,
     },
+    ...tail,
   });
 }
 
