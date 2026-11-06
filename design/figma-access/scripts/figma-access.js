@@ -2768,7 +2768,7 @@ Fetches the full data of the nodes (the node-id in the URL, or the ids given) an
 fills, strokes, effects, corner radii, auto layout, constraints, text with its style overrides.
 Hidden layers (visible: false) and everything under them are removed from the file, because
 design files often keep most of their nodes hidden, some on top of visible content.
-Prints the file path, a report per node (font families and text styles, image fill refs,
+Prints the file path, a report per node (font families and text styles, how many images fill nodes,
 visible node types, how many hidden nodes were pruned) and an outline down to --outline levels
 (default 2). On a page it lists the page's frames instead, so you can pick the design frame.
 
@@ -2786,7 +2786,8 @@ opacity, blend, clip,
 component id, text with font family weight size/line-height, letter spacing, alignment and case
 (valign center|bottom when a fixed-height box is taller than its lines),
 fills as CSS colors or gradients, top layer first as in a CSS background list (image fills as
-image(<imageRef>, <scaleMode>)), borders,
+image(<imageRef>, <scaleMode>); a radial gradient with a tilted ellipse ends in "ROTATED <angle>deg"
+and must be drawn on its own rotated layer), borders,
 radii, shadows and blurs, and auto layout as flex direction, gap, padding, justify and align.
 Text with mixed styles lists its runs: runs[ "13 ": base | "GB": font ... ].
 Hidden layers are skipped. A subtree made only of vectors is one line marked
@@ -2840,7 +2841,10 @@ differing pixels red) to the output directory; open diff.png to see where the pi
   <page>                An HTML file or URL to capture, or a PNG you captured yourself.
   --sections <spec>     Named areas in page pixels, separated by ";": name=x,y,w,h, or
                         name=top-bottom for a full-width band ("nav=0-48;cards=399,289,602,496").
-                        Default: full-width bands of --band pixels (default 100).
+                        Default with --nodes: a full-width band per child of the node, named
+                        after it (a child taller than half the node is opened up into its own
+                        children); otherwise, or with --band,
+                        full-width bands of --band pixels (default 100).
   --nodes <file.kdl>     The node file of the rendered node (from \`node ... -o\`): also measure each
                         text, icon and image of the design on both images. Prints, per text style,
                         how far its copies sit off (dy, dx) and how wide they are against the design
@@ -3640,7 +3644,7 @@ function inventory(root) {
   return {
     fontFamilies: families,
     textStyles: Object.fromEntries([...fonts.entries()].sort((a, b) => b[1] - a[1])),
-    imageRefs: [...imageRefs],
+    imageFills: imageRefs.size,
     visibleNodeTypes: Object.fromEntries([...types.entries()].sort((a, b) => b[1] - a[1])),
     hiddenNodes: hidden
   };
@@ -3680,12 +3684,18 @@ async function file(argv) {
     pages: (body.document?.children ?? []).map((p) => summarize(p, 0, Math.max(0, depth - 1)))
   });
 }
+function nodeIds(args) {
+  const ids = args.flatMap((a) => a.split(/[\s,]+/)).map((i) => i.trim().replace(/-/g, ":"));
+  if (args.length && ids.every((i) => !i))
+    fail(EXIT_USAGE, "The node ids are empty: check the variable or array that should hold them.");
+  return ids.filter(Boolean);
+}
 async function node2(argv) {
   const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "outline"], bool: ["help", "geometry", "keep-hidden", "refresh"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0])
     showHelp("node");
   const target = parseTarget(positionals[0]);
-  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
+  const ids = nodeIds(positionals.slice(1));
   if (!ids.length && target.nodeId)
     ids.push(target.nodeId);
   if (!ids.length)
@@ -3724,7 +3734,7 @@ async function render(argv) {
   if (flags.help || !positionals[0])
     showHelp("render");
   const target = parseTarget(positionals[0]);
-  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
+  const ids = nodeIds(positionals.slice(1));
   if (!ids.length && target.nodeId)
     ids.push(target.nodeId);
   if (!ids.length)
@@ -3742,22 +3752,35 @@ async function render(argv) {
   }
   const body = await getJson(`/v1/images/${target.fileKey}?${q}`);
   const dir = outDir(str(flags.out), target.fileKey, "renders");
-  const files = [];
-  for (const id of ids) {
-    const url = body.images?.[id];
-    if (!url) {
-      files.push({ id, error: "Figma could not render this node (missing, invisible or empty)." });
-      continue;
+  const files = new Array(ids.length);
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < ids.length) {
+      const k = next++;
+      const id = ids[k];
+      const url = body.images?.[id];
+      if (!url) {
+        files[k] = { id, error: "Figma could not render this node (missing, invisible or empty)." };
+      } else {
+        const path = join3(dir, `${safeId(id)}@${scale}x.${format}`);
+        const buf = await download(url, path);
+        const size = pngSize(buf);
+        const entry = { id, path, bytes: buf.length, ...size };
+        if (size && Math.max(size.width, size.height) > 2000) {
+          entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
+        }
+        files[k] = entry;
+      }
+      done++;
+      if (ids.length > 4 && (done % 10 === 0 || done === ids.length))
+        process.stderr.write(`figma-access: downloaded ${done}/${ids.length}
+`);
     }
-    const path = join3(dir, `${safeId(id)}@${scale}x.${format}`);
-    const buf = await download(url, path);
-    const size = pngSize(buf);
-    const entry = { id, path, bytes: buf.length, ...size };
-    if (size && Math.max(size.width, size.height) > 2000) {
-      entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
-    }
-    files.push(entry);
-  }
+  };
+  if (ids.length > 4)
+    process.stderr.write(`figma-access: Figma rendered ${ids.length} nodes; downloading
+`);
+  await Promise.all(Array.from({ length: Math.min(8, ids.length) }, worker));
   out({ ok: files.every((f) => !("error" in f)), fileKey: target.fileKey, scale, format, files });
 }
 async function imageFills(argv) {
@@ -3830,10 +3853,19 @@ function linearGradient(p, size, op) {
 }
 function gradientShape(handles, size) {
   if (!handles || handles.length < 3)
-    return "";
+    return { shape: "", rotated: null };
   const [c, a, b] = handles;
-  const len = (p) => r2(Math.hypot((p.x - c.x) * size.w, (p.y - c.y) * size.h));
-  return `${len(a)}px ${len(b)}px at ${r2(c.x * size.w)}px ${r2(c.y * size.h)}px, `;
+  const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
+  const ra = r2(Math.hypot(vx, vy));
+  const rb = r2(Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h));
+  const at = `at ${r2(c.x * size.w)}px ${r2(c.y * size.h)}px, `;
+  const angle = Math.atan2(vy, vx) * 180 / Math.PI;
+  const off = (angle % 180 + 180) % 180;
+  if (Math.min(off, 180 - off) <= 2)
+    return { shape: `${ra}px ${rb}px ${at}`, rotated: null };
+  if (Math.abs(off - 90) <= 2)
+    return { shape: `${rb}px ${ra}px ${at}`, rotated: null };
+  return { shape: `${ra}px ${rb}px ${at}`, rotated: r2(angle) };
 }
 function paint(p, size = { w: 1, h: 1 }) {
   if (p.visible === false)
@@ -3849,14 +3881,17 @@ function paint(p, size = { w: 1, h: 1 }) {
       const stops = (p.gradientStops ?? []).map((s) => `${color(s.color, op)} ${Math.round(s.position * 100)}%`).join(", ");
       if (p.type === "GRADIENT_LINEAR")
         return linearGradient(p, size, op) ?? `linear-gradient(180deg, ${stops})`;
-      if (p.type === "GRADIENT_RADIAL")
-        return `radial-gradient(${gradientShape(p.gradientHandlePositions, size)}${stops})`;
+      if (p.type === "GRADIENT_RADIAL" || p.type === "GRADIENT_DIAMOND") {
+        const { shape, rotated } = gradientShape(p.gradientHandlePositions, size);
+        const css = `${p.type === "GRADIENT_RADIAL" ? "radial" : "diamond"}-gradient(${shape}${stops})`;
+        return rotated === null ? css : `${css} ROTATED ${rotated}deg`;
+      }
       if (p.type === "GRADIENT_ANGULAR") {
         const h = p.gradientHandlePositions;
         const at = h?.[0] ? `from ${gradientAngle(h, size) ?? 0}deg at ${r2(h[0].x * size.w)}px ${r2(h[0].y * size.h)}px, ` : "";
         return `conic-gradient(${at}${stops})`;
       }
-      return `diamond-gradient(${gradientShape(p.gradientHandlePositions, size)}${stops})`;
+      return null;
     }
     case "IMAGE":
       return `image(${p.imageRef}, ${p.scaleMode ?? "FILL"}${op < 1 ? `, opacity ${r2(op)}` : ""})`;
@@ -3980,7 +4015,7 @@ function textRuns(n) {
       return "base";
     const d = [];
     if (o.fontFamily || o.fontWeight || o.fontSize)
-      d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ?? ""}${o.lineHeightPx ? `/${r2(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
+      d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ? r2(o.fontSize) : ""}${o.lineHeightPx ? `/${r2(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
     if (o.fills?.length)
       d.push(`color ${o.fills.map(paint).filter(Boolean).join(" + ")}`);
     if (o.textDecoration && o.textDecoration !== "NONE")
@@ -4516,8 +4551,10 @@ function styleSummary(nodes) {
     if (widths.length)
       s.widthRatio = r22(wr);
     const hints = [];
-    if (Math.abs(dy) >= 0.5 && same >= 0.75) {
+    if (Math.abs(dy) >= 0.5 && Math.abs(dy) <= 2 && same >= 0.75) {
       hints.push(`Every copy sits ${r22(Math.abs(dy))} px ${dy > 0 ? "lower" : "higher"}: correct it once for this style, if the boxes around it match.`);
+    } else if (Math.abs(dy) > 2) {
+      hints.push(`Off by ${r22(Math.abs(dy))} px: more than font metrics explain, so a box or gap above or around it is wrong; check the section's shift first.`);
     }
     if (Math.abs(wr - 1) > 0.02)
       hints.push(`Text is ${r22(Math.abs(wr - 1) * 100)}% ${wr > 1 ? "wider" : "narrower"}: check the font file, weight and letter spacing.`);
@@ -4631,6 +4668,22 @@ function parseSections(text, width) {
     return { name: m[1].trim(), x, y, w, h };
   });
 }
+function childSections(root, width, height) {
+  const b = root.absoluteBoundingBox;
+  const shown = (n) => (n.children ?? []).filter((c) => c.visible !== false && c.absoluteBoundingBox);
+  const expand = (n) => shown(n).flatMap((c) => c.absoluteBoundingBox.height > height / 2 && shown(c).length ? expand(c) : [c]);
+  const kids = b ? expand(root) : [];
+  if (!kids.length)
+    return [{ name: "whole", x: 0, y: 0, w: width, h: height }];
+  const seen = new Map;
+  return kids.map((c) => {
+    const top = Math.max(0, Math.round(c.absoluteBoundingBox.y - b.y));
+    const bottom = Math.min(height, Math.round(c.absoluteBoundingBox.y - b.y + c.absoluteBoundingBox.height));
+    const n = (seen.get(c.name) ?? 0) + 1;
+    seen.set(c.name, n);
+    return { name: n > 1 ? `${c.name} ${n}` : String(c.name), x: 0, y: top, w: width, h: bottom - top };
+  }).filter((s) => s.h > 0).sort((a, z) => a.y - z.y);
+}
 var r23 = (n) => Math.round(n * 100) / 100;
 function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
   let n = 0, diff = 0, sum = 0;
@@ -4684,6 +4737,19 @@ async function compare(argv) {
     if (!root)
       fail(EXIT_USAGE, want ? `Node ${want} is not in ${file}.` : `${file} holds no node; save one with \`node <key> <id> -o <file>\`.`);
   }
+  let autoCrop;
+  if (root && !flags.crop) {
+    const e = exportBounds(root), b = root.absoluteBoundingBox;
+    if (e && b && [b.x - e.x, b.y - e.y, e.w - b.width, e.h - b.height].some((d) => Math.abs(d) > 0.5)) {
+      const s0 = Math.round(ref.width / e.w * 4) / 4 || ref.width / e.w;
+      const r = { x: Math.round((b.x - e.x) * s0), y: Math.round((b.y - e.y) * s0), w: Math.round(b.width * s0), h: Math.round(b.height * s0) };
+      r.w = Math.min(r.w, ref.width - r.x);
+      r.h = Math.min(r.h, ref.height - r.y);
+      ref = crop(ref, r);
+      cropAt = { x: r.x, y: r.y };
+      autoCrop = `${r.x},${r.y},${r.w},${r.h}: the reference was cropped to the node's box, which its own shadow or blur had widened`;
+    }
+  }
   const cssWidth = Number(str(flags.width) ?? ref.width);
   const scale = ref.width / cssWidth;
   if (!(cssWidth > 0) || !(scale > 0))
@@ -4712,7 +4778,7 @@ async function compare(argv) {
   cap = crop(cap, { x: 0, y: 0, w: ref.width, h: ref.height });
   const W = ref.width, H = ref.height;
   const refRgb = flatten(ref), capRgb = flatten(cap);
-  const sections = flags.sections ? parseSections(str(flags.sections), cssWidth) : (() => {
+  const sections = flags.sections ? parseSections(str(flags.sections), cssWidth) : root && !flags.band ? childSections(root, cssWidth, cssHeight) : (() => {
     const band = Number(str(flags.band) ?? 100);
     const list = [];
     for (let y = 0;y < cssHeight; y += band)
@@ -4766,6 +4832,7 @@ async function compare(argv) {
     page: [cssWidth, cssHeight],
     scale: r23(scale),
     threshold,
+    ...autoCrop ? { crop: autoCrop } : {},
     whole: { differing: r23(whole.differing), mean: r23(whole.mean) },
     sections: results,
     worst: [...results].sort((a, b) => b.differing - a.differing)[0]?.name

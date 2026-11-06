@@ -69,12 +69,21 @@ function linearGradient(p: any, size: Size, op: number): string | null {
 }
 
 // Figma radial and diamond gradients: handle 0 is the centre, handles 1 and 2 end the two radii.
-// CSS has no rotated ellipse, so the radii are written unrotated.
-function gradientShape(handles: Pt[] | undefined, size: Size): string {
-  if (!handles || handles.length < 3) return "";
+// CSS writes the horizontal radius first and cannot rotate the ellipse: when handle 1 points along
+// an axis the radii are written in CSS order; otherwise the line also says how far it is rotated,
+// since it must then be drawn on a rotated layer.
+function gradientShape(handles: Pt[] | undefined, size: Size): { shape: string; rotated: number | null } {
+  if (!handles || handles.length < 3) return { shape: "", rotated: null };
   const [c, a, b] = handles as [Pt, Pt, Pt];
-  const len = (p: Pt) => r2(Math.hypot((p.x - c.x) * size.w, (p.y - c.y) * size.h));
-  return `${len(a)}px ${len(b)}px at ${r2(c.x * size.w)}px ${r2(c.y * size.h)}px, `;
+  const vx = (a.x - c.x) * size.w, vy = (a.y - c.y) * size.h;
+  const ra = r2(Math.hypot(vx, vy));
+  const rb = r2(Math.hypot((b.x - c.x) * size.w, (b.y - c.y) * size.h));
+  const at = `at ${r2(c.x * size.w)}px ${r2(c.y * size.h)}px, `;
+  const angle = (Math.atan2(vy, vx) * 180) / Math.PI;
+  const off = ((angle % 180) + 180) % 180; // 0 = horizontal, 90 = vertical
+  if (Math.min(off, 180 - off) <= 2) return { shape: `${ra}px ${rb}px ${at}`, rotated: null };
+  if (Math.abs(off - 90) <= 2) return { shape: `${rb}px ${ra}px ${at}`, rotated: null };
+  return { shape: `${ra}px ${rb}px ${at}`, rotated: r2(angle) };
 }
 
 export function paint(p: any, size: Size = { w: 1, h: 1 }): string | null {
@@ -89,13 +98,17 @@ export function paint(p: any, size: Size = { w: 1, h: 1 }): string | null {
     case "GRADIENT_DIAMOND": {
       const stops = (p.gradientStops ?? []).map((s: any) => `${color(s.color, op)} ${Math.round(s.position * 100)}%`).join(", ");
       if (p.type === "GRADIENT_LINEAR") return linearGradient(p, size, op) ?? `linear-gradient(180deg, ${stops})`;
-      if (p.type === "GRADIENT_RADIAL") return `radial-gradient(${gradientShape(p.gradientHandlePositions, size)}${stops})`;
+      if (p.type === "GRADIENT_RADIAL" || p.type === "GRADIENT_DIAMOND") {
+        const { shape, rotated } = gradientShape(p.gradientHandlePositions, size);
+        const css = `${p.type === "GRADIENT_RADIAL" ? "radial" : "diamond"}-gradient(${shape}${stops})`;
+        return rotated === null ? css : `${css} ROTATED ${rotated}deg`;
+      }
       if (p.type === "GRADIENT_ANGULAR") {
         const h = p.gradientHandlePositions as Pt[] | undefined;
         const at = h?.[0] ? `from ${gradientAngle(h, size) ?? 0}deg at ${r2(h[0].x * size.w)}px ${r2(h[0].y * size.h)}px, ` : "";
         return `conic-gradient(${at}${stops})`;
       }
-      return `diamond-gradient(${gradientShape(p.gradientHandlePositions, size)}${stops})`;
+      return null;
     }
     case "IMAGE":
       return `image(${p.imageRef}, ${p.scaleMode ?? "FILL"}${op < 1 ? `, opacity ${r2(op)}` : ""})`;
@@ -207,7 +220,7 @@ function textRuns(n: any): string | null {
     const o = table[id];
     if (!id || !o) return "base";
     const d: string[] = [];
-    if (o.fontFamily || o.fontWeight || o.fontSize) d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ?? ""}${o.lineHeightPx ? `/${r2(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
+    if (o.fontFamily || o.fontWeight || o.fontSize) d.push(`font ${o.fontFamily ?? "base"} ${o.fontWeight ?? ""} ${o.fontSize ? r2(o.fontSize) : ""}${o.lineHeightPx ? `/${r2(o.lineHeightPx)}` : ""}`.replace(/\s+/g, " ").trim());
     if (o.fills?.length) d.push(`color ${o.fills.map(paint).filter(Boolean).join(" + ")}`);
     if (o.textDecoration && o.textDecoration !== "NONE") d.push(o.textDecoration.toLowerCase());
     if (o.italic) d.push("italic");

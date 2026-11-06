@@ -9,6 +9,7 @@ import { EXIT_FAILED, EXIT_UNAVAILABLE, EXIT_USAGE } from "./config";
 import { showHelp } from "./help";
 import { decodePng, encodePng, type Image } from "./png";
 import { measureNodes, offNodes, renderOrigin, styleSummary } from "./nodes";
+import { exportBounds } from "./spec";
 import { fail, out, parseArgs, readData, str } from "./util";
 
 interface Rect { x: number; y: number; w: number; h: number }
@@ -104,6 +105,30 @@ function parseSections(text: string, width: number): Section[] {
   });
 }
 
+/**
+ * Full-width bands at the boxes of the node's visible children, top to bottom. A child taller than
+ * half the node is a wrapper, not a section: its own children take its place.
+ */
+function childSections(root: any, width: number, height: number): Section[] {
+  const b = root.absoluteBoundingBox;
+  const shown = (n: any) => (n.children ?? []).filter((c: any) => c.visible !== false && c.absoluteBoundingBox);
+  const expand = (n: any): any[] =>
+    shown(n).flatMap((c: any) => (c.absoluteBoundingBox.height > height / 2 && shown(c).length ? expand(c) : [c]));
+  const kids = b ? expand(root) : [];
+  if (!kids.length) return [{ name: "whole", x: 0, y: 0, w: width, h: height }];
+  const seen = new Map<string, number>();
+  return kids
+    .map((c: any) => {
+      const top = Math.max(0, Math.round(c.absoluteBoundingBox.y - b.y));
+      const bottom = Math.min(height, Math.round(c.absoluteBoundingBox.y - b.y + c.absoluteBoundingBox.height));
+      const n = (seen.get(c.name) ?? 0) + 1;
+      seen.set(c.name, n);
+      return { name: n > 1 ? `${c.name} ${n}` : String(c.name), x: 0, y: top, w: width, h: bottom - top };
+    })
+    .filter((s: Section) => s.h > 0)
+    .sort((a: Section, z: Section) => a.y - z.y);
+}
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Share of differing pixels (in %) and mean channel difference over a rect, with the capture shifted by dx,dy. */
@@ -155,6 +180,20 @@ export async function compare(argv: string[]) {
     root = want ? docs.reduce((hit: any, d: any) => hit ?? search(d), null) : docs[0];
     if (!root) fail(EXIT_USAGE, want ? `Node ${want} is not in ${file}.` : `${file} holds no node; save one with \`node <key> <id> -o <file>\`.`);
   }
+  // The node's own shadow or blur grows its render past its box; the page has only the box.
+  let autoCrop: string | undefined;
+  if (root && !flags.crop) {
+    const e = exportBounds(root), b = root.absoluteBoundingBox;
+    if (e && b && [b.x - e.x, b.y - e.y, e.w - b.width, e.h - b.height].some((d) => Math.abs(d) > 0.5)) {
+      const s0 = Math.round((ref.width / e.w) * 4) / 4 || ref.width / e.w; // render scales are round numbers
+      const r = { x: Math.round((b.x - e.x) * s0), y: Math.round((b.y - e.y) * s0), w: Math.round(b.width * s0), h: Math.round(b.height * s0) };
+      r.w = Math.min(r.w, ref.width - r.x);
+      r.h = Math.min(r.h, ref.height - r.y);
+      ref = crop(ref, r);
+      cropAt = { x: r.x, y: r.y };
+      autoCrop = `${r.x},${r.y},${r.w},${r.h}: the reference was cropped to the node's box, which its own shadow or blur had widened`;
+    }
+  }
   const cssWidth = Number(str(flags.width) ?? ref.width);
   const scale = ref.width / cssWidth;
   if (!(cssWidth > 0) || !(scale > 0)) fail(EXIT_USAGE, "--width must be a positive number of CSS pixels.");
@@ -186,6 +225,8 @@ export async function compare(argv: string[]) {
   const refRgb = flatten(ref), capRgb = flatten(cap);
   const sections = flags.sections
     ? parseSections(str(flags.sections)!, cssWidth)
+    : root && !flags.band
+    ? childSections(root, cssWidth, cssHeight)
     : (() => {
         const band = Number(str(flags.band) ?? 100);
         const list: Section[] = [];
@@ -239,6 +280,7 @@ export async function compare(argv: string[]) {
     page: [cssWidth, cssHeight],
     scale: r2(scale),
     threshold,
+    ...(autoCrop ? { crop: autoCrop } : {}),
     whole: { differing: r2(whole.differing), mean: r2(whole.mean) },
     sections: results,
     worst: [...results].sort((a, b) => (b.differing as number) - (a.differing as number))[0]?.name,

@@ -160,3 +160,44 @@ test("compare --nodes: text sitting 1 px higher is reported per style, a missing
   expect(json.nodes.list.find((n: any) => n.id === "9:1").missing).toBe(true);
   expect((await run([ref, cap, "--nodes", nodeFile, "--node", "7:7"])).code).toBe(2);
 });
+
+test("compare --nodes crops a reference that the node's own shadow widened", async () => {
+  const frame = {
+    id: "1:1", name: "Frame", type: "FRAME", children: [],
+    absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 50 },
+    effects: [{ type: "DROP_SHADOW", radius: 4, offset: { x: 0, y: 0 } }],
+  };
+  const nodeFile = join(DIR, "shadow.json");
+  writeFileSync(nodeFile, JSON.stringify({ nodes: { "1:1": { document: frame } } }));
+  const ref = join(DIR, "shadow-ref.png"), cap = join(DIR, "shadow-cap.png");
+  writeFileSync(ref, encodePng(page(108, 58, 14, 14, 20, 10))); // block at 10,10 of the frame
+  writeFileSync(cap, encodePng(page(100, 50, 10, 10, 20, 10)));
+  const { json } = await run([ref, cap, "--nodes", nodeFile]);
+  expect(json.page).toEqual([100, 50]);
+  expect(json.crop).toContain("4,4,100,50");
+  expect(json.whole.differing).toBe(0);
+});
+
+test("compare --nodes takes its sections from the node's children, opening up a wrapper", async () => {
+  const box = (y: number, height: number) => ({ absoluteBoundingBox: { x: 0, y, width: 100, height } });
+  const frame = {
+    id: "1:1", name: "Page", type: "FRAME", ...box(0, 90),
+    children: [{
+      id: "1:2", name: "Wrapper", type: "FRAME", ...box(0, 90),
+      children: [
+        { id: "2:2", name: "Cards", type: "FRAME", ...box(30, 60) },
+        { id: "2:1", name: "Nav", type: "FRAME", ...box(0, 30) },
+        { id: "2:3", name: "Hidden", type: "FRAME", visible: false, ...box(0, 90) },
+      ],
+    }],
+  };
+  const nodeFile = join(DIR, "kids.json");
+  writeFileSync(nodeFile, JSON.stringify({ nodes: { "1:1": { document: frame } } }));
+  const ref = join(DIR, "kids-ref.png"), cap = join(DIR, "kids-cap.png");
+  writeFileSync(ref, encodePng(page(100, 90, 10, 50, 20, 10)));
+  writeFileSync(cap, encodePng(page(100, 90, 10, 50, 20, 10)));
+  const { json } = await run([ref, cap, "--nodes", nodeFile]);
+  expect(json.sections.map((s: any) => [s.name, ...s.box])).toEqual([["Nav", 0, 0, 100, 30], ["Cards", 0, 30, 100, 60]]);
+  const banded = await run([ref, cap, "--nodes", nodeFile, "--band", "45"]);
+  expect(banded.json.sections.map((s: any) => s.name)).toEqual(["0-45", "45-90"]);
+});

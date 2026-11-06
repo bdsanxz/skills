@@ -162,7 +162,7 @@ function inventory(root: any) {
   return {
     fontFamilies: families,
     textStyles: Object.fromEntries([...fonts.entries()].sort((a, b) => b[1] - a[1])),
-    imageRefs: [...imageRefs],
+    imageFills: imageRefs.size,
     visibleNodeTypes: Object.fromEntries([...types.entries()].sort((a, b) => b[1] - a[1])),
     hiddenNodes: hidden,
   };
@@ -203,11 +203,18 @@ export async function file(argv: string[]) {
   });
 }
 
+/** Node ids from the command line ("1-2" or "1:2"); an empty one is a shell mistake, such as an unset array. */
+function nodeIds(args: string[]): string[] {
+  const ids = args.flatMap((a) => a.split(/[\s,]+/)).map((i) => i.trim().replace(/-/g, ":"));
+  if (args.length && ids.every((i) => !i)) fail(EXIT_USAGE, "The node ids are empty: check the variable or array that should hold them.");
+  return ids.filter(Boolean);
+}
+
 export async function node(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, { value: ["depth", "out", "outline"], bool: ["help", "geometry", "keep-hidden", "refresh"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0]) showHelp("node");
   const target = parseTarget(positionals[0]!);
-  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
+  const ids = nodeIds(positionals.slice(1));
   if (!ids.length && target.nodeId) ids.push(target.nodeId);
   if (!ids.length) fail(EXIT_USAGE, "Name the node: a URL with node-id, or node ids after the file.");
   const q = new URLSearchParams({ ids: ids.join(",") });
@@ -241,7 +248,7 @@ export async function render(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, { value: ["scale", "format", "out"], bool: ["help"], alias: { h: "help", o: "out" } });
   if (flags.help || !positionals[0]) showHelp("render");
   const target = parseTarget(positionals[0]!);
-  const ids = positionals.slice(1).map((i) => i.replace(/-/g, ":"));
+  const ids = nodeIds(positionals.slice(1));
   if (!ids.length && target.nodeId) ids.push(target.nodeId);
   if (!ids.length) fail(EXIT_USAGE, "Name the node: a URL with node-id, or node ids after the file.");
   const format = (str(flags.format) ?? "png").toLowerCase();
@@ -255,22 +262,32 @@ export async function render(argv: string[]) {
   }
   const body = await getJson(`/v1/images/${target.fileKey}?${q}`);
   const dir = outDir(str(flags.out), target.fileKey, "renders");
-  const files = [];
-  for (const id of ids) {
-    const url = body.images?.[id];
-    if (!url) {
-      files.push({ id, error: "Figma could not render this node (missing, invisible or empty)." });
-      continue;
+  // Download eight at a time, in the order asked; report progress on stderr for long batches.
+  const files: Record<string, unknown>[] = new Array(ids.length);
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < ids.length) {
+      const k = next++;
+      const id = ids[k]!;
+      const url = body.images?.[id];
+      if (!url) {
+        files[k] = { id, error: "Figma could not render this node (missing, invisible or empty)." };
+      } else {
+        const path = join(dir, `${safeId(id)}@${scale}x.${format}`);
+        const buf = await download(url, path);
+        const size = pngSize(buf);
+        const entry: Record<string, unknown> = { id, path, bytes: buf.length, ...size };
+        if (size && Math.max(size.width, size.height) > 2000) {
+          entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
+        }
+        files[k] = entry;
+      }
+      done++;
+      if (ids.length > 4 && (done % 10 === 0 || done === ids.length)) process.stderr.write(`figma-access: downloaded ${done}/${ids.length}\n`);
     }
-    const path = join(dir, `${safeId(id)}@${scale}x.${format}`);
-    const buf = await download(url, path);
-    const size = pngSize(buf);
-    const entry: Record<string, unknown> = { id, path, bytes: buf.length, ...size };
-    if (size && Math.max(size.width, size.height) > 2000) {
-      entry.note = "Larger than 2000 px on a side: an image viewer shows it to you shrunk. Read it in parts (crop strips of at most ~1500 px) before you judge details.";
-    }
-    files.push(entry);
-  }
+  };
+  if (ids.length > 4) process.stderr.write(`figma-access: Figma rendered ${ids.length} nodes; downloading\n`);
+  await Promise.all(Array.from({ length: Math.min(8, ids.length) }, worker));
   out({ ok: files.every((f) => !("error" in f)), fileKey: target.fileKey, scale, format, files });
 }
 

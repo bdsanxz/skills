@@ -213,8 +213,10 @@ export function styleSummary(nodes: Measured[]) {
     const s: Record<string, unknown> = { style, count: list.length, dy: r2(dy), dx: r2(dx) };
     if (widths.length) s.widthRatio = r2(wr);
     const hints: string[] = [];
-    if (Math.abs(dy) >= 0.5 && same >= 0.75) {
+    if (Math.abs(dy) >= 0.5 && Math.abs(dy) <= 2 && same >= 0.75) {
       hints.push(`Every copy sits ${r2(Math.abs(dy))} px ${dy > 0 ? "lower" : "higher"}: correct it once for this style, if the boxes around it match.`);
+    } else if (Math.abs(dy) > 2) {
+      hints.push(`Off by ${r2(Math.abs(dy))} px: more than font metrics explain, so a box or gap above or around it is wrong; check the section's shift first.`);
     }
     if (Math.abs(wr - 1) > 0.02) hints.push(`Text is ${r2(Math.abs(wr - 1) * 100)}% ${wr > 1 ? "wider" : "narrower"}: check the font file, weight and letter spacing.`);
     if (hints.length) s.hint = hints.join(" ");

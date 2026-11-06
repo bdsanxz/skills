@@ -37,6 +37,25 @@ test("radial gradient carries its centre and radii in pixels", () => {
   expect(paint(p, { w: 200, h: 100 })).toBe("radial-gradient(100px 50px at 100px 50px, #FFFFFF 0%, #000000 100%)");
 });
 
+test("radial gradient whose first handle points down writes the radii in CSS order", () => {
+  // First handle 443 px straight down, second 2769 px to the left: a wide, flat ellipse.
+  const p = {
+    type: "GRADIENT_RADIAL",
+    gradientHandlePositions: [{ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.5 + 443 / 325 }, { x: 0.5 - 2769 / 1139, y: 0.5 }],
+    gradientStops: [{ color: { r: 1, g: 1, b: 1, a: 1 }, position: 0 }, { color: { r: 0, g: 0, b: 0, a: 1 }, position: 1 }],
+  };
+  expect(paint(p, { w: 1139, h: 325 })).toBe("radial-gradient(2769px 443px at 569.5px 162.5px, #FFFFFF 0%, #000000 100%)");
+});
+
+test("a rotated radial gradient is marked with its angle", () => {
+  const p = {
+    type: "GRADIENT_RADIAL",
+    gradientHandlePositions: [{ x: 0, y: 0 }, { x: 0.3, y: 0.3 }, { x: -0.1, y: 0.1 }],
+    gradientStops: [{ color: { r: 1, g: 1, b: 1, a: 1 }, position: 0 }, { color: { r: 0, g: 0, b: 0, a: 1 }, position: 1 }],
+  };
+  expect(paint(p, { w: 100, h: 100 })).toBe("radial-gradient(42.43px 14.14px at 0px 0px, #FFFFFF 0%, #000000 100%) ROTATED 45deg");
+});
+
 test("layoutDrift flags a hug frame that still counts a hidden child", () => {
   const n = { layoutMode: "VERTICAL", itemSpacing: 16, layoutSizingVertical: "HUG", ...box(0, 0, 100, 88), children: [{ ...box(0, 0, 100, 48) }, { visible: false, ...box(0, 64, 100, 24) }] };
   expect(layoutDrift(n)).toBe("hugs 88 but its stored items add up to 48");

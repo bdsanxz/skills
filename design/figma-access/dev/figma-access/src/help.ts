@@ -149,7 +149,7 @@ Fetches the full data of the nodes (the node-id in the URL, or the ids given) an
 fills, strokes, effects, corner radii, auto layout, constraints, text with its style overrides.
 Hidden layers (visible: false) and everything under them are removed from the file, because
 design files often keep most of their nodes hidden, some on top of visible content.
-Prints the file path, a report per node (font families and text styles, image fill refs,
+Prints the file path, a report per node (font families and text styles, how many images fill nodes,
 visible node types, how many hidden nodes were pruned) and an outline down to --outline levels
 (default 2). On a page it lists the page's frames instead, so you can pick the design frame.
 
@@ -168,7 +168,8 @@ opacity, blend, clip,
 component id, text with font family weight size/line-height, letter spacing, alignment and case
 (valign center|bottom when a fixed-height box is taller than its lines),
 fills as CSS colors or gradients, top layer first as in a CSS background list (image fills as
-image(<imageRef>, <scaleMode>)), borders,
+image(<imageRef>, <scaleMode>); a radial gradient with a tilted ellipse ends in "ROTATED <angle>deg"
+and must be drawn on its own rotated layer), borders,
 radii, shadows and blurs, and auto layout as flex direction, gap, padding, justify and align.
 Text with mixed styles lists its runs: runs[ "13 ": base | "GB": font ... ].
 Hidden layers are skipped. A subtree made only of vectors is one line marked
@@ -225,7 +226,10 @@ differing pixels red) to the output directory; open diff.png to see where the pi
   <page>                An HTML file or URL to capture, or a PNG you captured yourself.
   --sections <spec>     Named areas in page pixels, separated by ";": name=x,y,w,h, or
                         name=top-bottom for a full-width band ("nav=0-48;cards=399,289,602,496").
-                        Default: full-width bands of --band pixels (default 100).
+                        Default with --nodes: a full-width band per child of the node, named
+                        after it (a child taller than half the node is opened up into its own
+                        children); otherwise, or with --band,
+                        full-width bands of --band pixels (default 100).
   --nodes <file.kdl>     The node file of the rendered node (from \`node ... -o\`): also measure each
                         text, icon and image of the design on both images. Prints, per text style,
                         how far its copies sit off (dy, dx) and how wide they are against the design
