@@ -145,3 +145,21 @@ test("texts share a class per style, and a layer named Text does not take the sh
   expect(html).toContain("box__text box__text--inter-400-14-20");
   expect(rule(html, "box__text")).toBe("");
 });
+
+test("a truncated text wraps and is cut at the last line its box holds", () => {
+  const t = text("2:1", "Answer", 0, 0, {
+    ...box(0, 0, 300, 80),
+    style: { fontFamily: "Inter", fontWeight: 400, fontSize: 16, lineHeightPx: 24, textAutoResize: "TRUNCATE", textTruncation: "ENDING" },
+  });
+  const one = text("2:2", "One line only", 0, 90, {
+    ...box(0, 90, 300, 24),
+    style: { fontFamily: "Inter", fontWeight: 400, fontSize: 16, lineHeightPx: 24, textAutoResize: "TRUNCATE", textTruncation: "ENDING" },
+  });
+  const root = { id: "1:1", name: "Box", type: "FRAME", ...box(0, 0, 300, 120), children: [t, one] };
+  const { html } = emitHtml(root, "t");
+  const r = rule(html, "box__answer");
+  expect(r).toContain("-webkit-line-clamp:3");
+  expect(r).not.toContain("nowrap");
+  expect(r).toContain("clip-path:inset(0 0 8px 0)");
+  expect(rule(html, "box__one-line-only")).toContain("white-space:nowrap");
+});

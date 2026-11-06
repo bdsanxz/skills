@@ -2820,8 +2820,10 @@ layout becomes flex from its rules, children of groups and frames without auto l
 their boxes, the frame and its page-wide sections span the window while narrower parts stay
 centred, text is live and its fonts are asked from Google Fonts, and icons, masks and image layers
 are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
-image file. Assets already in <dir>/assets are kept unless --refresh is given. It prints the fonts
-and notes on what it could only approximate. Measure the page with \`compare\` and refine it.
+image file. The first run asks Figma to render every asset and downloads them (about a minute for
+two hundred; progress goes to stderr). Assets already in <dir>/assets are kept unless --refresh is
+given. It prints the fonts and notes on what it could only approximate. Measure the page with
+\`compare --apply-css\` and refine it.
 
   --depth <n>       Stop after n levels (default: all).
   --origin <x,y>    Measure boxes from this canvas point instead of the node's corner,
@@ -2853,7 +2855,7 @@ entries in \`spec\` name the ones the visible design uses.
   -o, --out <dir>  Output directory (default: _swe/figma-access/<fileKey>/image-fills/).`,
   compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
                           [--nodes file.kdl [--node id]] [--crop x,y,w,h] [--width n] [--shift n]
-                          [--threshold n] [--wide n] [--wait ms] [--full] [-o dir]
+                          [--threshold n] [--wide n] [--wait ms] [--apply-css] [--full] [-o dir]
 
 Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
 then prints, for the whole page and each section, the share of differing pixels (a channel off by
@@ -2890,6 +2892,11 @@ fixing first.
                         centred or sticks to the left, and whether the backgrounds that are flat at
                         the design's edges reach the window's edges.
   --wait <ms>           Time the page gets to load fonts and images (default 8000).
+  --apply-css           Write those css lines into <page> (a local .html file), in one
+                        <style id="figma-access-css"> block before </head>. Each run measures the page
+                        with the earlier lines in place and adds its offsets to them, so run compare
+                        again after it. Styles whose widthRatio is off by more than 5% are skipped:
+                        their font does not match yet.
   --full                Print the full report instead of the summary.
   -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
   api: `Usage: figma-access api <path> [-o file.kdl]
@@ -3772,6 +3779,9 @@ async function renderNodes(fileKey, ids, opts) {
       todo.push(k);
   });
   const urls = {};
+  if (todo.length > 4)
+    process.stderr.write(`figma-access: asking Figma to render ${todo.length} nodes as ${opts.format} (this can take a minute)
+`);
   for (let i = 0;i < todo.length; i += 100) {
     const chunk = todo.slice(i, i + 100).map((k) => ids[k]);
     const q = new URLSearchParams({ ids: chunk.join(","), format: opts.format, scale: String(opts.scale) });
@@ -3806,7 +3816,7 @@ async function renderNodes(fileKey, ids, opts) {
     }
   };
   if (todo.length > 4)
-    process.stderr.write(`figma-access: Figma rendered ${todo.length} nodes; downloading
+    process.stderr.write(`figma-access: Figma rendered ${todo.length} nodes; downloading them
 `);
   await Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker));
   return files;
@@ -4352,9 +4362,14 @@ function emitHtml(root, title) {
       p.push("white-space:nowrap");
     if (n.style?.textTruncation === "ENDING") {
       p.push("overflow:hidden", "text-overflow:ellipsis");
-      if (s.maxLines > 1)
-        p.push("display:-webkit-box", `-webkit-line-clamp:${s.maxLines}`, "-webkit-box-orient:vertical");
-      else
+      const fit = s.lineHeightPx ? Math.floor((n.absoluteBoundingBox.height + 0.5) / s.lineHeightPx) : 1;
+      const lines = s.maxLines > 0 ? s.maxLines : s.textAutoResize === "WIDTH_AND_HEIGHT" ? 1 : Math.max(1, fit);
+      if (lines > 1) {
+        p.push("display:-webkit-box", `-webkit-line-clamp:${lines}`, "-webkit-box-orient:vertical");
+        const spare = s.lineHeightPx ? n.absoluteBoundingBox.height - lines * s.lineHeightPx : 0;
+        if (spare > 0.5)
+          p.push(`clip-path:inset(0 0 ${px(spare)} 0)`);
+      } else
         p.push("white-space:nowrap");
     }
     const shadows = (n.effects ?? []).filter((e) => e.visible !== false && e.type === "DROP_SHADOW" && e.color).map((e) => `${px(e.offset?.x ?? 0)} ${px(e.offset?.y ?? 0)} ${px(e.radius ?? 0)} ${color(e.color)}`);
@@ -5309,12 +5324,15 @@ function measure(ref, cap, W, H, r, dx, dy, threshold, mask) {
 async function compare(argv) {
   const { flags, positionals } = parseArgs(argv, {
     value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out", "nodes", "node"],
-    bool: ["help", "full"],
+    bool: ["help", "full", "apply-css"],
     alias: { h: "help", o: "out" }
   });
   if (flags.help || positionals.length < 2)
     showHelp("compare");
   const [refPath, page] = positionals;
+  const applyTo = flags["apply-css"] ? localHtml(page) : undefined;
+  if (flags["apply-css"] && !flags.nodes)
+    fail(EXIT_USAGE, "--apply-css needs --nodes <node file>: the css lines come from the text styles it measures.");
   let ref = readPng(resolve5(refPath), "reference image");
   let cropAt = { x: 0, y: 0 };
   if (flags.crop) {
@@ -5447,6 +5465,8 @@ async function compare(argv) {
       const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
       return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r24(dx)}px ${r24(-st.dy)}px; }` };
     });
+    if (applyTo)
+      report.applied = applyCss(applyTo, styles);
     report.nodes = {
       root: root.id,
       measured: measured.length,
@@ -5521,6 +5541,56 @@ async function compare(argv) {
       more: `${Math.max(0, nodes.styles.length - 12)} more styles and ${Math.max(0, nodes.off - 10)} more nodes in ${reportPath} (or pass --full).`
     }
   });
+}
+function localHtml(page) {
+  const file = page.startsWith("file://") ? decodeURIComponent(new URL(page).pathname) : page;
+  if (/^https?:/.test(page) || !/\.html?$/i.test(file) || !existsSync4(file)) {
+    fail(EXIT_USAGE, `--apply-css writes into the page, so the page must be a local .html file; ${page} is not one.`);
+  }
+  return resolve5(file);
+}
+var CSS_ID = "figma-access-css";
+var CSS_LINE = /^\.([\w-]+) \{ translate: (-?[\d.]+)px (-?[\d.]+)px; \}$/;
+function applyCss(file, styles) {
+  const html = readFileSync4(file, "utf8");
+  const block = new RegExp(`<style id="${CSS_ID}">([\\s\\S]*?)</style>\\n?`);
+  const have = new Map;
+  for (const line of (block.exec(html)?.[1] ?? "").split(`
+`)) {
+    const m = CSS_LINE.exec(line.trim());
+    if (m)
+      have.set(m[1], [Number(m[2]), Number(m[3])]);
+  }
+  const changed = [], skipped = [];
+  for (const st of styles) {
+    if (!st.css)
+      continue;
+    const m = CSS_LINE.exec(st.css);
+    if (!m)
+      continue;
+    if (Math.abs((st.widthRatio ?? 1) - 1) > 0.05) {
+      skipped.push(`${st.style} (widthRatio ${st.widthRatio})`);
+      continue;
+    }
+    const [x, y] = have.get(m[1]) ?? [0, 0];
+    have.set(m[1], [r24(x + Number(m[2])), r24(y + Number(m[3]))]);
+    changed.push(st.style);
+  }
+  const lines = [...have.entries()].map(([cls, [x, y]]) => `.${cls} { translate: ${x}px ${y}px; }`);
+  const css = `<style id="${CSS_ID}">
+/* Text offsets measured by \`figma-access compare --apply-css\`; later runs update this block. */
+${lines.join(`
+`)}
+</style>
+`;
+  const next = block.test(html) ? html.replace(block, css) : html.includes("</head>") ? html.replace("</head>", `${css}</head>`) : css + html;
+  if (changed.length)
+    writeFileSync6(file, next);
+  const result = { file, styles: changed.length, rules: lines.length };
+  if (skipped.length)
+    result.skipped = `${skipped.join(", ")}: the text is much wider or narrower than the design's, so its font, weight or letter spacing does not match yet. Fix that, then compare again.`;
+  result.next = changed.length ? "Compare again to measure the page with these offsets." : "No style had a fix to apply.";
+  return result;
 }
 
 // src/main.ts

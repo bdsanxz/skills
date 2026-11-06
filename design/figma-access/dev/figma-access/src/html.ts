@@ -274,7 +274,15 @@ export function emitHtml(root: any, title: string): Emitted {
     if (s.textAutoResize === "WIDTH_AND_HEIGHT") p.push("white-space:nowrap");
     if (n.style?.textTruncation === "ENDING") {
       p.push("overflow:hidden", "text-overflow:ellipsis");
-      if (s.maxLines > 1) p.push("display:-webkit-box", `-webkit-line-clamp:${s.maxLines}`, "-webkit-box-orient:vertical");
+      // Figma wraps a truncated text and cuts it at the last line that fits: maxLines, or as many as the box holds.
+      const fit = s.lineHeightPx ? Math.floor((n.absoluteBoundingBox.height + 0.5) / s.lineHeightPx) : 1;
+      const lines = s.maxLines > 0 ? s.maxLines : s.textAutoResize === "WIDTH_AND_HEIGHT" ? 1 : Math.max(1, fit);
+      if (lines > 1) {
+        p.push("display:-webkit-box", `-webkit-line-clamp:${lines}`, "-webkit-box-orient:vertical");
+        // The clamp ends the text, not the box: hide the next line where the box is taller than its lines.
+        const spare = s.lineHeightPx ? n.absoluteBoundingBox.height - lines * s.lineHeightPx : 0;
+        if (spare > 0.5) p.push(`clip-path:inset(0 0 ${px(spare)} 0)`);
+      }
       else p.push("white-space:nowrap");
     }
     const shadows = (n.effects ?? [])

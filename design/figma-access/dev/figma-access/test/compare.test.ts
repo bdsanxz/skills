@@ -2,12 +2,13 @@
 // Run in dev/figma-access: bun run build && bun test
 
 import { test, expect } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
 import { decodePng, encodePng, type Image } from "../src/png";
 import { decode } from "../src/kdl";
+import { applyCss } from "../src/compare";
 
 const CLI = resolve(import.meta.dir, "../../../scripts/figma-access.js");
 const DIR = mkdtempSync(join(tmpdir(), "figma-access-compare-"));
@@ -200,4 +201,19 @@ test("compare --nodes takes its sections from the node's children, opening up a 
   expect(json.sections.map((s: any) => [s.name, ...s.box])).toEqual([["Nav", 0, 0, 100, 30], ["Cards", 0, 30, 100, 60]]);
   const banded = await run([ref, cap, "--nodes", nodeFile, "--band", "45"]);
   expect(banded.json.sections.map((s: any) => s.name)).toEqual(["0-45", "45-90"]);
+});
+
+test("--apply-css writes the style offsets into the page and adds later runs to them", () => {
+  const file = join(mkdtempSync(join(tmpdir(), "fa-apply-")), "index.html");
+  writeFileSync(file, "<html><head><title>t</title></head><body></body></html>");
+  const st = (style: string, css: string, widthRatio = 1) => ({ style, css, widthRatio });
+  const first = applyCss(file, [st("Poppins 400 16/24", ".p__text--poppins-400-16-24 { translate: 0px 1.5px; }"), st("Batik 700 24/32", ".p__text--batik-700-24-32 { translate: 0px 1px; }", 1.2), { style: "Inter" }]);
+  expect(first.styles).toBe(1);
+  expect(String(first.skipped)).toContain("Batik 700 24/32");
+  const second = applyCss(file, [st("Poppins 400 16/24", ".p__text--poppins-400-16-24 { translate: -1px -0.5px; }")]);
+  expect(second.rules).toBe(1);
+  const html = readFileSync(file, "utf8");
+  expect(html).toContain(".p__text--poppins-400-16-24 { translate: -1px 1px; }");
+  expect(html.match(/figma-access-css/g)!.length).toBe(1);
+  expect(html.indexOf("figma-access-css")).toBeLessThan(html.indexOf("</head>"));
 });

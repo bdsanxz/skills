@@ -157,11 +157,13 @@ function measure(ref: Uint8Array, cap: Uint8Array, W: number, H: number, r: Rect
 export async function compare(argv: string[]) {
   const { flags, positionals } = parseArgs(argv, {
     value: ["width", "crop", "sections", "band", "shift", "threshold", "wide", "wait", "out", "nodes", "node"],
-    bool: ["help", "full"],
+    bool: ["help", "full", "apply-css"],
     alias: { h: "help", o: "out" },
   });
   if (flags.help || positionals.length < 2) showHelp("compare");
   const [refPath, page] = positionals as [string, string];
+  const applyTo = flags["apply-css"] ? localHtml(page) : undefined;
+  if (flags["apply-css"] && !flags.nodes) fail(EXIT_USAGE, "--apply-css needs --nodes <node file>: the css lines come from the text styles it measures.");
   let ref = readPng(resolve(refPath), "reference image");
   let cropAt = { x: 0, y: 0 };
   if (flags.crop) {
@@ -300,6 +302,7 @@ export async function compare(argv: string[]) {
       const dx = Math.abs(st.dx) >= 0.5 ? -st.dx : 0;
       return { ...st, css: `.${block}__text--${slug(st.style)} { translate: ${r2(dx)}px ${r2(-st.dy)}px; }` };
     });
+    if (applyTo) report.applied = applyCss(applyTo, styles);
     report.nodes = {
       root: root.id,
       measured: measured.length,
@@ -372,4 +375,52 @@ export async function compare(argv: string[]) {
       more: `${Math.max(0, nodes.styles.length - 12)} more styles and ${Math.max(0, nodes.off - 10)} more nodes in ${reportPath} (or pass --full).`,
     },
   });
+}
+
+/** The local HTML file `--apply-css` may write to. */
+function localHtml(page: string): string {
+  const file = page.startsWith("file://") ? decodeURIComponent(new URL(page).pathname) : page;
+  if (/^https?:/.test(page) || !/\.html?$/i.test(file) || !existsSync(file)) {
+    fail(EXIT_USAGE, `--apply-css writes into the page, so the page must be a local .html file; ${page} is not one.`);
+  }
+  return resolve(file);
+}
+
+const CSS_ID = "figma-access-css";
+const CSS_LINE = /^\.([\w-]+) \{ translate: (-?[\d.]+)px (-?[\d.]+)px; \}$/;
+
+/**
+ * Writes the per-style text offsets into the page, in one style block that later runs update.
+ * Each run measures the page with the earlier offsets in place, so a new offset adds to the old one.
+ * Styles whose text is much wider or narrower are left out: their font is not the design's yet.
+ */
+export function applyCss(file: string, styles: any[]) {
+  const html = readFileSync(file, "utf8");
+  const block = new RegExp(`<style id="${CSS_ID}">([\\s\\S]*?)</style>\\n?`);
+  const have = new Map<string, [number, number]>();
+  for (const line of (block.exec(html)?.[1] ?? "").split("\n")) {
+    const m = CSS_LINE.exec(line.trim());
+    if (m) have.set(m[1]!, [Number(m[2]), Number(m[3])]);
+  }
+  const changed: string[] = [], skipped: string[] = [];
+  for (const st of styles) {
+    if (!st.css) continue;
+    const m = CSS_LINE.exec(st.css);
+    if (!m) continue;
+    if (Math.abs((st.widthRatio ?? 1) - 1) > 0.05) {
+      skipped.push(`${st.style} (widthRatio ${st.widthRatio})`);
+      continue;
+    }
+    const [x, y] = have.get(m[1]!) ?? [0, 0];
+    have.set(m[1]!, [r2(x + Number(m[2])), r2(y + Number(m[3]))]);
+    changed.push(st.style);
+  }
+  const lines = [...have.entries()].map(([cls, [x, y]]) => `.${cls} { translate: ${x}px ${y}px; }`);
+  const css = `<style id="${CSS_ID}">\n/* Text offsets measured by \`figma-access compare --apply-css\`; later runs update this block. */\n${lines.join("\n")}\n</style>\n`;
+  const next = block.test(html) ? html.replace(block, css) : html.includes("</head>") ? html.replace("</head>", `${css}</head>`) : css + html;
+  if (changed.length) writeFileSync(file, next);
+  const result: Record<string, unknown> = { file, styles: changed.length, rules: lines.length };
+  if (skipped.length) result.skipped = `${skipped.join(", ")}: the text is much wider or narrower than the design's, so its font, weight or letter spacing does not match yet. Fix that, then compare again.`;
+  result.next = changed.length ? "Compare again to measure the page with these offsets." : "No style had a fix to apply.";
+  return result;
 }

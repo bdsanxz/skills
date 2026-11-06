@@ -272,6 +272,7 @@ export async function renderNodes(
   });
   // The API renders a batch per call; long id lists go in chunks to keep the URL short.
   const urls: Record<string, string | null> = {};
+  if (todo.length > 4) process.stderr.write(`figma-access: asking Figma to render ${todo.length} nodes as ${opts.format} (this can take a minute)\n`);
   for (let i = 0; i < todo.length; i += 100) {
     const chunk = todo.slice(i, i + 100).map((k) => ids[k]!);
     const q = new URLSearchParams({ ids: chunk.join(","), format: opts.format, scale: String(opts.scale) });
@@ -303,7 +304,7 @@ export async function renderNodes(
       if (todo.length > 4 && (done % 10 === 0 || done === todo.length)) process.stderr.write(`figma-access: downloaded ${done}/${todo.length}\n`);
     }
   };
-  if (todo.length > 4) process.stderr.write(`figma-access: Figma rendered ${todo.length} nodes; downloading\n`);
+  if (todo.length > 4) process.stderr.write(`figma-access: Figma rendered ${todo.length} nodes; downloading them\n`);
   await Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker));
   return files;
 }

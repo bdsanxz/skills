@@ -202,8 +202,10 @@ layout becomes flex from its rules, children of groups and frames without auto l
 their boxes, the frame and its page-wide sections span the window while narrower parts stay
 centred, text is live and its fonts are asked from Google Fonts, and icons, masks and image layers
 are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
-image file. Assets already in <dir>/assets are kept unless --refresh is given. It prints the fonts
-and notes on what it could only approximate. Measure the page with \`compare\` and refine it.
+image file. The first run asks Figma to render every asset and downloads them (about a minute for
+two hundred; progress goes to stderr). Assets already in <dir>/assets are kept unless --refresh is
+given. It prints the fonts and notes on what it could only approximate. Measure the page with
+\`compare --apply-css\` and refine it.
 
   --depth <n>       Stop after n levels (default: all).
   --origin <x,y>    Measure boxes from this canvas point instead of the node's corner,
@@ -238,7 +240,7 @@ entries in \`spec\` name the ones the visible design uses.
 
   compare: `Usage: figma-access compare <reference.png> <page.html|url|capture.png> [--sections spec] [--band n]
                           [--nodes file.kdl [--node id]] [--crop x,y,w,h] [--width n] [--shift n]
-                          [--threshold n] [--wide n] [--wait ms] [--full] [-o dir]
+                          [--threshold n] [--wide n] [--wait ms] [--apply-css] [--full] [-o dir]
 
 Captures the page in headless Chrome at the reference's size (set CHROME_PATH to choose the browser),
 then prints, for the whole page and each section, the share of differing pixels (a channel off by
@@ -275,6 +277,11 @@ fixing first.
                         centred or sticks to the left, and whether the backgrounds that are flat at
                         the design's edges reach the window's edges.
   --wait <ms>           Time the page gets to load fonts and images (default 8000).
+  --apply-css           Write those css lines into <page> (a local .html file), in one
+                        <style id="figma-access-css"> block before </head>. Each run measures the page
+                        with the earlier lines in place and adds its offsets to them, so run compare
+                        again after it. Styles whose widthRatio is off by more than 5% are skipped:
+                        their font does not match yet.
   --full                Print the full report instead of the summary.
   -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).`,
 
