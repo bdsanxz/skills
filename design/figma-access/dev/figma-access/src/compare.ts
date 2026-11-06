@@ -312,7 +312,7 @@ export async function compare(argv: string[]) {
 
   if (flags.wide) {
     const wide = Number(str(flags.wide));
-    if (!(wide > cssWidth)) fail(EXIT_USAGE, `--wide must be wider than the page width ${cssWidth}.`);
+    if (!(wide > cssWidth)) fail(EXIT_USAGE, `--wide is a wider window to try the page in: give more than the page width ${cssWidth}, e.g. --wide ${Math.round(cssWidth * 4 / 3)}.`);
     if (/\.png$/i.test(page) && !/^https?:/.test(page)) fail(EXIT_USAGE, "--wide needs a page to capture, not a PNG.");
     const widePath = join(dir, `capture-${wide}.png`);
     rmSync(widePath, { force: true });
