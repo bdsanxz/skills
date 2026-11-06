@@ -124,7 +124,7 @@ test("compare --wide: a page pinned to the left and a short background are both 
   const b = await run([refPath, fluid, "--wide", "400", "--wait", "500"]);
   expect(b.json.whole.differing).toBe(0);
   expect(b.json.wide.edgeDiffering).toBe(0);
-});
+}, 60000); // four browser launches
 
 test("compare --nodes: text sitting 1 px higher is reported per style, a missing node too", async () => {
   // Frame at canvas (1000,2000), 200x120. Two text nodes of one style and an icon.
