@@ -208,3 +208,25 @@ test("space-between with one child centres it, as Figma does", () => {
   const two = { ...root, children: [text("2:1", "A", 0, 10), text("2:2", "B", 340, 10)] };
   expect(rule(emitHtml(two, "t").html, "row__row")).toContain("justify-content:space-between");
 });
+
+test("a box that hugs its content keeps at least its stored height; texts do not", () => {
+  const root = {
+    id: "1:1", name: "Col", type: "FRAME", ...box(0, 0, 400, 200), layoutMode: "VERTICAL",
+    children: [{ id: "2:1", name: "Row", type: "FRAME", ...box(0, 0, 400, 97), layoutMode: "HORIZONTAL",
+      layoutSizingHorizontal: "FILL", layoutSizingVertical: "HUG", children: [text("3:1", "Title", 0, 0, { layoutSizingVertical: "HUG" })] }],
+  };
+  const { html } = emitHtml(root, "t");
+  expect(rule(html, "col__row")).toContain("min-height:97px");
+  expect(rule(html, "col__title")).not.toContain("min-height");
+});
+
+test("a hug box whose stored boxes drift gets no min-height", () => {
+  // Stored 88 px tall around a 48 px child: the stored height is stale.
+  const root = {
+    id: "1:1", name: "Col", type: "FRAME", ...box(0, 0, 400, 200), layoutMode: "VERTICAL",
+    children: [{ id: "2:1", name: "Header", type: "FRAME", ...box(0, 0, 400, 88), layoutMode: "VERTICAL",
+      layoutSizingHorizontal: "FILL", layoutSizingVertical: "HUG",
+      children: [{ id: "3:1", name: "Bar", type: "FRAME", ...box(0, 0, 400, 48), layoutSizingHorizontal: "FILL", layoutSizingVertical: "FIXED" }] }],
+  };
+  expect(rule(emitHtml(root, "t").html, "col__header")).not.toContain("min-height");
+});

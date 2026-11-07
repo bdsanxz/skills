@@ -202,9 +202,12 @@ With --html <dir> it writes a starting page instead: <dir>/index.html and <dir>/
 layout becomes flex from its rules, children of groups and frames without auto layout sit at
 their boxes, the frame and its page-wide sections span the window while narrower parts stay
 centred, text is live, gradient strokes are masked rings, and icons, masks and image layers
-are Figma's renders (SVG, or PNG at scale 2); frames with an image background use the original
-image file. The first run asks Figma to render every asset and downloads them (about a minute for
-two hundred; progress goes to stderr). Assets already in <dir>/assets are kept unless --refresh is
+are Figma's renders (SVG; PNG at scale 2 for masks and images, at scale 1 for blurred icons);
+frames with an image background use the original image file as cover, and the notes name the
+ones whose STRETCH or CROP mode that only approximates. A box that hugs its content keeps at
+least its stored height, except where LAYOUT DRIFT marks the stored boxes stale. The first run
+asks Figma to render every asset and downloads them (about a minute for two hundred; progress
+goes to stderr). Assets already in <dir>/assets are kept unless --refresh is
 given. It checks each font family with Google Fonts; for a family Google does not have, it measures
 its one-line texts in a set of Google sans families in headless Chrome, and puts the closest in
 width behind it in every font-family list (add the real files with @font-face and they take over).
@@ -285,7 +288,7 @@ fixing first.
                         <style id="figma-access-css"> block before </head>. Each run measures the page
                         with the earlier lines in place and adds its offsets to them, so run compare
                         again after it. Styles whose widthRatio is off by more than 5% are skipped:
-                        their font does not match yet.
+                        their font, weight or letter spacing does not match yet.
   --full                Print the full report instead of the summary.
   -o, --out <dir>       Output directory (default: _swe/figma-access/compare/).
 

@@ -215,7 +215,7 @@ export async function compare(argv: string[]) {
       r.h = Math.min(r.h, ref.height - r.y);
       ref = crop(ref, r);
       cropAt = { x: r.x, y: r.y };
-      autoCrop = `${r.x},${r.y},${r.w},${r.h}: the reference was cropped to the node's box, which its own shadow or blur had widened; crop your own views from the reference file below, which is that crop, so they line up with the capture`;
+      autoCrop = `${r.x},${r.y},${r.w},${r.h}: the reference was cropped to the node's box, which its own shadow or blur had widened; crop your own views from the \`reference\` file, which is that crop, so they line up with the capture`;
     }
   }
   const cssWidth = Number(str(flags.width) ?? ref.width);
