@@ -3,9 +3,9 @@
 This guide covers how to prompt Nano Banana. It draws on three sources, all named in `NOTICE.md`:
 
 - Google's own prompting tips for Nano Banana Pro, published on 2025-11-20. Rules from this source are marked **(Google)**.
-- The prompts collected in two community galleries. Each rule from them comes from patterns that recur across those prompts.
+- The prompts collected in two community galleries, PicoTrex and ZeroLu. Each rule from them comes from patterns that recur across those prompts.
 
-Pattern names in brackets, such as [Split View 3D Render], point to entries in `pattern-catalog.md`.
+Pattern names in brackets, such as [Split View 3D Render], point to entries in `pattern-catalog.md`. Complete worked prompts that apply these techniques are in `../inspirations/`.
 
 The galleries cover two generations of the model:
 
@@ -13,6 +13,8 @@ The galleries cover two generations of the model:
 - **Nano Banana Pro** adds what the Pro sections show most: long readable text, page layouts (infographics, slides, newsletters, posters), drawing from world knowledge (coordinates, books, papers, landmarks), many consistent subjects in one frame, and multi-image sets.
 
 Every technique below works on both models. When a prompt depends on dense text, real-world facts or many panels, prefer Pro.
+
+Sections: What Nano Banana Pro can do · Anatomy of a strong prompt · Choose a prompt format · Describe like a photographer · Edit and preserve · Reference several images · Render text and layout · Control count, scale and proportion · Use negatives · Generate from knowledge and reasoning · Keep a series consistent · Output spec · Fix a bad result · Review checklist · Safety and rights.
 
 ## What Nano Banana Pro can do (Google)
 
@@ -68,8 +70,9 @@ The galleries use five formats. Pick the format by how much the prompt must cont
 Notes on the formats:
 
 - A JSON or YAML spec is only structured text; nothing parses it. Its value is that every attribute gets its own slot, so none is forgotten. Use keys that say what they hold: `subject`, `face.preserve_original`, `photography.lighting`, `background.elements`, `negative`. Values can be phrases, not single words.
+- When two formats fit equally, either works. Posters, menus and other text-heavy layouts usually read best as labeled sections; otherwise the format of the closest inspiration is a good default. An inspiration written as a brief with labeled lines counts as labeled sections.
 - A one-line instruction works only when the transformation is unambiguous. When a one-liner gives a generic result, expand it into a brief.
-- Placeholders in brackets or braces, such as `[PRODUCT]`, `{City Name}` or `[BRAND]`, turn a prompt into a reusable template. Tell the user to replace every placeholder before use.
+- Placeholders in brackets or braces, such as `[PRODUCT]`, `{City Name}` or `[BRAND]`, turn a prompt into a reusable template. The inspiration library writes them as `[UPPER_SNAKE]`. Tell the user to replace every placeholder before use.
 
 ## Describe like a photographer
 
@@ -103,7 +106,11 @@ For illustration and 3D work, name the medium and finish instead:
 - "DreamWorks-like soft rendering";
 - "thick-pencil hand-drawn doodle";
 - "black-and-white manga line drawing";
-- "traditional ink and color handscroll with scattered perspective".
+- "traditional ink and color handscroll with scattered perspective";
+- "transparent watercolor on cold-press paper, wet-into-wet washes, pigment granulation, white paper left for highlights";
+- "opaque gouache with flat matte color and visible brush edges";
+- "two-color risograph print with grain and slight misregistration";
+- "linocut with bold carved lines and uneven ink coverage".
 
 ## Edit and preserve
 
@@ -115,6 +122,7 @@ Edits succeed when the prompt states both what to keep and what to change.
    - "Keep the facial features of the person in the uploaded image exactly consistent";
    - "100% identical facial features, bone structure, skin tone";
    - "facial_identity: Match reference image exactly 100%, face_edits: None allowed".
+   For handmade or patterned objects, lock the surface too: "the same speckles, grain or print in the same places, sizes and density".
 4. **Limit the edit's scope**: "Only modify the torn-paper interior areas", "only change the clothes", "Only the smartphone screen portion".
 5. **Describe how the change must blend in**: "match the ambient lighting, color temperature, and shadow direction", "the filled area must have the same grain, focus depth, and lighting", "the new text should look printed on the same surface, with slight fading or wear to match".
 6. **Say what may change**, when some freedom helps: "poses and expressions may be changed to match the poster design", or "the background of the original image is completely ignored".
@@ -139,7 +147,7 @@ Common edit operations, each phrased as in the galleries:
 
 ## Reference several images
 
-- **Refer to each upload by number** in the prompt: "Image 1 (the garment) and Image 2 (the model)", "the pose from Figure 3", "the color palette from Figure 2 … the character in Figure 1". Tell the user to upload the images in that order.
+- **Refer to each upload by number** in the prompt: "Image 1 (the garment) and Image 2 (the model)", "the pose from Figure 3", "the color palette from Figure 2 … the character in Figure 1". Tell the user to upload the images in that order. Google's tip uses letters (Image A, Image B); numbers work the same, so pick one form and keep it. Number them in the order the user naturally has them; the role order in an example prompt is not fixed, so renumber its roles to fit.
 - **Assign one role per image (Google)**: "Use Image A for the character's pose, Image B for the art style, and Image C for the background environment." Possible roles include identity, garment, pose, expression, palette, material, lighting, face shape, packaging or sticker style.
 - **Use a short transfer formula** when the roles are clear:
   - "Character reference from Image 1 / Change to the expression from Image 2";
@@ -165,6 +173,7 @@ Nano Banana, especially Pro, can render readable text and full page layouts when
 - **Ask for correct spelling** and integration: "Ensure all text is perfectly spelled, centered, and integrated into the image's depth of field."
 - **Ask for accuracy, and supply facts (Google)**: write "A scientifically accurate cross-section diagram" or "Ensure historical accuracy for the Victorian era", and make sure the facts you give are themselves correct.
 - **Name the language** of the labels: "Label each element clearly in English", "Language: Chinese and English labels". For a two-line label system, give the format: "first line Pinyin with tones, second line Simplified Chinese characters".
+- **Text in other languages**: quote it in the language it must appear in, with every diacritic and punctuation mark as given, and say which language it is ("in Indonesian"). Prefer Pro for any non-English copy, and tell the user to proofread it, since Google lists multilingual text among the model's weak points.
 - **Give the proportions** of the layout: "text occupies 2/3 of the picture, character occupies 1/3", "one large main image at the top, and several smaller images below it", "Place the title prominently in the center or lower third".
 - **For diagrams**, name the visual grammar:
   - "align all boxes and diamonds to a strict grid";
@@ -194,7 +203,7 @@ Nano Banana, especially Pro, can render readable text and full page layouts when
 
 ## Use negatives
 
-- **Put negatives in a final `Negative:` line or a `negative` key**, split into content ("multiple characters, male characters, digital art overlay") and style ("no hyper-saturation, no soft focus filters, no heavy vignetting").
+- **Put negatives in a final `Negative:` or `Avoid:` line, or a `negative` key**, split into content ("multiple characters, male characters, digital art overlay") and style ("no hyper-saturation, no soft focus filters, no heavy vignetting").
 - **Make each negative name a concrete failure** you expect for this prompt: "toy-like gloss", "teal-orange tones", "perspective collapse", "mismatched reflections", "watermark", "extra digits".
 - **State also what you want**, alongside each negative: "Not soft lighting" next to "narrow beam spotlight with sharp edges".
 - **Keep negatives consistent** with the rest of the prompt. Do not list in the negatives something the prompt asks for.
@@ -247,6 +256,17 @@ Treat everything the model draws from knowledge as unverified. One gallery warns
 
 - **Define the canvas (Google)**, for example "A 9:16 vertical poster" or "A cinematic 21:9 wide shot". Ask for 1K, 2K or 4K output when the app or API offers the choice.
 - **State the aspect ratio in words**: "16:9", "9:16 vertical", "vertical 3:4", "4:5", "1:1 aspect ratio", "vertical A4", "widescreen panel". Some gallery prompts use `--ar 2:3` syntax borrowed from other tools; the plain-words form is the one most prompts use.
+- **Print and social sizes**: write the size in words ("vertical A4 portrait", "5x7 inch card, vertical 5:7") and keep important text away from the edges a crop or trim removes. When the app offers only fixed ratios, pick the nearest one and tell the user what to crop:
+
+  | Size | True ratio | Nearest fixed ratio |
+  | --- | --- | --- |
+  | A3, A4, A5, A6 | about 1:1.41 | 3:4, crop the long side |
+  | US Letter | about 1:1.29 | 3:4 |
+  | 5x7 inch card | 5:7 | 3:4, crop the long side |
+  | 4x6 inch print | 2:3 | 2:3 |
+  | Instagram feed | 4:5 (1:1 also works) | 4:5 |
+  | Story, reel, phone wallpaper | 9:16 | 9:16 |
+- **Prices and numbers**: write every price exactly as the user gave it, with their currency and separators ("Rp75.000", "25.000", "3,20"), even when the rest of the text is translated: "Rp199.000/month" keeps its dot in English copy. Add or change a currency symbol only when the user asks for it, and say so in your notes.
 - **Pixel sizes and resolution words** appear often: "1080×1080", "2048×2560", "4K", "8K". They express the intent for size and detail. The output size you actually get is set by the app or API.
 - **Some prompts write sampling settings into the text**, such as "seed=12345, temperature=0". Nothing in the galleries shows that this has any effect. Set seeds and other sampling options in the API or app settings when they are available, not in the prompt.
 
@@ -267,14 +287,14 @@ Treat everything the model draws from knowledge as unverified. One gallery warns
 
 ## Review checklist
 
-- The first sentence says what the deliverable is.
+- The opening says what the deliverable is. A role line may come before it, as long as the deliverable follows at once.
 - Every uploaded image has a number and a role.
 - For an edit, the prompt lists what stays unchanged and limits what changes.
 - Every word that must appear in the image is quoted. Its font and position are given, and stray text is forbidden.
 - Counts, order and proportions are explicit wherever they matter.
 - Lighting and style are concrete: a named setup, lens, medium or film stock, not just "high quality".
 - Negatives name likely failures and do not contradict the request.
-- The aspect ratio is stated.
+- The aspect ratio is stated. Only an edit whose output keeps the upload's own ratio can leave it out; whenever the ratio changes, state it.
 - Every placeholder is either filled in or flagged for the user.
 - Nothing in the prompt conflicts with another part of it, such as asking for "soft lighting" together with "hard flash".
 
@@ -286,3 +306,4 @@ Some gallery prompts depict celebrities, real public figures, franchise characte
 - **Sexual content**: do not write sexualized prompts. Never write one for anyone who is, or looks, under 18.
 - **Protected IP**: for franchise characters, brand logos and trademarked designs, offer an original character or a generic product unless the user owns the rights. One gallery prompt shows the pattern: "No copyrighted characters, no branded designs, no IP logos."
 - **Deception**: do not write prompts meant to produce fake documents, fake evidence or a misleading news image of real events.
+- **Listings and product photos**: removing temporary clutter, relighting and replacing a sky are normal listing edits. Repairing damage, adding features, swapping the real view out of a window or hiding defects misrepresents what is for sale; leave those out and tell the user, and suggest they label the image as edited where their platform requires it.

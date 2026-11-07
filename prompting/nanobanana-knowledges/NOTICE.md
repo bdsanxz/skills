@@ -21,3 +21,8 @@ The references in this skill are curated from the sources below. They paraphrase
 - Origin: https://blog.google/products-and-platforms/products/gemini/prompting-tips-nano-banana-pro, by Bea Alessio, Google DeepMind, published 2025-11-20.
 - Used for facts about the model's abilities and limits, and for short quoted example prompts. The article's text is not reproduced.
 - Marked **G** in `references/pattern-catalog.md`, and **(Google)** in `references/prompting-guide.md`.
+
+## Inspirations
+
+- The prompts in `inspirations/` and the ideas in `references/craft-moves.md` are original works written for this skill. They contain no third-party text. Their techniques draw on the sources above and on a private collection of brand and product-advertising prompts that the maintainer studied; none of those prompts is reproduced.
+- Every brand, product, person and place named in them is invented.

@@ -1,10 +1,10 @@
 # Nano Banana prompt templates
 
-These skeletons are built from the proven patterns in `pattern-catalog.md` and the rules in `prompting-guide.md`.
+These skeletons are built from the proven patterns in `pattern-catalog.md` and the rules in `prompting-guide.md`. They are bare starting points: each bracket describes what goes there, often with an example after "e.g.". For complete, worked prompts, many with `[UPPER_SNAKE]` slots and example values, see `../inspirations/index.md`.
 
-- Replace every `[slot]`.
-- Delete any line that does not apply to the task.
-- Keep the order of the lines: deliverable first, constraints last.
+- Replace every bracket with real content before the prompt is used.
+- Delete any line that does not apply to the task, and add whatever the image needs that the skeleton lacks.
+- The line order puts the deliverable first and the constraints last, which usually works well; reorder when the task calls for it.
 
 ## Photoreal portrait from a selfie (identity-locked)
 
@@ -33,7 +33,8 @@ Do not add new people, text, logos or watermarks.
 ## Combine several reference images
 
 ```text
-Image 1 is [role, e.g. the model]. Image 2 is [role, e.g. the garment]. Image 3 is [role, e.g. the background environment].
+Image 1 is [role, e.g. the model]. Image 2 is [role, e.g. the garment]. Image 3 is [role, e.g. the background environment | the art style only].
+[For a style-only reference: take its medium, brushwork, texture, palette and edges; do not take any of its subjects or layout.]
 Create [deliverable] in which [what happens, combining the roles].
 From Image 1 keep [identity / pose]. From Image 2 preserve [texture, color, logos] exactly.
 [Placement of each element in the frame.]
